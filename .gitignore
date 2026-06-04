@@ -1,0 +1,10 @@
+ml-proj.md
+.venv/
+__pycache__/
+lec\ ML\ project\ and\ preprocessing.pdf 
+.ipynb_checkpoints/
+*.pyc
+.DS_Store
+
+
+
