@@ -18,12 +18,14 @@ app = marimo.App()
 
 @app.cell
 def _():
+    import matplotlib
+
+    matplotlib.use("AGG")
     import matplotlib.pyplot as plt
     import pandas as pd
     import numpy as np
     import seaborn as sns
     import marimo as mo
-
 
     df = pd.read_csv("Train_Data.csv")
     return df, mo, np, pd, plt, sns
@@ -86,7 +88,12 @@ def _(pd, plt, sns):
         plt.tight_layout()
         plt.show()
 
-    return (plot_feature_dist,)
+
+    def br():
+        print("\n")
+
+
+    return br, plot_feature_dist
 
 
 @app.cell(hide_code=True)
@@ -138,7 +145,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, pd):
+def _(br, df, pd):
     def get_null_summary(df: pd.DataFrame) -> pd.DataFrame:
         frame = pd.DataFrame({
             "null_count": df.isnull().sum(),
@@ -148,6 +155,10 @@ def _(df, pd):
 
 
     null_summary = get_null_summary(df)
+
+    br()
+    print(null_summary)
+    br()
     null_summary
     return
 
@@ -181,7 +192,8 @@ def _(mo):
 
 
 @app.cell
-def _(df):
+def _(br, df):
+    br()
     print(df.groupby(df['Company_ID'].isna())['Dropped_Course'].describe())
     print(
         "unique company_id list is too big: ", len(df['Company_ID'].unique().tolist()) > 10
@@ -215,8 +227,9 @@ def _(mo):
 
 
 @app.cell
-def _(df):
+def _(br, df):
     unique_agents = len(df['Agent_ID'].unique().tolist())
+    br()
     print("number of agents + 1 = ", unique_agents)
     return
 
@@ -247,14 +260,15 @@ def _(mo):
 
 
 @app.cell
-def _(df):
+def _(br, df):
     DROP_MEAN = float(df['Dropped_Course'].mean())
-    DROP_MEAN
+    br()
+    print("Mean drop rate", DROP_MEAN)
     return (DROP_MEAN,)
 
 
 @app.cell
-def _(DROP_MEAN, df, large_agents, np):
+def _(DROP_MEAN, br, df, large_agents, np):
     df_large_agents = df[df['Agent_ID'].isin(large_agents.index)]
     agent_summary = df_large_agents.groupby('Agent_ID')['Dropped_Course'].agg([
         "count",
@@ -280,8 +294,10 @@ def _(DROP_MEAN, df, large_agents, np):
             "diff_from_global": "diff_from_global_%",
         }
     )
-
+    br()
+    print(agent_summary)
     agent_summary_display
+
     return
 
 
@@ -327,7 +343,7 @@ def _(mo):
 
 
 @app.cell
-def _(df):
+def _(br, df):
     drops_150_plus = df[df['Registration_Days_Before'] >= 150]['Dropped_Course'].mean()
     print('mean for eearly regs', float(drops_150_plus))
     drops_days_null = df[df['Registration_Days_Before'].isna()]['Dropped_Course'].mean()
@@ -335,6 +351,7 @@ def _(df):
     drops_up_2_150 = df[
         (df['Registration_Days_Before'] < 150) & (df['Registration_Days_Before'].notna())
     ]['Dropped_Course'].mean()
+    br()
     print('mean for rest', float(drops_up_2_150))
     return
 
@@ -603,7 +620,11 @@ def _(
             (
                 'model',
                 RandomForestClassifier(
-                    n_estimators=100, max_depth=10, min_samples_leaf=5, random_state=42
+                    n_estimators=300,
+                    max_depth=10,
+                    min_samples_leaf=2,
+                    random_state=42,
+                    n_jobs=-1,
                 ),
             ),
         ])
@@ -618,6 +639,12 @@ def _(
     return
 
 
+@app.cell
+def _():
+    # def combo_model(rf_proba, lg_proba, y):
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -628,6 +655,44 @@ def _(mo):
     - It scores almost exaclty the same as the Logistic Regression model.
     - Since Random Forest are less sensitive to data scale feature engeenring etc, I expect that it will be difficult to get the Forest score much higher, and therefor put most effort in opreparing for logistic regression, Which is likely to score better after data prep.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Summary for Raw models
+
+    Both models scored almost the same, suggesting the data is linear enough to withstand logistic regression. I suspect that since a random forest and a linear model both gace us sunular score, that means weve reached the limit of what we can do without further feature engeenering.
+
+    In the next section we will focus on prepearing the data, and attempt to cross the 95% AUC cealing.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # 4. Finding outliers
+    """)
+    return
+
+
+@app.cell
+def _():
+    # num_cols = train_raw.select_dtypes(include="number").columns.drop("Dropped_Course")
+    # outlier_summary = []
+    # for col in num_cols:
+    #     s = train_raw[col].dropna()
+    #     q1, q3 = s.quantile([0.25, 0.75])
+    #     iqr = q3 - q1
+    #     low = q1 - 1.5 * iq1
+    #     high = q3 + 1.4 * iqr
+    return
+
+
+@app.cell
+def _():
     return
 
 
