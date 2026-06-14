@@ -20,7 +20,7 @@ app = marimo.App()
 def _():
     import matplotlib
 
-    matplotlib.use("AGG")
+    # matplotlib.use("AGG")
     import matplotlib.pyplot as plt
     import pandas as pd
     import numpy as np
@@ -99,7 +99,7 @@ def _(pd, plt, sns):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 1. First insights
+    # 1. EDA
     """)
     return
 
@@ -139,7 +139,7 @@ def _(df):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 2. Missing values
+    ## 1.2. Missing values
     """)
     return
 
@@ -166,7 +166,7 @@ def _(br, df, pd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2.1 Conclusions so far
+    ### 1.2.1 Conclusions so far
 
     - `Company_ID` is $95\%$ null, should probably drop it, or turn into a dummy variable (`ordered_through_company`)
 
@@ -182,7 +182,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2.2 `Company_ID`
+    ### 1.2.2 `Company_ID`
 
     **Lets see whatsup with `Company_ID`**
 
@@ -216,7 +216,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2.3 `Agent_ID`
+    ### 1.2.3 `Agent_ID`
 
     **Lets check out Agent_ID**
 
@@ -297,7 +297,6 @@ def _(DROP_MEAN, br, df, large_agents, np):
     br()
     print(agent_summary)
     agent_summary_display
-
     return
 
 
@@ -314,7 +313,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2.4 `Registration_Days_Before`
+    ### 1.2.4 `Registration_Days_Before`
     """)
     return
 
@@ -378,7 +377,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 3. Filling missing values
+    ## 1.3 Conclusions on missing values proposed Pipeline
 
     **So far weve:**
 
@@ -387,14 +386,6 @@ def _(mo):
 
     **For the rest**
     since the rest dont take a large enough portion, we will use autmoated methods to fill the nulls.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 3.2 Preprocessing Pipeline
     """)
     return
 
@@ -427,15 +418,17 @@ def _(pd):
         for col in df.select_dtypes(include=["object"]).columns:
             df[col] = df[col].str.strip().str.lower()
 
-        # Fill missing values
-        # numeric_cols = df.select_dtypes(include=["number"]).columns
-        # cat_cols = df.select_dtypes(include=["object"]).columns
-        # df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median()) fill seperatly
-        # df[cat_cols] = df[cat_cols].fillna("unknown") fill seperatly
-
         return df
 
     return (basic_preproccess,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 1.4 Corrolation, visualsition and outliers
+    """)
+    return
 
 
 @app.cell
@@ -451,7 +444,85 @@ def _(basic_preproccess, pd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### 1.4.1 Heatmap
+    """)
+    return
+
+
+@app.cell
+def _(np, pd, plt, sns, train_clean):
+    def plot_and_print_heatmap(D: pd.DataFrame):
+        numeric_cols = train_clean.select_dtypes(include=['int64', 'float64']).columns
+        corr_matrix = train_clean[numeric_cols].corr()
+
+        plt.figure(figsize=(14, 10))
+        sns.heatmap(
+            corr_matrix, annot=False, cmap="coolwarm", vmin=-1, vmax=1, linewidths=0.5
+        )
+
+        plt.title("Feature Correlation Heatmap", fontsize=16)
+        plt.tight_layout()
+        plt.show()
+
+        print("\n\nstrongest corrs:")
+
+        upper_trig = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+        corr_pairs = (
+            corr_matrix.where(upper_trig).stack().sort_values(key=np.abs, ascending=False)
+        )
+        strong_pairs = corr_pairs[abs(corr_pairs) > 0.25]
+        for (f1, f2), corr in strong_pairs.items():
+            print(f"{f1} <--> {f2}: {corr:.2f}")
+
+        print("\n\nCorr with Dropped_Course:")
+        target_corr = (
+            corr_matrix["Dropped_Course"]
+            .drop("Dropped_Course")
+            .sort_values(key=np.abs, ascending=False)
+        )
+        plt.figure(figsize=(8, 6))
+        target_corr.plot.barh()
+        plt.title("Features corr with Dropped_Course")
+        plt.xlabel("Corr")
+        plt.tight_layout()
+        plt.show()
+        print(target_corr[abs(target_corr) > 0.05])
+
+
+    plot_and_print_heatmap(train_clean)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+ 
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     # 4. First shot models so we have a baseline
+    """)
+    return
+
+
+@app.cell
+def _():
+    # train_raw = pd.read_csv("Train_Data.csv")
+    # test_raw = pd.read_csv("Test_Data_No_Target.csv")
+
+    # train_clean = basic_preproccess(train_raw)
+    # test_clean = basic_preproccess(test_raw)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+ 
     """)
     return
 
@@ -688,6 +759,14 @@ def _():
     #     iqr = q3 - q1
     #     low = q1 - 1.5 * iq1
     #     high = q3 + 1.4 * iqr
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+ 
+    """)
     return
 
 

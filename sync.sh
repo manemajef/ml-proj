@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
+
 set -euo pipefail
+
+VENV_DIR=".venv"
+MARIMO="$VENV_DIR/bin/marimo"
+
+if [[ ! -x "$MARIMO" ]]; then
+  echo "Error: marimo not found in $VENV_DIR"
+  exit 1
+fi
 
 PY_FILE="explore.py"
 IPYNB_FILE="explore.ipynb"
@@ -7,11 +16,11 @@ IPYNB_FILE="explore.ipynb"
 case "${1:-}" in
   --marimo)
     echo "Syncing notebook -> marimo"
-    marimo convert "$IPYNB_FILE" -o "$PY_FILE"
+    "$MARIMO" convert "$IPYNB_FILE" -o "$PY_FILE"
     ;;
   "")
     echo "Syncing marimo -> notebook"
-    marimo export ipynb "$PY_FILE" -o "$IPYNB_FILE" --overwrite
+    "$MARIMO" export ipynb "$PY_FILE" -o "$IPYNB_FILE" -f
     ;;
   *)
     echo "Usage: ./sync.sh [--marimo]"

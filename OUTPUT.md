@@ -123,6 +123,34 @@ mean for missing vals 0.41522880720180044
 mean for rest 0.33612781459860425
 
 
+strongest corrs:
+Agent_ID_is_missing <--> has_company_id: 0.49
+Prev_Course_Attended <--> Returning_Client: 0.44
+Returning_Client <--> has_company_id: 0.36
+Registration_Days_Before <--> Dropped_Course: 0.35
+Prev_Course_Dropouts <--> Prev_Course_Attended: 0.35
+Pre_Course_Supports_Tickets <--> Dropped_Course: -0.30
+Prev_Course_Attended <--> has_company_id: 0.29
+Professionals_Count <--> has_company_id: -0.27
+Prev_Course_Dropouts <--> Returning_Client: 0.25
+
+
+Corr with Dropped_Course:
+Registration_Days_Before       0.351210
+Pre_Course_Supports_Tickets   -0.301284
+Prev_Course_Dropouts           0.199148
+Registration_Changes          -0.147731
+Physical_Course_Kits          -0.137800
+has_company_id                -0.093338
+Agent_ID                       0.074423
+Agent_ID_is_missing           -0.074410
+Waiting_List_Days              0.067626
+Returning_Client              -0.059177
+Professionals_Count            0.056772
+Prev_Course_Attended          -0.051962
+Name: Dropped_Course, dtype: float64
+
+
 Logsitic Regression first score: 0.8987543602442913
 
 
