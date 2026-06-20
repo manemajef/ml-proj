@@ -39,6 +39,8 @@ from sklearn.metrics import RocCurveDisplay, roc_auc_score
 from sklearn.ensemble import RandomForestClassifier
 
 TARGET_NAME = "Dropped_Course"
+TRAIN_PATH = "data/Train_Data.csv"
+TEST_PATH = "data/Train_Data_No_Target.csv"
 
 data = pd.read_csv("data/Train_Data.csv")
 official_test_data = pd.read_csv("data/Test_Data_No_Target.csv")
@@ -1383,50 +1385,6 @@ def apply_feature_eng(df: DF):
 #
 
 # %%
-# def find_sus_columns(df, num_cols):
-#     rows = []
-
-#     for c in num_cols:
-#         s = df[c].dropna()
-
-#         if s.empty or s.nunique() <= 2:
-#             continue
-
-#         q99 = s.quantile(0.99)
-#         q999 = s.quantile(0.999)
-#         max_val = s.max()
-#         min_val = s.min()
-
-#         max_over_q99 = max_val / (q99 + 1e-9)
-#         gap_999_99 = q999 - q99
-
-#         reasons = []
-
-#         if min_val < 0:
-#             reasons.append("negative_values")
-
-#         if q99 > 0 and max_over_q99 > 10:
-#             reasons.append("huge_max_vs_q99")
-
-#         if gap_999_99 > q99:
-#             reasons.append("big_tail_jump")
-
-#         if not reasons:
-#             continue
-
-#         rows.append({
-#             "col": c,
-#             "min": min_val,
-#             "max": max_val,
-#             "q99": q99,
-#             "q999": q999,
-#             "max_over_q99": max_over_q99,
-#             "gap_999_99": gap_999_99,
-#             "reason": ", ".join(reasons),
-#         })
-
-
-#     return pd.DataFrame(rows).sort_values("max_over_q99", ascending=False)
 def find_sus_columns(df, num_cols, max_mult=10):
     sus = []
     for c in num_cols:
@@ -1521,41 +1479,13 @@ def apply_capping(df: DF, show_plots: bool = False) -> DF:
 capped_train = apply_capping(train_df, show_plots=True)
 
 
-# %%
-# capped_tst = apply_capping(test_df, show_plots=True)
-
 # %% [markdown]
 # ### Final bench mark for part 2
 #
 
 # %%
-PREPROCESSING_STEPS = [
-    "split labeled data before fitting preprocessing statistics",
-    "drop Client_ID from model features but keep it separately for submission",
-    "add has_company_id before dropping raw Company_ID",
-    "add missingness flags for selected informative missing columns",
-    "fill numeric missing values with train-fitted medians",
-    "normalize categorical strings and convert common NA tokens to missing",
-    "strip .0 from Agent_ID and Company_ID and treat them as categories",
-    "drop Course_Start_Date",
-    "merge Origin_Country cn into chn",
-    "collapse rare Agent_ID and Origin_Country values into other",
-    "drop raw Company_ID and keep only has_company_id",
-    "replace requested/assigned lab configs with recived_requested_lab",
-    "drop noisy or redundant columns: Lanyard_Color, Returning_Client, Welcome_Gift_Type",
-    "cap suspicious outliers in Students_Count, Practical_Hours, and Daily_Tuition_Cost",
-    "one-hot encode categorical columns after preprocessing",
-]
-
-
 def apply_preprocessing(df: DF, train_reference: DF) -> DF:
-    """
-    Apply the notebook's selected preprocessing to a raw train/validation/test frame.
-
-    `train_reference` must be the raw training data used to fit medians and
-    category keep-lists. For validation, pass `train_data`; for final test
-    predictions, pass the full labeled training file.
-    """
+    """ """
     train_completed = complete_missing_values(train_reference, train_reference)
     df_completed = complete_missing_values(df, train_reference)
 
@@ -1573,7 +1503,31 @@ def apply_preprocessing(df: DF, train_reference: DF) -> DF:
 
 aplly_preprocessing = apply_preprocessing
 
+train_data = pd.read_csv(TRAIN_PATH)
+train_df, val_df = train_test_split(
+    train_data, test_size=0.2, random_state=42, stratify=train_data[TARGET_NAME]
+)
+train_ref = train_df.copy()
+train_df = apply_preprocessing(train_df, train_ref)
+val_df = apply_preprocessing(val_df, train_ref)
 
+benchmark_models(train_df, val_df)
+
+
+# %% [markdown]
+# Summary:
+# |Model|AUC before|AUC After|diff|
+# |-----| ---------|---------|----|
+# |XGBoost|0.943122| 0.944639|$0.1517\%$|
+# |Random Forest|0.923396|0.939592|$1.6196\%$|
+# |Logistic Regression|0.915387|0.911037|$-0.435\%$|
+#
+
+# %% [markdown]
+# # For Submission mid term
+#
+
+# %%
 def fit_predict_proba(
     train_processed: DF,
     predict_processed: DF,
@@ -1599,23 +1553,6 @@ def predict_test(
     train_raw: DF = data,
     output_path: str = "data/Group_XX_Submission.csv",
 ) -> pd.DataFrame:
-    """
-        hen finaly --- write the predictions for test data into `./data/Group_XX_Submission.csv` with according to source rules.
-
-        choose the best model, or if the val show that a weighted avg of the 3 versions, use that.
-
-        source requires the test pred to be somthing like this:
-        1. קובץ פלט: קובץ זה נדרש להיות בפורמט CSV ולהכיל שתי עמודות, כאשר העמודה הראשונה תיקרא Client_ID והעמודה השנייה תיקרא Drop_Probability. מטרת הקובץ הינה להציג את תחזיות המודל עבור כל תצפית. כל שורה תציג Client_ID אשר נמצא בקובץ Test_Data_No_Target.csv ואת ההסתברות שהמודל נותן (ולא חיזוי “קשה” של 0 או 1) לביטול ההשתתפות של הקבוצה. שם הקובץ צריך להיות Group_XX_Submission.csv, כאשר XX מייצג את מספר הקבוצה. להלן דוגמה לקובץ זה:
-    Client_ID	Drop_Probability
-    62246	0.45774832
-    43031	0.10221539
-    26571	0.99805343
-    77694	0.72571185
-    22185	0.20942985
-    54569	0.35561964
-    64162	0.78605343
-
-    """
     train_split, val_split = train_test_split(
         train_raw,
         test_size=0.2,
@@ -1648,6 +1585,7 @@ def predict_test(
 
     best = score_df.iloc[0]
     best_cfg = MODELS[best["model"]]
+    print(best)
 
     processed_full_train = apply_preprocessing(train_raw, train_raw)
     processed_test = apply_preprocessing(test_df, train_raw)
@@ -1669,5 +1607,10 @@ def predict_test(
     return submission
 
 
-# %% [markdown]
-#
+SAVE_TEST = False
+if SAVE_TEST:
+    submission = predict_test(
+        pd.read_csv("data/Test_Data_No_Target.csv"),
+        output_path="data/Group_27_Submission.csv",
+    )
+

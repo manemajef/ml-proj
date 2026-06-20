@@ -38,7 +38,9 @@ dtype: float64
 ```
 
 ---
-
+|   |   |
+|---|---|
+|   |   |
 # Claude’s Take
 You've got the framing exactly right: "real dimension reduction" (collapsing the dummy explosion), "noise reduction" (dropping dead columns), and "better features" (engineering) are three different goals that happen to share Section B's real estate. Keep them mentally separate in the writeup, because the rubric grades the *reasoning* and each one has different reasoning. And yes — country and agent are the dimension problem; company is mostly a has_company_id flag plus maybe a dummy for the one high-volume company (5181 has real n; the rest are too sparse to trust).
 # Why "agent_score from training data" leaks — the actual theory

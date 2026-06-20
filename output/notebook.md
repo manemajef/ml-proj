@@ -24,6 +24,8 @@ from sklearn.metrics import RocCurveDisplay, roc_auc_score
 from sklearn.ensemble import RandomForestClassifier
 
 TARGET_NAME = "Dropped_Course"
+TRAIN_PATH = "data/Train_Data.csv"
+TEST_PATH = "data/Train_Data_No_Target.csv"
 
 data = pd.read_csv("data/Train_Data.csv")
 official_test_data = pd.read_csv("data/Test_Data_No_Target.csv")
@@ -436,19 +438,19 @@ get_cat_smr(df, cat_cols)
 
 
 
-| Unnamed: 0 | column               | missing_% | missing_count | unique_count | top_8_cat                                                                                                                                                                                                                                                 |
-| ---------: | :------------------- | --------: | ------------: | -----------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|          4 | Requested_Lab_Config |       2.7 |          1394 |            8 | [Standard PC (Windows) (78.4%), Linux Workstation (13.2%), nan (2.7%), Dual Monitor Setup (2.1%), MacOS Station (1.6%), Laptop Docking Station (1.5%), High-GPU Unit (0.5%), Touch Screen Interface (0.0%)]                                               |
-|          6 | Enrollment_Type      |       1.1 |           563 |          263 | [General Admission (63.8%), Affiliated Admission (21.4%), Contractual Agreement (3.2%), general admission (1.7%), GENERAL ADMISSION (1.6%), nan (1.1%), General Admission (0.8%), General Admission (0.8%)]                                               |
-|          9 | Submission_Source    |       0.9 |           474 |          289 | [B2B Platforms & Resellers (76.8%), Direct Website Registration (7.3%), Dedicated Sales Team (4.0%), B2B PLATFORMS & RESELLERS (1.9%), b2b platforms & resellers (1.9%), nan (0.9%), B2B Platforms & Resellers (0.9%), B2B Platforms & Resellers (0.9%)]  |
-|         10 | Payment_Terms        |       0.9 |           463 |          214 | [Pay Upon Start (73.1%), Prepaid (Non-Refundable) (15.2%), PAY UPON START (1.9%), pay upon start (1.8%), nan (0.9%), Pay Upon Start (0.9%), Pay Upon Start (0.8%), Pay Upon Start (0.8%)]                                                                 |
-|          1 | Origin_Country       |       0.9 |           438 |          666 | [PRT (38.2%), FRA (10.1%), DEU (6.3%), ESP (5.7%), GBR (5.1%), ITA (3.9%), BRA (2.0%), BEL (2.0%)]                                                                                                                                                        |
-|          2 | Catering_Package     |       0.7 |           337 |          299 | [Standard (Coffee Only) (71.3%), No Food Plan (10.3%), Lunch Included (7.5%), standard (coffee only) (1.8%), STANDARD (COFFEE ONLY) (1.7%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%)]                  |
-|          0 | Course_Start_Date    |         0 |             0 |          666 | [2015-10-16 (0.5%), 2016-11-07 (0.5%), 2015-09-18 (0.5%), 2016-10-13 (0.5%), 2015-08-14 (0.5%), 2016-06-17 (0.4%), 2016-06-24 (0.4%), 2016-06-15 (0.4%)]                                                                                                  |
-|          3 | Welcome_Gift_Type    |         0 |             0 |            4 | [Branded Notebook (50.8%), Water Bottle (29.1%), USB Drive (15.9%), Portable Charger (4.1%)]                                                                                                                                                              |
-|          5 | Assigned_Lab_Config  |         0 |             0 |            9 | [Standard PC (Windows) (72.4%), Linux Workstation (18.4%), Laptop Docking Station (2.9%), MacOS Station (2.5%), Dual Monitor Setup (2.4%), High-GPU Unit (0.8%), Server Access Terminal (0.4%), Touch Screen Interface (0.2%)]                            |
-|          7 | Lanyard_Color        |         0 |             0 |          225 | [Blue (49.5%), Black (20.9%), Red (10.2%), Orange (5.2%), Green (3.9%), BLUE (1.2%), blue (1.2%), Blue (0.6%)]                                                                                                                                            |
-|          8 | Client_Category      |         0 |             0 |          455 | [SaaS & Software Houses (41.3%), Traditional IT & Telecomm (20.5%), Big Tech & Multinationals (16.7%), FinTech & Banking (6.6%), Industrial Tech & IoT (3.6%), saas & software houses (1.1%), SAAS & SOFTWARE HOUSES (1.0%), Non-Profit & EduTech (0.7%)] |
+|   Unnamed: 0 | column               |   missing_% |   missing_count |   unique_count | top_8_cat                                                                                                                                                                                                                                                 |
+|-------------:|:---------------------|------------:|----------------:|---------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|            4 | Requested_Lab_Config |         2.7 |            1394 |              8 | [Standard PC (Windows) (78.4%), Linux Workstation (13.2%), nan (2.7%), Dual Monitor Setup (2.1%), MacOS Station (1.6%), Laptop Docking Station (1.5%), High-GPU Unit (0.5%), Touch Screen Interface (0.0%)]                                               |
+|            6 | Enrollment_Type      |         1.1 |             563 |            263 | [General Admission (63.8%), Affiliated Admission (21.4%), Contractual Agreement (3.2%), general admission (1.7%), GENERAL ADMISSION (1.6%), nan (1.1%), General Admission (0.8%), General Admission (0.8%)]                                               |
+|            9 | Submission_Source    |         0.9 |             474 |            289 | [B2B Platforms & Resellers (76.8%), Direct Website Registration (7.3%), Dedicated Sales Team (4.0%), B2B PLATFORMS & RESELLERS (1.9%), b2b platforms & resellers (1.9%), nan (0.9%), B2B Platforms & Resellers (0.9%), B2B Platforms & Resellers (0.9%)]  |
+|           10 | Payment_Terms        |         0.9 |             463 |            214 | [Pay Upon Start (73.1%), Prepaid (Non-Refundable) (15.2%), PAY UPON START (1.9%), pay upon start (1.8%), nan (0.9%), Pay Upon Start (0.9%), Pay Upon Start (0.8%), Pay Upon Start (0.8%)]                                                                 |
+|            1 | Origin_Country       |         0.9 |             438 |            666 | [PRT (38.2%), FRA (10.1%), DEU (6.3%), ESP (5.7%), GBR (5.1%), ITA (3.9%), BRA (2.0%), BEL (2.0%)]                                                                                                                                                        |
+|            2 | Catering_Package     |         0.7 |             337 |            299 | [Standard (Coffee Only) (71.3%), No Food Plan (10.3%), Lunch Included (7.5%), standard (coffee only) (1.8%), STANDARD (COFFEE ONLY) (1.7%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%)]                  |
+|            0 | Course_Start_Date    |         0   |               0 |            666 | [2015-10-16 (0.5%), 2016-11-07 (0.5%), 2015-09-18 (0.5%), 2016-10-13 (0.5%), 2015-08-14 (0.5%), 2016-06-17 (0.4%), 2016-06-24 (0.4%), 2016-06-15 (0.4%)]                                                                                                  |
+|            3 | Welcome_Gift_Type    |         0   |               0 |              4 | [Branded Notebook (50.8%), Water Bottle (29.1%), USB Drive (15.9%), Portable Charger (4.1%)]                                                                                                                                                              |
+|            5 | Assigned_Lab_Config  |         0   |               0 |              9 | [Standard PC (Windows) (72.4%), Linux Workstation (18.4%), Laptop Docking Station (2.9%), MacOS Station (2.5%), Dual Monitor Setup (2.4%), High-GPU Unit (0.8%), Server Access Terminal (0.4%), Touch Screen Interface (0.2%)]                            |
+|            7 | Lanyard_Color        |         0   |               0 |            225 | [Blue (49.5%), Black (20.9%), Red (10.2%), Orange (5.2%), Green (3.9%), BLUE (1.2%), blue (1.2%), Blue (0.6%)]                                                                                                                                            |
+|            8 | Client_Category      |         0   |               0 |            455 | [SaaS & Software Houses (41.3%), Traditional IT & Telecomm (20.5%), Big Tech & Multinationals (16.7%), FinTech & Banking (6.6%), Industrial Tech & IoT (3.6%), saas & software houses (1.1%), SAAS & SOFTWARE HOUSES (1.0%), Non-Profit & EduTech (0.7%)] |
 
 
 
@@ -1448,9 +1450,11 @@ IMPORTANT_MISSING_FLAGS = [
 
 def complete_missing_values(
     data: pd.DataFrame,
-    train_df: pd.DataFrame = df,
+    train_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     df = data.copy()
+    if train_df is None:
+        train_df = data
 
     num_cols = [
         col
@@ -2012,7 +2016,7 @@ def apply_ide_reduction(df: DF, train_df: DF) -> DF:
         df["Origin_Country"].isin(countries_to_keep), "other"
     )
 
-    df = df.drop(columns=["Company_ID"])
+    df = df.drop(columns=["Company_ID"], errors="ignore")
     df = df.drop(columns=["Agent_ID_missing"], errors="ignore")
 
     return df
@@ -2021,6 +2025,8 @@ def apply_ide_reduction(df: DF, train_df: DF) -> DF:
 
 ```python
 initial_train = train_df.copy()
+train_df1 = train_df.copy()
+val_df1 = val_df.copy()
 
 train_reduced_df = apply_ide_reduction(train_df, initial_train)
 val_reduced_df = apply_ide_reduction(val_df, initial_train)
@@ -2029,6 +2035,7 @@ X_train, y_train = split_xy(train_reduced_df, TARGET_NAME)
 X_val, y_val = split_xy(val_reduced_df, TARGET_NAME)
 
 X_train, X_val = encode_cats(X_train, X_val)
+train_df, val_df = train_reduced_df, val_reduced_df
 X_train.shape
 ```
 
@@ -2044,5 +2051,404 @@ Great so $\approx 400$ dimensitons eliminated.
 
 
 ```python
+benchmark_models(train_df, val_df)
+```
+
+
+
+
+
+
+|   Unnamed: 0 | model               |      auc |
+|-------------:|:--------------------|---------:|
+|            2 | XGBoost             | 0.944975 |
+|            1 | Random Forest       | 0.93908  |
+|            0 | Logistic Regression | 0.907148 |
+
+
+
+
+
+#### Conclusions
+
+Logistic regression actualy used those dummies, while the tree based models are happy without them.
+
+The dim reduction helped very slightly to XBboost, but anyway ... its required
+
+
+### Feature Engeenring & Noise Reduction
+
+**Main Ideas**:
+
+- We're going to switch the assigned requested lab config with the received requested lab config Boolean. Since the preferences are what matters, and whether they have their preferences also matters, that's the only detail the models need to know.
+
+- We're going to drop the returning client dummy since this information already exists in previous course attendance. So, yeah, it's useless.
+
+- As we've seen in the EDA, the lanyard color and welcome‑gift type seem to have no correlation, and they have no business justification for actually mattering. So I'll drop them as noise reduction.
+
+
+
+```python
+def apply_feature_eng(df: DF):
+    df = df.copy()
+    df["recived_requested_lab"] = (
+        df['Requested_Lab_Config'] == df['Assigned_Lab_Config']
+    ).astype(int)
+    to_drop = [
+        'Assigned_Lab_Config',
+        'Lanyard_Color',
+        'Requested_Lab_Config',
+        'Returning_Client',
+        'Welcome_Gift_Type',
+    ]
+    df = df.drop(columns=to_drop, errors="ignore")
+    return df
+```
+
+## Outliers
+
+we've already seen in the EDA that there are some outliers concerns. for now, I would use the simple capping suggested in EDA and test if it helps.
+
+
+
+```python
+def find_sus_columns(df, num_cols, max_mult=10):
+    sus = []
+    for c in num_cols:
+        s = df[c].dropna()
+        q99 = s.quantile(0.99)
+        iqr = s.quantile(0.75) - s.quantile(0.25)
+        scale = max(q99, iqr, 1.0)
+
+        reasons = []
+        if s.min() < 0:
+            reasons.append("negative")
+        if s.max() > max_mult * scale:  # max sits absurdly far past the bulk
+            reasons.append(f"max={s.max():g} vs q99={q99:g}")
+
+        if reasons:
+            sus.append({
+                "col": c,
+                "min": s.min(),
+                "max": s.max(),
+                "q99": q99,
+                "why": ", ".join(reasons),
+            })
+    return pd.DataFrame(sus)
+
+
+print("sus cols on train data")
+display(find_sus_columns(train_df, num_cols))
+br()
+print("sus cols on test data")
+display(find_sus_columns(test_df, num_cols))
+```
+
+    sus cols on train data
+
+
+
+
+
+|   Unnamed: 0 | col                  |   min |   max |     q99 | why                          |
+|-------------:|:---------------------|------:|------:|--------:|:-----------------------------|
+|            0 | Students_Count       |     0 |  9999 |   2     | max=9999 vs q99=2            |
+|            1 | Practical_Hours      |    -5 | 10000 |   3     | negative, max=10000 vs q99=3 |
+|            2 | Prev_Course_Dropouts |     0 |    21 |   1     | max=21 vs q99=1              |
+|            3 | Prev_Course_Attended |     0 |    61 |   3     | max=61 vs q99=3              |
+|            4 | Registration_Changes |     0 |    21 |   2     | max=21 vs q99=2              |
+|            5 | Daily_Tuition_Cost   |     0 |  5400 | 208.951 | max=5400 vs q99=208.951      |
+
+
+
+
+    
+    sus cols on test data
+
+
+
+
+
+|   Unnamed: 0 | col                  |   min |   max |   q99 | why                          |
+|-------------:|:---------------------|------:|------:|------:|:-----------------------------|
+|            0 | Students_Count       |     0 |  9999 |     2 | max=9999 vs q99=2            |
+|            1 | Practical_Hours      |    -5 | 10000 |     2 | negative, max=10000 vs q99=2 |
+|            2 | Prev_Course_Attended |     0 |    72 |     3 | max=72 vs q99=3              |
+|            3 | Waiting_List_Days    |     0 |   183 |     0 | max=183 vs q99=0             |
+
+
+
+
+
+```python
+print("train: ")
+print(find_sus_columns(train_df, num_cols))
+br()
+print("test: ")
+print(find_sus_columns(test_df, num_cols))
+```
+
+    train: 
+                        col  min      max      q99                           why
+    0        Students_Count  0.0   9999.0    2.000             max=9999 vs q99=2
+    1       Practical_Hours -5.0  10000.0    3.000  negative, max=10000 vs q99=3
+    2  Prev_Course_Dropouts  0.0     21.0    1.000               max=21 vs q99=1
+    3  Prev_Course_Attended  0.0     61.0    3.000               max=61 vs q99=3
+    4  Registration_Changes  0.0     21.0    2.000               max=21 vs q99=2
+    5    Daily_Tuition_Cost  0.0   5400.0  208.951       max=5400 vs q99=208.951
+    
+    test: 
+                        col  min      max  q99                           why
+    0        Students_Count  0.0   9999.0  2.0             max=9999 vs q99=2
+    1       Practical_Hours -5.0  10000.0  2.0  negative, max=10000 vs q99=2
+    2  Prev_Course_Attended  0.0     72.0  3.0               max=72 vs q99=3
+    3     Waiting_List_Days  0.0    183.0  0.0              max=183 vs q99=0
+
+
+so we see that the test data dosnt have outliers that train has missed. lets plot the instresting ones.
+
+- Student count , Practical hours: Already spotted in EDA. Obvsius typos / intentional sabotage
+- Daily tuition cost : also spotted in EDA. has a single rediculusly high value in train data for the top 1.
+
+**Low risk ones**
+
+- Waiting List days, Prev Course attended: Dosnt "scream" fake, but need carfull inspection.
+  - I will test to see if `prev_dropout` is > then `prev_attended` in some rows, which is obiusly impossible.
+
+
+
+```python
+impossible_rows_train = train_df[
+    train_df["Prev_Course_Dropouts"] > train_df["Prev_Course_Attended"]
+]
+print("train condtrdictions: ", len(impossible_rows_train))
+
+impossible_rows_test = test_df[
+    test_df["Prev_Course_Dropouts"] > test_df["Prev_Course_Attended"]
+]
+print("test contredictions: ", len(impossible_rows_test))
+```
+
+    train condtrdictions:  4008
+    test contredictions:  2
+
+
+
+```python
+def apply_capping(df: DF, show_plots: bool = False) -> DF:
+    df = df.copy()
+    caps = {
+        "Students_Count": (None, 3),  # bulk maxes at 3; 9999 is an entry error
+        "Practical_Hours": (0, 8),  # negative impossible; bulk ≤ ~8
+        "Daily_Tuition_Cost": (None, 500),  # ~train q99.9 (268); 5400 is implausible
+    }
+    for col, (lo, hi) in caps.items():
+        if col not in df.columns:
+            continue
+
+        before = df[col].dropna()
+        df[col] = df[col].clip(lower=lo, upper=hi)
+
+        if show_plots:
+            fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+            ax[0].hist(before, bins=50)
+            ax[0].set_yscale("log")
+            ax[0].set_title(f"{col} before (max={before.max():g})")
+            ax[1].hist(df[col].dropna(), bins=50)
+            ax[1].set_yscale("log")
+            ax[1].set_title(f"{col} after (max={df[col].max():g})")
+            plt.tight_layout()
+            plt.show()
+
+    return df
+
+
+capped_train = apply_capping(train_df, show_plots=True)
+```
+
+
+    
+![svg](<notebook_files/notebook_99_0.svg>)
+    
+
+
+
+    
+![svg](<notebook_files/notebook_99_1.svg>)
+    
+
+
+
+    
+![svg](<notebook_files/notebook_99_2.svg>)
+    
+
+
+### Final bench mark for part 2
+
+
+
+```python
+def apply_preprocessing(df: DF, train_reference: DF) -> DF:
+    """ """
+    train_completed = complete_missing_values(train_reference, train_reference)
+    df_completed = complete_missing_values(df, train_reference)
+
+    train_completed = train_completed.drop(
+        columns=["Course_Start_Date"], errors="ignore"
+    )
+    df_completed = df_completed.drop(columns=["Course_Start_Date"], errors="ignore")
+
+    df_processed = apply_ide_reduction(df_completed, train_completed)
+    df_processed = apply_feature_eng(df_processed)
+    df_processed = apply_capping(df_processed)
+
+    return df_processed
+
+
+aplly_preprocessing = apply_preprocessing
+
+train_data = pd.read_csv(TRAIN_PATH)
+train_df, val_df = train_test_split(
+    train_data, test_size=0.2, random_state=42, stratify=train_data[TARGET_NAME]
+)
+train_ref = train_df.copy()
+train_df = apply_preprocessing(train_df, train_ref)
+val_df = apply_preprocessing(val_df, train_ref)
+
+benchmark_models(train_df, val_df)
 
 ```
+
+
+
+
+
+
+|   Unnamed: 0 | model               |      auc |
+|-------------:|:--------------------|---------:|
+|            2 | XGBoost             | 0.944639 |
+|            1 | Random Forest       | 0.940116 |
+|            0 | Logistic Regression | 0.910474 |
+
+
+
+
+
+Summary:
+|Model|AUC before|AUC After|diff|
+|-----| ---------|---------|----|
+|XGBoost|0.943122| 0.944639|$0.1517\%$|
+|Random Forest|0.923396|0.939592|$1.6196\%$|
+|Logistic Regression|0.915387|0.911037|$-0.435\%$|
+
+
+# For Submission mid term
+
+
+
+```python
+def fit_predict_proba(
+    train_processed: DF,
+    predict_processed: DF,
+    model,
+    scale: bool = False,
+):
+    X_train, y_train = split_xy(train_processed, TARGET_NAME)
+    X_predict = predict_processed.drop(columns=[TARGET_NAME], errors="ignore")
+
+    X_train, X_predict = encode_cats(X_train, X_predict)
+
+    if scale:
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_predict = scaler.transform(X_predict)
+
+    model.fit(X_train, y_train)
+    return model.predict_proba(X_predict)[:, 1]
+
+
+def predict_test(
+    test_df: DF,
+    train_raw: DF = data,
+    output_path: str = "data/Group_XX_Submission.csv",
+) -> pd.DataFrame:
+    train_split, val_split = train_test_split(
+        train_raw,
+        test_size=0.2,
+        random_state=42,
+        stratify=train_raw[TARGET_NAME],
+    )
+
+    processed_train = apply_preprocessing(train_split, train_split)
+    processed_val = apply_preprocessing(val_split, train_split)
+
+    scores = []
+    for model_name, cfg in MODELS.items():
+        preds = fit_predict_proba(
+            processed_train,
+            processed_val,
+            model=cfg["model_getter"](),
+            scale=cfg["scale"],
+        )
+        _, y_val = split_xy(processed_val, TARGET_NAME)
+        scores.append({
+            "model": model_name,
+            "auc": roc_auc_score(y_val, preds),
+        })
+
+    score_df = pd.DataFrame(scores).sort_values("auc", ascending=False)
+    try:
+        display(score_df)
+    except NameError:
+        print(score_df)
+
+    best = score_df.iloc[0]
+    best_cfg = MODELS[best["model"]]
+    print(best)
+
+    processed_full_train = apply_preprocessing(train_raw, train_raw)
+    processed_test = apply_preprocessing(test_df, train_raw)
+
+    test_preds = fit_predict_proba(
+        processed_full_train,
+        processed_test,
+        model=best_cfg["model_getter"](),
+        scale=best_cfg["scale"],
+    )
+
+    submission = pd.DataFrame({
+        "Client_ID": test_df["Client_ID"],
+        "Drop_Probability": test_preds,
+    })
+    submission.to_csv(output_path, index=False)
+    print(f"wrote {output_path} using {best['model']} (val AUC={best['auc']:.4f})")
+
+    return submission
+
+
+SAVE_TEST = False
+if SAVE_TEST:
+    submission = predict_test(
+        pd.read_csv("data/Test_Data_No_Target.csv"),
+        output_path="data/Group_27_Submission.csv",
+    )
+```
+
+
+
+
+|   Unnamed: 0 | model               |      auc |
+|-------------:|:--------------------|---------:|
+|            2 | XGBoost             | 0.944639 |
+|            1 | Random Forest       | 0.940116 |
+|            0 | Logistic Regression | 0.910474 |
+
+
+
+
+    model     XGBoost
+    auc      0.944639
+    Name: 2, dtype: object
+    wrote data/Group_27_Submission.csv using XGBoost (val AUC=0.9446)
+
