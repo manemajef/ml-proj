@@ -803,6 +803,19 @@ df_capped, cap_summary = make_capped_copy(df, ["Students_Count", "Practical_Hour
 display(cap_summary)
 
 
+# %% [markdown]
+# **Checking the Corr with target after capping**:
+#
+
+# %%
+target_corr = (
+    df_capped[num_cols]
+    .corrwith(df_capped["Dropped_Course"])
+    .sort_values(key=lambda s: s.abs(), ascending=False)
+)
+
+display(target_corr)
+
 # %%
 corr_matrix = df_capped[num_cols].corr()
 plt.figure(figsize=(10, 8))
@@ -830,12 +843,12 @@ corr_pairs.columns = [
     "corr",
 ]
 
-corr_pairs = corr_pairs[corr_pairs["corr"].abs() >= CORR_THRESH].sort_values(
+hi_corr_pairs = corr_pairs[corr_pairs["corr"].abs() >= CORR_THRESH].sort_values(
     "corr",
     key=abs,
     ascending=False,
 )
-corr_pairs
+hi_corr_pairs
 
 # %% [markdown]
 # ### Final EDA Plots
@@ -901,9 +914,11 @@ IMPORTANT_MISSING_FLAGS = [
 
 def complete_missing_values(
     data: pd.DataFrame,
-    train_df: pd.DataFrame = df,
+    train_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     df = data.copy()
+    if train_df is None:
+        train_df = data
 
     num_cols = [
         col
@@ -1144,6 +1159,14 @@ display(score_compare)
 
 
 # %%
+train_df0, val_df0 = train_df, val_df
+train_df, val_df = (
+    train_df.drop(columns=["Course_Start_Date"]),
+    val_df.drop(columns=["Course_Start_Date"]),
+)
+
+
+# %%
 def get_encoded_xy(train_df, val_df):
     X_train, y_train, X_val, y_val = get_train_val_xy(train_df, val_df)
     X_train, X_val = encode_cats(X_train, X_val)
@@ -1182,4 +1205,469 @@ display(rf_importance.head(70))
 
 # %% [markdown]
 # The results are concerning because the strongest feature here is clearly the suspicious one: non‑refundable payment. It seems either to be an error or something they flipped, but it just doesn’t make sense that there would be an almost 100 % correlation between that and the dropout rate. It just doesn’t make sense, and that is concerning. What happens if we drop that from the model? How badly will it perform afterward? The question is whether we can trust the same corruption or weird coincidence to also apply in the test data. I’m not sure. So it’s a big question what we do about it.
+#
+
+# %% [markdown]
+# ## Dimension Reduction
+#
+
+# %%
+X_train.shape
+
+# %% [markdown]
+# We have almost 600 features after `one-hot-encoding`. This is definitely unacceptable. So we’re going to fix it by treating:
+#
+# - company ID
+# - agent ID
+# - country.
+#
+# ### Main stradegy
+#
+# For agent ID and country ID, I’ll use the top n by coverage or samples.
+# For `Company_ID`, I’ll drop the raw high-cardinality ID and keep only the
+# existing `has_company_id` flag.
+#
+
+# %%
+for label, col in [
+    ("Agent_ID", train_df["Agent_ID"]),
+    ("Origin_Country", train_df["Origin_Country"]),
+]:
+    counts = col.value_counts()
+    print(f"\n=== {label} ===")
+    print(counts.head(10))
+    for thr in (150, 300, 500):
+        kept = (counts >= thr).sum()
+        cov = counts[counts >= thr].sum() / counts.sum()
+        print(f"  >={thr:5d}: {kept:3d} kept, {cov:.1%} coverage")
+
+
+# %% [markdown]
+# It seems like the right one for `Agent_ID` is 300. As for `Origin_Country`, I see `cn` and `chn` probably both mean China, so first fix that and then re-evaluate.
+#
+
+
+# %%
+def keep_by_min_count(col: pd.Series, min_count: int) -> set:
+    counts = col.value_counts()
+    return set(counts[counts >= min_count].index)
+
+
+def describe_keep(col: pd.Series, keep: set, label: str):
+    coverage = col.isin(keep).mean()  # share of non-missing rows kept
+    print(
+        f"{label}: kept {len(keep)} of {col.nunique()} "
+        f"covering {coverage:.1%} of non-missing rows"
+    )
+
+
+AGENT_MIN_COUNT = 300  # clear cliff: 15 agents, 85% coverage
+COUNTRY_MIN_COUNT = (
+    300  # fat middle: 18 countries, 92% coverage — country signal is more distributed
+)
+
+agents_before = train_df["Agent_ID"]
+agents_keep = keep_by_min_count(agents_before, AGENT_MIN_COUNT)
+describe_keep(agents_before, agents_keep, "Agent_ID")
+
+countries_before = train_df["Origin_Country"]
+countries_keep = keep_by_min_count(countries_before, COUNTRY_MIN_COUNT)
+describe_keep(countries_before, countries_keep, "Origin_Country")
+
+
+# %%
+company_counts = train_df["Company_ID"].value_counts()
+print(company_counts.head(10))
+
+# %% [markdown]
+# So let's drop raw `Company_ID` completely. The lower-cardinality
+# `has_company_id` flag was already created earlier and keeps the stable part of
+# the signal.
+#
+
+# %%
+COUNTRY_ALIASES = {"cn": "chn"}
+
+
+def apply_ide_reduction(df: DF, train_df: DF) -> DF:
+    df = df.copy()
+    train_df = train_df.copy()
+
+    df["Origin_Country"] = df["Origin_Country"].replace(COUNTRY_ALIASES)
+    train_df["Origin_Country"] = train_df["Origin_Country"].replace(COUNTRY_ALIASES)
+
+    countries_to_keep = keep_by_min_count(
+        train_df["Origin_Country"], COUNTRY_MIN_COUNT
+    ) | {"missing"}
+    agents_to_keep = keep_by_min_count(train_df["Agent_ID"], AGENT_MIN_COUNT) | {
+        "missing"
+    }
+
+    # collapse non-kept to "other"
+    df["Agent_ID"] = df["Agent_ID"].where(df["Agent_ID"].isin(agents_to_keep), "other")
+    df["Origin_Country"] = df["Origin_Country"].where(
+        df["Origin_Country"].isin(countries_to_keep), "other"
+    )
+
+    df = df.drop(columns=["Company_ID"], errors="ignore")
+    df = df.drop(columns=["Agent_ID_missing"], errors="ignore")
+
+    return df
+
+
+# %%
+initial_train = train_df.copy()
+train_df1 = train_df.copy()
+val_df1 = val_df.copy()
+
+train_reduced_df = apply_ide_reduction(train_df, initial_train)
+val_reduced_df = apply_ide_reduction(val_df, initial_train)
+
+X_train, y_train = split_xy(train_reduced_df, TARGET_NAME)
+X_val, y_val = split_xy(val_reduced_df, TARGET_NAME)
+
+X_train, X_val = encode_cats(X_train, X_val)
+train_df, val_df = train_reduced_df, val_reduced_df
+X_train.shape
+
+# %% [markdown]
+# Great so $\approx 400$ dimensitons eliminated.
+#
+
+# %%
+benchmark_models(train_df, val_df)
+
+
+# %% [markdown]
+# #### Conclusions
+#
+# Logistic regression actualy used those dummies, while the tree based models are happy without them.
+#
+# The dim reduction helped very slightly to XBboost, but anyway ... its required
+#
+
+# %% [markdown]
+# ### Feature Engeenring & Noise Reduction
+#
+# **Main Ideas**:
+#
+# - We're going to switch the assigned requested lab config with the received requested lab config Boolean. Since the preferences are what matters, and whether they have their preferences also matters, that's the only detail the models need to know.
+#
+# - We're going to drop the returning client dummy since this information already exists in previous course attendance. So, yeah, it's useless.
+#
+# - As we've seen in the EDA, the lanyard color and welcome‑gift type seem to have no correlation, and they have no business justification for actually mattering. So I'll drop them as noise reduction.
+#
+
+
+# %%
+def apply_feature_eng(df: DF):
+    df = df.copy()
+    df["recived_requested_lab"] = (
+        df['Requested_Lab_Config'] == df['Assigned_Lab_Config']
+    ).astype(int)
+    to_drop = [
+        'Assigned_Lab_Config',
+        'Lanyard_Color',
+        'Requested_Lab_Config',
+        'Returning_Client',
+        'Welcome_Gift_Type',
+    ]
+    df = df.drop(columns=to_drop, errors="ignore")
+    return df
+
+
+# %% [markdown]
+# ## Outliers
+#
+# we've already seen in the EDA that there are some outliers concerns. for now, I would use the simple capping suggested in EDA and test if it helps.
+#
+
+# %%
+# def find_sus_columns(df, num_cols):
+#     rows = []
+
+#     for c in num_cols:
+#         s = df[c].dropna()
+
+#         if s.empty or s.nunique() <= 2:
+#             continue
+
+#         q99 = s.quantile(0.99)
+#         q999 = s.quantile(0.999)
+#         max_val = s.max()
+#         min_val = s.min()
+
+#         max_over_q99 = max_val / (q99 + 1e-9)
+#         gap_999_99 = q999 - q99
+
+#         reasons = []
+
+#         if min_val < 0:
+#             reasons.append("negative_values")
+
+#         if q99 > 0 and max_over_q99 > 10:
+#             reasons.append("huge_max_vs_q99")
+
+#         if gap_999_99 > q99:
+#             reasons.append("big_tail_jump")
+
+#         if not reasons:
+#             continue
+
+#         rows.append({
+#             "col": c,
+#             "min": min_val,
+#             "max": max_val,
+#             "q99": q99,
+#             "q999": q999,
+#             "max_over_q99": max_over_q99,
+#             "gap_999_99": gap_999_99,
+#             "reason": ", ".join(reasons),
+#         })
+
+
+#     return pd.DataFrame(rows).sort_values("max_over_q99", ascending=False)
+def find_sus_columns(df, num_cols, max_mult=10):
+    sus = []
+    for c in num_cols:
+        s = df[c].dropna()
+        q99 = s.quantile(0.99)
+        iqr = s.quantile(0.75) - s.quantile(0.25)
+        scale = max(q99, iqr, 1.0)
+
+        reasons = []
+        if s.min() < 0:
+            reasons.append("negative")
+        if s.max() > max_mult * scale:  # max sits absurdly far past the bulk
+            reasons.append(f"max={s.max():g} vs q99={q99:g}")
+
+        if reasons:
+            sus.append({
+                "col": c,
+                "min": s.min(),
+                "max": s.max(),
+                "q99": q99,
+                "why": ", ".join(reasons),
+            })
+    return pd.DataFrame(sus)
+
+
+print("sus cols on train data")
+display(find_sus_columns(train_df, num_cols))
+br()
+print("sus cols on test data")
+display(find_sus_columns(test_df, num_cols))
+
+# %%
+print("train: ")
+print(find_sus_columns(train_df, num_cols))
+br()
+print("test: ")
+print(find_sus_columns(test_df, num_cols))
+
+# %% [markdown]
+# so we see that the test data dosnt have outliers that train has missed. lets plot the instresting ones.
+#
+# - Student count , Practical hours: Already spotted in EDA. Obvsius typos / intentional sabotage
+# - Daily tuition cost : also spotted in EDA. has a single rediculusly high value in train data for the top 1.
+#
+# **Low risk ones**
+#
+# - Waiting List days, Prev Course attended: Dosnt "scream" fake, but need carfull inspection.
+#   - I will test to see if `prev_dropout` is > then `prev_attended` in some rows, which is obiusly impossible.
+#
+
+# %%
+impossible_rows_train = train_df[
+    train_df["Prev_Course_Dropouts"] > train_df["Prev_Course_Attended"]
+]
+print("train condtrdictions: ", len(impossible_rows_train))
+
+impossible_rows_test = test_df[
+    test_df["Prev_Course_Dropouts"] > test_df["Prev_Course_Attended"]
+]
+print("test contredictions: ", len(impossible_rows_test))
+
+
+# %%
+def apply_capping(df: DF, show_plots: bool = False) -> DF:
+    df = df.copy()
+    caps = {
+        "Students_Count": (None, 3),  # bulk maxes at 3; 9999 is an entry error
+        "Practical_Hours": (0, 8),  # negative impossible; bulk ≤ ~8
+        "Daily_Tuition_Cost": (None, 500),  # ~train q99.9 (268); 5400 is implausible
+    }
+    for col, (lo, hi) in caps.items():
+        if col not in df.columns:
+            continue
+
+        before = df[col].dropna()
+        df[col] = df[col].clip(lower=lo, upper=hi)
+
+        if show_plots:
+            fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+            ax[0].hist(before, bins=50)
+            ax[0].set_yscale("log")
+            ax[0].set_title(f"{col} before (max={before.max():g})")
+            ax[1].hist(df[col].dropna(), bins=50)
+            ax[1].set_yscale("log")
+            ax[1].set_title(f"{col} after (max={df[col].max():g})")
+            plt.tight_layout()
+            plt.show()
+
+    return df
+
+
+capped_train = apply_capping(train_df, show_plots=True)
+
+
+# %%
+# capped_tst = apply_capping(test_df, show_plots=True)
+
+# %% [markdown]
+# ### Final bench mark for part 2
+#
+
+# %%
+PREPROCESSING_STEPS = [
+    "split labeled data before fitting preprocessing statistics",
+    "drop Client_ID from model features but keep it separately for submission",
+    "add has_company_id before dropping raw Company_ID",
+    "add missingness flags for selected informative missing columns",
+    "fill numeric missing values with train-fitted medians",
+    "normalize categorical strings and convert common NA tokens to missing",
+    "strip .0 from Agent_ID and Company_ID and treat them as categories",
+    "drop Course_Start_Date",
+    "merge Origin_Country cn into chn",
+    "collapse rare Agent_ID and Origin_Country values into other",
+    "drop raw Company_ID and keep only has_company_id",
+    "replace requested/assigned lab configs with recived_requested_lab",
+    "drop noisy or redundant columns: Lanyard_Color, Returning_Client, Welcome_Gift_Type",
+    "cap suspicious outliers in Students_Count, Practical_Hours, and Daily_Tuition_Cost",
+    "one-hot encode categorical columns after preprocessing",
+]
+
+
+def apply_preprocessing(df: DF, train_reference: DF) -> DF:
+    """
+    Apply the notebook's selected preprocessing to a raw train/validation/test frame.
+
+    `train_reference` must be the raw training data used to fit medians and
+    category keep-lists. For validation, pass `train_data`; for final test
+    predictions, pass the full labeled training file.
+    """
+    train_completed = complete_missing_values(train_reference, train_reference)
+    df_completed = complete_missing_values(df, train_reference)
+
+    train_completed = train_completed.drop(
+        columns=["Course_Start_Date"], errors="ignore"
+    )
+    df_completed = df_completed.drop(columns=["Course_Start_Date"], errors="ignore")
+
+    df_processed = apply_ide_reduction(df_completed, train_completed)
+    df_processed = apply_feature_eng(df_processed)
+    df_processed = apply_capping(df_processed)
+
+    return df_processed
+
+
+aplly_preprocessing = apply_preprocessing
+
+
+def fit_predict_proba(
+    train_processed: DF,
+    predict_processed: DF,
+    model,
+    scale: bool = False,
+):
+    X_train, y_train = split_xy(train_processed, TARGET_NAME)
+    X_predict = predict_processed.drop(columns=[TARGET_NAME], errors="ignore")
+
+    X_train, X_predict = encode_cats(X_train, X_predict)
+
+    if scale:
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_predict = scaler.transform(X_predict)
+
+    model.fit(X_train, y_train)
+    return model.predict_proba(X_predict)[:, 1]
+
+
+def predict_test(
+    test_df: DF,
+    train_raw: DF = data,
+    output_path: str = "data/Group_XX_Submission.csv",
+) -> pd.DataFrame:
+    """
+        hen finaly --- write the predictions for test data into `./data/Group_XX_Submission.csv` with according to source rules.
+
+        choose the best model, or if the val show that a weighted avg of the 3 versions, use that.
+
+        source requires the test pred to be somthing like this:
+        1. קובץ פלט: קובץ זה נדרש להיות בפורמט CSV ולהכיל שתי עמודות, כאשר העמודה הראשונה תיקרא Client_ID והעמודה השנייה תיקרא Drop_Probability. מטרת הקובץ הינה להציג את תחזיות המודל עבור כל תצפית. כל שורה תציג Client_ID אשר נמצא בקובץ Test_Data_No_Target.csv ואת ההסתברות שהמודל נותן (ולא חיזוי “קשה” של 0 או 1) לביטול ההשתתפות של הקבוצה. שם הקובץ צריך להיות Group_XX_Submission.csv, כאשר XX מייצג את מספר הקבוצה. להלן דוגמה לקובץ זה:
+    Client_ID	Drop_Probability
+    62246	0.45774832
+    43031	0.10221539
+    26571	0.99805343
+    77694	0.72571185
+    22185	0.20942985
+    54569	0.35561964
+    64162	0.78605343
+
+    """
+    train_split, val_split = train_test_split(
+        train_raw,
+        test_size=0.2,
+        random_state=42,
+        stratify=train_raw[TARGET_NAME],
+    )
+
+    processed_train = apply_preprocessing(train_split, train_split)
+    processed_val = apply_preprocessing(val_split, train_split)
+
+    scores = []
+    for model_name, cfg in MODELS.items():
+        preds = fit_predict_proba(
+            processed_train,
+            processed_val,
+            model=cfg["model_getter"](),
+            scale=cfg["scale"],
+        )
+        _, y_val = split_xy(processed_val, TARGET_NAME)
+        scores.append({
+            "model": model_name,
+            "auc": roc_auc_score(y_val, preds),
+        })
+
+    score_df = pd.DataFrame(scores).sort_values("auc", ascending=False)
+    try:
+        display(score_df)
+    except NameError:
+        print(score_df)
+
+    best = score_df.iloc[0]
+    best_cfg = MODELS[best["model"]]
+
+    processed_full_train = apply_preprocessing(train_raw, train_raw)
+    processed_test = apply_preprocessing(test_df, train_raw)
+
+    test_preds = fit_predict_proba(
+        processed_full_train,
+        processed_test,
+        model=best_cfg["model_getter"](),
+        scale=best_cfg["scale"],
+    )
+
+    submission = pd.DataFrame({
+        "Client_ID": test_df["Client_ID"],
+        "Drop_Probability": test_preds,
+    })
+    submission.to_csv(output_path, index=False)
+    print(f"wrote {output_path} using {best['model']} (val AUC={best['auc']:.4f})")
+
+    return submission
+
+
+# %% [markdown]
 #

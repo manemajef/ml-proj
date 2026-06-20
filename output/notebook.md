@@ -436,19 +436,19 @@ get_cat_smr(df, cat_cols)
 
 
 
-|   Unnamed: 0 | column               |   missing_% |   missing_count |   unique_count | top_8_cat                                                                                                                                                                                                                                                 |
-|-------------:|:---------------------|------------:|----------------:|---------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|            4 | Requested_Lab_Config |         2.7 |            1394 |              8 | [Standard PC (Windows) (78.4%), Linux Workstation (13.2%), nan (2.7%), Dual Monitor Setup (2.1%), MacOS Station (1.6%), Laptop Docking Station (1.5%), High-GPU Unit (0.5%), Touch Screen Interface (0.0%)]                                               |
-|            6 | Enrollment_Type      |         1.1 |             563 |            263 | [General Admission (63.8%), Affiliated Admission (21.4%), Contractual Agreement (3.2%), general admission (1.7%), GENERAL ADMISSION (1.6%), nan (1.1%), General Admission (0.8%), General Admission (0.8%)]                                               |
-|            9 | Submission_Source    |         0.9 |             474 |            289 | [B2B Platforms & Resellers (76.8%), Direct Website Registration (7.3%), Dedicated Sales Team (4.0%), B2B PLATFORMS & RESELLERS (1.9%), b2b platforms & resellers (1.9%), nan (0.9%), B2B Platforms & Resellers (0.9%), B2B Platforms & Resellers (0.9%)]  |
-|           10 | Payment_Terms        |         0.9 |             463 |            214 | [Pay Upon Start (73.1%), Prepaid (Non-Refundable) (15.2%), PAY UPON START (1.9%), pay upon start (1.8%), nan (0.9%), Pay Upon Start (0.9%), Pay Upon Start (0.8%), Pay Upon Start (0.8%)]                                                                 |
-|            1 | Origin_Country       |         0.9 |             438 |            666 | [PRT (38.2%), FRA (10.1%), DEU (6.3%), ESP (5.7%), GBR (5.1%), ITA (3.9%), BRA (2.0%), BEL (2.0%)]                                                                                                                                                        |
-|            2 | Catering_Package     |         0.7 |             337 |            299 | [Standard (Coffee Only) (71.3%), No Food Plan (10.3%), Lunch Included (7.5%), standard (coffee only) (1.8%), STANDARD (COFFEE ONLY) (1.7%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%)]                  |
-|            0 | Course_Start_Date    |         0   |               0 |            666 | [2015-10-16 (0.5%), 2016-11-07 (0.5%), 2015-09-18 (0.5%), 2016-10-13 (0.5%), 2015-08-14 (0.5%), 2016-06-17 (0.4%), 2016-06-24 (0.4%), 2016-06-15 (0.4%)]                                                                                                  |
-|            3 | Welcome_Gift_Type    |         0   |               0 |              4 | [Branded Notebook (50.8%), Water Bottle (29.1%), USB Drive (15.9%), Portable Charger (4.1%)]                                                                                                                                                              |
-|            5 | Assigned_Lab_Config  |         0   |               0 |              9 | [Standard PC (Windows) (72.4%), Linux Workstation (18.4%), Laptop Docking Station (2.9%), MacOS Station (2.5%), Dual Monitor Setup (2.4%), High-GPU Unit (0.8%), Server Access Terminal (0.4%), Touch Screen Interface (0.2%)]                            |
-|            7 | Lanyard_Color        |         0   |               0 |            225 | [Blue (49.5%), Black (20.9%), Red (10.2%), Orange (5.2%), Green (3.9%), BLUE (1.2%), blue (1.2%), Blue (0.6%)]                                                                                                                                            |
-|            8 | Client_Category      |         0   |               0 |            455 | [SaaS & Software Houses (41.3%), Traditional IT & Telecomm (20.5%), Big Tech & Multinationals (16.7%), FinTech & Banking (6.6%), Industrial Tech & IoT (3.6%), saas & software houses (1.1%), SAAS & SOFTWARE HOUSES (1.0%), Non-Profit & EduTech (0.7%)] |
+| Unnamed: 0 | column               | missing_% | missing_count | unique_count | top_8_cat                                                                                                                                                                                                                                                 |
+| ---------: | :------------------- | --------: | ------------: | -----------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|          4 | Requested_Lab_Config |       2.7 |          1394 |            8 | [Standard PC (Windows) (78.4%), Linux Workstation (13.2%), nan (2.7%), Dual Monitor Setup (2.1%), MacOS Station (1.6%), Laptop Docking Station (1.5%), High-GPU Unit (0.5%), Touch Screen Interface (0.0%)]                                               |
+|          6 | Enrollment_Type      |       1.1 |           563 |          263 | [General Admission (63.8%), Affiliated Admission (21.4%), Contractual Agreement (3.2%), general admission (1.7%), GENERAL ADMISSION (1.6%), nan (1.1%), General Admission (0.8%), General Admission (0.8%)]                                               |
+|          9 | Submission_Source    |       0.9 |           474 |          289 | [B2B Platforms & Resellers (76.8%), Direct Website Registration (7.3%), Dedicated Sales Team (4.0%), B2B PLATFORMS & RESELLERS (1.9%), b2b platforms & resellers (1.9%), nan (0.9%), B2B Platforms & Resellers (0.9%), B2B Platforms & Resellers (0.9%)]  |
+|         10 | Payment_Terms        |       0.9 |           463 |          214 | [Pay Upon Start (73.1%), Prepaid (Non-Refundable) (15.2%), PAY UPON START (1.9%), pay upon start (1.8%), nan (0.9%), Pay Upon Start (0.9%), Pay Upon Start (0.8%), Pay Upon Start (0.8%)]                                                                 |
+|          1 | Origin_Country       |       0.9 |           438 |          666 | [PRT (38.2%), FRA (10.1%), DEU (6.3%), ESP (5.7%), GBR (5.1%), ITA (3.9%), BRA (2.0%), BEL (2.0%)]                                                                                                                                                        |
+|          2 | Catering_Package     |       0.7 |           337 |          299 | [Standard (Coffee Only) (71.3%), No Food Plan (10.3%), Lunch Included (7.5%), standard (coffee only) (1.8%), STANDARD (COFFEE ONLY) (1.7%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%), Standard (Coffee Only) (0.8%)]                  |
+|          0 | Course_Start_Date    |         0 |             0 |          666 | [2015-10-16 (0.5%), 2016-11-07 (0.5%), 2015-09-18 (0.5%), 2016-10-13 (0.5%), 2015-08-14 (0.5%), 2016-06-17 (0.4%), 2016-06-24 (0.4%), 2016-06-15 (0.4%)]                                                                                                  |
+|          3 | Welcome_Gift_Type    |         0 |             0 |            4 | [Branded Notebook (50.8%), Water Bottle (29.1%), USB Drive (15.9%), Portable Charger (4.1%)]                                                                                                                                                              |
+|          5 | Assigned_Lab_Config  |         0 |             0 |            9 | [Standard PC (Windows) (72.4%), Linux Workstation (18.4%), Laptop Docking Station (2.9%), MacOS Station (2.5%), Dual Monitor Setup (2.4%), High-GPU Unit (0.8%), Server Access Terminal (0.4%), Touch Screen Interface (0.2%)]                            |
+|          7 | Lanyard_Color        |         0 |             0 |          225 | [Blue (49.5%), Black (20.9%), Red (10.2%), Orange (5.2%), Green (3.9%), BLUE (1.2%), blue (1.2%), Blue (0.6%)]                                                                                                                                            |
+|          8 | Client_Category      |         0 |             0 |          455 | [SaaS & Software Houses (41.3%), Traditional IT & Telecomm (20.5%), Big Tech & Multinationals (16.7%), FinTech & Banking (6.6%), Industrial Tech & IoT (3.6%), saas & software houses (1.1%), SAAS & SOFTWARE HOUSES (1.0%), Non-Profit & EduTech (0.7%)] |
 
 
 
@@ -1236,6 +1236,38 @@ display(cap_summary)
 
 
 
+**Checking the Corr with target after capping**:
+
+
+
+```python
+target_corr = (
+    df_capped[num_cols]
+    .corrwith(df_capped["Dropped_Course"])
+    .sort_values(key=lambda s: s.abs(), ascending=False)
+)
+
+display(target_corr)
+```
+
+
+    Registration_Days_Before       0.351319
+    Pre_Course_Supports_Tickets   -0.299710
+    Prev_Course_Dropouts           0.203728
+    Registration_Changes          -0.147032
+    Physical_Course_Kits          -0.138375
+    Waiting_List_Days              0.068491
+    Returning_Client              -0.059163
+    Professionals_Count            0.055794
+    Prev_Course_Attended          -0.050010
+    Theory_Hours                   0.044261
+    Observers_Count               -0.032204
+    Students_Count                -0.026754
+    Daily_Tuition_Cost            -0.024415
+    Practical_Hours               -0.010085
+    dtype: float64
+
+
 
 ```python
 corr_matrix = df_capped[num_cols].corr()
@@ -1252,7 +1284,7 @@ sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", center=0)
 
 
     
-![svg](<notebook_files/notebook_57_1.svg>)
+![svg](<notebook_files/notebook_59_1.svg>)
     
 
 
@@ -1278,12 +1310,12 @@ corr_pairs.columns = [
     "corr",
 ]
 
-corr_pairs = corr_pairs[corr_pairs["corr"].abs() >= CORR_THRESH].sort_values(
+hi_corr_pairs = corr_pairs[corr_pairs["corr"].abs() >= CORR_THRESH].sort_values(
     "corr",
     key=abs,
     ascending=False,
 )
-corr_pairs
+hi_corr_pairs
 ```
 
 
@@ -1336,49 +1368,49 @@ course_start_stats = plot_dropout_over_time(df)
 
 
     
-![svg](<notebook_files/notebook_60_0.svg>)
+![svg](<notebook_files/notebook_62_0.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_60_1.svg>)
+![svg](<notebook_files/notebook_62_1.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_60_2.svg>)
+![svg](<notebook_files/notebook_62_2.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_60_3.svg>)
+![svg](<notebook_files/notebook_62_3.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_60_4.svg>)
+![svg](<notebook_files/notebook_62_4.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_60_5.svg>)
+![svg](<notebook_files/notebook_62_5.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_60_6.svg>)
+![svg](<notebook_files/notebook_62_6.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_60_7.svg>)
+![svg](<notebook_files/notebook_62_7.svg>)
     
 
 
@@ -1678,6 +1710,15 @@ display(score_compare)
 
 
 ```python
+train_df0, val_df0 = train_df, val_df
+train_df, val_df = (
+    train_df.drop(columns=["Course_Start_Date"]),
+    val_df.drop(columns=["Course_Start_Date"]),
+)
+```
+
+
+```python
 def get_encoded_xy(train_df, val_df):
     X_train, y_train, X_val, y_val = get_train_val_xy(train_df, val_df)
     X_train, X_val = encode_cats(X_train, X_val)
@@ -1715,12 +1756,12 @@ pd.set_option("display.max_colwidth", None)
 display(rf_importance.head(70))
 ```
 
-    AUC: 0.9233962690273925
+    AUC: 0.9274863815100576
 
 
 
     
-![svg](<notebook_files/notebook_74_1.svg>)
+![svg](<notebook_files/notebook_77_1.svg>)
     
 
 
@@ -1729,79 +1770,279 @@ display(rf_importance.head(70))
 
 |   Unnamed: 0 | feature                                             |   importance |
 |-------------:|:----------------------------------------------------|-------------:|
-|         1255 | ohe__Payment_Terms__prepaid (nonrefundable)         |     0.164193 |
-|         1254 | ohe__Payment_Terms__pay upon start                  |     0.120388 |
-|          802 | ohe__Origin_Country__prt                            |     0.082403 |
-|            8 | Pre_Course_Supports_Tickets                         |     0.069162 |
-|            6 | Prev_Course_Dropouts                                |     0.066158 |
-|            5 | Registration_Days_Before                            |     0.064263 |
-|          860 | ohe__Assigned_Lab_Config__standard pc (windows)     |     0.027766 |
-|          873 | ohe__Client_Category__big tech & multinationals     |     0.026138 |
-|          733 | ohe__Origin_Country__fra                            |     0.021555 |
-|          987 | ohe__Agent_ID__218                                  |     0.020938 |
-|          863 | ohe__Enrollment_Type__affiliated admission          |     0.019598 |
-|           11 | Registration_Changes                                |     0.019228 |
-|          955 | ohe__Agent_ID__184                                  |     0.017028 |
-|           13 | Daily_Tuition_Cost                                  |     0.016747 |
-|          879 | ohe__Client_Category__saas & software houses        |     0.016569 |
-|          865 | ohe__Enrollment_Type__general admission             |     0.015982 |
-|            9 | Physical_Course_Kits                                |     0.011383 |
-|          881 | ohe__Submission_Source__b2b platforms & resellers   |     0.011244 |
-|          722 | ohe__Origin_Country__deu                            |     0.010746 |
-|          857 | ohe__Assigned_Lab_Config__linux workstation         |     0.010743 |
-|           10 | Waiting_List_Days                                   |     0.009458 |
-|          875 | ohe__Client_Category__fintech & banking             |     0.008999 |
-|          890 | ohe__Agent_ID__104                                  |     0.008528 |
-|          880 | ohe__Client_Category__traditional it & telecomm     |     0.007566 |
-|          883 | ohe__Submission_Source__direct website registration |     0.006912 |
-|            4 | Theory_Hours                                        |     0.006794 |
-|            0 | Professionals_Count                                 |     0.00586  |
-|          993 | ohe__Agent_ID__224                                  |     0.00536  |
-|            7 | Prev_Course_Attended                                |     0.004733 |
-|         1030 | ohe__Agent_ID__264                                  |     0.004286 |
-|           14 | has_company_id                                      |     0.003945 |
-|          851 | ohe__Requested_Lab_Config__standard pc (windows)    |     0.00371  |
-|          848 | ohe__Requested_Lab_Config__linux workstation        |     0.003648 |
-|          729 | ohe__Origin_Country__esp                            |     0.003639 |
-|            3 | Practical_Hours                                     |     0.003399 |
-|         1252 | ohe__Company_ID__missing                            |     0.002727 |
-|          840 | ohe__Catering_Package__standard (coffee only)       |     0.002291 |
-|          839 | ohe__Catering_Package__no food plan                 |     0.002257 |
-|          876 | ohe__Client_Category__industrial tech & iot         |     0.002046 |
-|           12 | Returning_Client                                    |     0.001946 |
-|          919 | ohe__Agent_ID__139                                  |     0.001887 |
-|           15 | Agent_ID_missing                                    |     0.001851 |
-|          735 | ohe__Origin_Country__gbr                            |     0.00184  |
-|         1253 | ohe__Payment_Terms__missing                         |     0.001719 |
-|         1230 | ohe__Company_ID__5181                               |     0.001615 |
-|          837 | ohe__Catering_Package__lunch included               |     0.001595 |
-|         1082 | ohe__Agent_ID__missing                              |     0.001505 |
-|          882 | ohe__Submission_Source__dedicated sales team        |     0.001457 |
-|          864 | ohe__Enrollment_Type__contractual agreement         |     0.001363 |
-|          755 | ohe__Origin_Country__ita                            |     0.001358 |
-|          911 | ohe__Agent_ID__129                                  |     0.001276 |
-|         1073 | ohe__Agent_ID__314                                  |     0.00127  |
-|          698 | ohe__Origin_Country__aut                            |     0.001255 |
-|          856 | ohe__Assigned_Lab_Config__laptop docking station    |     0.001237 |
-|          858 | ohe__Assigned_Lab_Config__macos station             |     0.001203 |
-|            1 | Students_Count                                      |     0.001153 |
-|          700 | ohe__Origin_Country__bel                            |     0.00106  |
-|          792 | ohe__Origin_Country__nld                            |     0.000977 |
-|          263 | ohe__Course_Start_Date__20160228                    |     0.000975 |
-|         1091 | ohe__Company_ID__5013                               |     0.00095  |
-|          988 | ohe__Agent_ID__219                                  |     0.000945 |
-|          903 | ohe__Agent_ID__118                                  |     0.000935 |
-|          584 | ohe__Course_Start_Date__20170114                    |     0.000877 |
-|          829 | ohe__Origin_Country__usa                            |     0.000864 |
-|          974 | ohe__Agent_ID__205                                  |     0.000863 |
-|         1079 | ohe__Agent_ID__320                                  |     0.000855 |
-|          689 | ohe__Origin_Country__ago                            |     0.000788 |
-|           65 | ohe__Course_Start_Date__20150814                    |     0.000782 |
-|          364 | ohe__Course_Start_Date__20160608                    |     0.000724 |
-|          878 | ohe__Client_Category__nonprofit & edutech           |     0.000688 |
+|          589 | ohe__Payment_Terms__prepaid (nonrefundable)         |     0.154496 |
+|          588 | ohe__Payment_Terms__pay upon start                  |     0.142522 |
+|          136 | ohe__Origin_Country__prt                            |     0.085477 |
+|            8 | Pre_Course_Supports_Tickets                         |     0.082938 |
+|            5 | Registration_Days_Before                            |     0.069    |
+|            6 | Prev_Course_Dropouts                                |     0.063305 |
+|          207 | ohe__Client_Category__big tech & multinationals     |     0.027937 |
+|          197 | ohe__Enrollment_Type__affiliated admission          |     0.022463 |
+|          289 | ohe__Agent_ID__184                                  |     0.021201 |
+|          194 | ohe__Assigned_Lab_Config__standard pc (windows)     |     0.020385 |
+|           11 | Registration_Changes                                |     0.019084 |
+|           13 | Daily_Tuition_Cost                                  |     0.018175 |
+|          199 | ohe__Enrollment_Type__general admission             |     0.017967 |
+|          213 | ohe__Client_Category__saas & software houses        |     0.017429 |
+|          321 | ohe__Agent_ID__218                                  |     0.017149 |
+|          215 | ohe__Submission_Source__b2b platforms & resellers   |     0.01363  |
+|           67 | ohe__Origin_Country__fra                            |     0.013191 |
+|          191 | ohe__Assigned_Lab_Config__linux workstation         |     0.012386 |
+|           56 | ohe__Origin_Country__deu                            |     0.010707 |
+|            9 | Physical_Course_Kits                                |     0.01028  |
+|          214 | ohe__Client_Category__traditional it & telecomm     |     0.008199 |
+|          209 | ohe__Client_Category__fintech & banking             |     0.00813  |
+|          217 | ohe__Submission_Source__direct website registration |     0.007917 |
+|          224 | ohe__Agent_ID__104                                  |     0.00749  |
+|            4 | Theory_Hours                                        |     0.007481 |
+|           10 | Waiting_List_Days                                   |     0.006528 |
+|          327 | ohe__Agent_ID__224                                  |     0.005904 |
+|            0 | Professionals_Count                                 |     0.005372 |
+|          185 | ohe__Requested_Lab_Config__standard pc (windows)    |     0.004621 |
+|            7 | Prev_Course_Attended                                |     0.004586 |
+|            3 | Practical_Hours                                     |     0.004403 |
+|           63 | ohe__Origin_Country__esp                            |     0.004008 |
+|           14 | has_company_id                                      |     0.00341  |
+|          586 | ohe__Company_ID__missing                            |     0.003085 |
+|          182 | ohe__Requested_Lab_Config__linux workstation        |     0.002944 |
+|          174 | ohe__Catering_Package__standard (coffee only)       |     0.002602 |
+|           12 | Returning_Client                                    |     0.002475 |
+|          210 | ohe__Client_Category__industrial tech & iot         |     0.002453 |
+|          198 | ohe__Enrollment_Type__contractual agreement         |     0.002398 |
+|          364 | ohe__Agent_ID__264                                  |     0.002395 |
+|           15 | Agent_ID_missing                                    |     0.002375 |
+|          416 | ohe__Agent_ID__missing                              |     0.00221  |
+|          564 | ohe__Company_ID__5181                               |     0.002092 |
+|          173 | ohe__Catering_Package__no food plan                 |     0.00208  |
+|          216 | ohe__Submission_Source__dedicated sales team        |     0.001902 |
+|          171 | ohe__Catering_Package__lunch included               |     0.001839 |
+|          587 | ohe__Payment_Terms__missing                         |     0.001781 |
+|           32 | ohe__Origin_Country__aut                            |     0.001406 |
+|           89 | ohe__Origin_Country__ita                            |     0.001386 |
+|          425 | ohe__Company_ID__5013                               |     0.001384 |
+|            1 | Students_Count                                      |     0.001382 |
+|          190 | ohe__Assigned_Lab_Config__laptop docking station    |     0.001378 |
+|           69 | ohe__Origin_Country__gbr                            |     0.0013   |
+|          245 | ohe__Agent_ID__129                                  |     0.001209 |
+|           34 | ohe__Origin_Country__bel                            |     0.001182 |
+|          260 | ohe__Agent_ID__147                                  |     0.001022 |
+|          192 | ohe__Assigned_Lab_Config__macos station             |     0.000993 |
+|          322 | ohe__Agent_ID__219                                  |     0.000913 |
+|           23 | ohe__Origin_Country__ago                            |     0.000903 |
+|          253 | ohe__Agent_ID__139                                  |     0.000901 |
+|          407 | ohe__Agent_ID__314                                  |     0.000842 |
+|           42 | ohe__Origin_Country__bra                            |     0.000762 |
+|          126 | ohe__Origin_Country__nld                            |     0.000737 |
+|          294 | ohe__Agent_ID__189                                  |     0.000679 |
+|           20 | Payment_Terms_missing                               |     0.000658 |
+|          175 | ohe__Welcome_Gift_Type__branded notebook            |     0.000651 |
+|          203 | ohe__Lanyard_Color__blue                            |     0.000643 |
+|          237 | ohe__Agent_ID__118                                  |     0.000633 |
+|          413 | ohe__Agent_ID__320                                  |     0.00063  |
+|          212 | ohe__Client_Category__nonprofit & edutech           |     0.000602 |
 
 
 
 
 The results are concerning because the strongest feature here is clearly the suspicious one: non‑refundable payment. It seems either to be an error or something they flipped, but it just doesn’t make sense that there would be an almost 100 % correlation between that and the dropout rate. It just doesn’t make sense, and that is concerning. What happens if we drop that from the model? How badly will it perform afterward? The question is whether we can trust the same corruption or weird coincidence to also apply in the test data. I’m not sure. So it’s a big question what we do about it.
 
+
+## Dimension Reduction
+
+
+
+```python
+X_train.shape
+```
+
+
+
+
+    (50771, 591)
+
+
+
+We have almost 600 features after `one-hot-encoding`. This is definitely unacceptable. So we’re going to fix it by treating:
+
+- company ID
+- agent ID
+- country.
+
+### Main stradegy
+
+For agent ID and country ID, I’ll use the top n by coverage or samples.
+For `Company_ID`, I’ll drop the raw high-cardinality ID and keep only the
+existing `has_company_id` flag.
+
+
+
+```python
+for label, col in [
+    ("Agent_ID", train_df["Agent_ID"]),
+    ("Origin_Country", train_df["Origin_Country"]),
+]:
+    counts = col.value_counts()
+    print(f"\n=== {label} ===")
+    print(counts.head(10))
+    for thr in (150, 300, 500):
+        kept = (counts >= thr).sum()
+        cov = counts[counts >= thr].sum() / counts.sum()
+        print(f"  >={thr:5d}: {kept:3d} kept, {cov:.1%} coverage")
+```
+
+    
+    === Agent_ID ===
+    Agent_ID
+    184        17644
+    missing     8928
+    218         5263
+    104         2087
+    264         1895
+    219         1584
+    224         1040
+    205          874
+    320          814
+    158          705
+    Name: count, dtype: int64
+      >=  150:  34 kept, 93.2% coverage
+      >=  300:  15 kept, 85.4% coverage
+      >=  500:  12 kept, 82.8% coverage
+    
+    === Origin_Country ===
+    Origin_Country
+    prt    21098
+    fra     5581
+    deu     3496
+    esp     3129
+    gbr     2803
+    ita     2184
+    bra     1118
+    bel     1087
+    nld     1009
+    usa      854
+    Name: count, dtype: int64
+      >=  150:  27 kept, 95.6% coverage
+      >=  300:  18 kept, 91.7% coverage
+      >=  500:  14 kept, 88.5% coverage
+
+
+It seems like the right one for `Agent_ID` is 300. As for `Origin_Country`, I see `cn` and `chn` probably both mean China, so first fix that and then re-evaluate.
+
+
+
+```python
+def keep_by_min_count(col: pd.Series, min_count: int) -> set:
+    counts = col.value_counts()
+    return set(counts[counts >= min_count].index)
+
+
+def describe_keep(col: pd.Series, keep: set, label: str):
+    coverage = col.isin(keep).mean()  # share of non-missing rows kept
+    print(
+        f"{label}: kept {len(keep)} of {col.nunique()} "
+        f"covering {coverage:.1%} of non-missing rows"
+    )
+
+
+AGENT_MIN_COUNT = 300  # clear cliff: 15 agents, 85% coverage
+COUNTRY_MIN_COUNT = (
+    300  # fat middle: 18 countries, 92% coverage — country signal is more distributed
+)
+
+agents_before = train_df["Agent_ID"]
+agents_keep = keep_by_min_count(agents_before, AGENT_MIN_COUNT)
+describe_keep(agents_before, agents_keep, "Agent_ID")
+
+countries_before = train_df["Origin_Country"]
+countries_keep = keep_by_min_count(countries_before, COUNTRY_MIN_COUNT)
+describe_keep(countries_before, countries_keep, "Origin_Country")
+```
+
+    Agent_ID: kept 15 of 197 covering 85.4% of non-missing rows
+    Origin_Country: kept 18 of 149 covering 91.7% of non-missing rows
+
+
+
+```python
+company_counts = train_df["Company_ID"].value_counts()
+print(company_counts.head(10))
+```
+
+    Company_ID
+    missing    48295
+    5181         623
+    5013         221
+    5194         163
+    5119         112
+    5024          96
+    5185          95
+    5025          82
+    5010          66
+    5035          50
+    Name: count, dtype: int64
+
+
+So let's drop raw `Company_ID` completely. The lower-cardinality
+`has_company_id` flag was already created earlier and keeps the stable part of
+the signal.
+
+
+
+```python
+COUNTRY_ALIASES = {"cn": "chn"}
+
+
+def apply_ide_reduction(df: DF, train_df: DF) -> DF:
+    df = df.copy()
+    train_df = train_df.copy()
+
+    df["Origin_Country"] = df["Origin_Country"].replace(COUNTRY_ALIASES)
+    train_df["Origin_Country"] = train_df["Origin_Country"].replace(COUNTRY_ALIASES)
+
+    countries_to_keep = keep_by_min_count(
+        train_df["Origin_Country"], COUNTRY_MIN_COUNT
+    ) | {"missing"}
+    agents_to_keep = keep_by_min_count(train_df["Agent_ID"], AGENT_MIN_COUNT) | {
+        "missing"
+    }
+
+    # collapse non-kept to "other"
+    df["Agent_ID"] = df["Agent_ID"].where(df["Agent_ID"].isin(agents_to_keep), "other")
+    df["Origin_Country"] = df["Origin_Country"].where(
+        df["Origin_Country"].isin(countries_to_keep), "other"
+    )
+
+    df = df.drop(columns=["Company_ID"])
+    df = df.drop(columns=["Agent_ID_missing"], errors="ignore")
+
+    return df
+```
+
+
+```python
+initial_train = train_df.copy()
+
+train_reduced_df = apply_ide_reduction(train_df, initial_train)
+val_reduced_df = apply_ide_reduction(val_df, initial_train)
+
+X_train, y_train = split_xy(train_reduced_df, TARGET_NAME)
+X_val, y_val = split_xy(val_reduced_df, TARGET_NAME)
+
+X_train, X_val = encode_cats(X_train, X_val)
+X_train.shape
+```
+
+
+
+
+    (50771, 109)
+
+
+
+Great so $\approx 400$ dimensitons eliminated.
+
+
+
+```python
+
+```
