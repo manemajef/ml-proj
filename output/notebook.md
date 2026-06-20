@@ -13,17 +13,20 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import GridSearchCV
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
-from sklearn.metrics import RocCurveDisplay
+from sklearn.metrics import RocCurveDisplay, roc_auc_score
+from sklearn.ensemble import RandomForestClassifier
 
 TARGET_NAME = "Dropped_Course"
 
 data = pd.read_csv("data/Train_Data.csv")
 official_test_data = pd.read_csv("data/Test_Data_No_Target.csv")
-
 ```
 
 ### Helper functions
@@ -158,12 +161,9 @@ def plot_dropout_over_time(
 
 def br():
     print()
-
 ```
 
 ## 1. EDA
-
-
 
 
 
@@ -194,7 +194,7 @@ data.head()
 
 
 
-Split the labeled training file into a development train set and a validation set. I avoid calling the validation split `test_data`, because the assignment also provides a separate `Test_Data_No_Target.csv` file that must be predicted at the end.
+Split the labeled file into a development training set and a validation set. The separate `Test_Data_No_Target.csv` file is kept as the final prediction set.
 
 
 
@@ -209,7 +209,6 @@ train_data, valid_data = train_test_split(
 print(f"train_data shape: {train_data.shape}")
 print(f"valid_data shape: {valid_data.shape}")
 train_data.info()
-
 ```
 
     train_data shape: (50771, 29)
@@ -252,7 +251,7 @@ train_data.info()
     memory usage: 11.6+ MB
 
 
-I use `df` as shorthand for the development training split during EDA. Target-based EDA should use only this labeled training split. The official test file has no target, so it is useful for checking schema and missing-value patterns, but not for drawing dropout-rate conclusions.
+I use `df` as shorthand for the development training split during EDA. Target-based analysis is based on this labeled split. The official test file has no `Dropped_Course` label, so it is used only for schema and missingness checks.
 
 
 
@@ -262,7 +261,7 @@ df = train_data
 
 ### Dataset Scope And Target Balance
 
-Before looking at individual features, I check the target distribution and compare missing-value patterns between the labeled data and the official test file. I do not use the official test file for target-based conclusions, because it has no `Dropped_Course` label.
+Before looking at individual features, I check the target distribution and compare missing-value patterns between the labeled data and the official test file.
 
 
 
@@ -285,7 +284,6 @@ missing_compare = missing_compare.query(
 ).sort_values("train_missing_%", ascending=False)
 
 display(missing_compare)
-
 ```
 
 
@@ -320,14 +318,15 @@ display(missing_compare)
 
 
 
-The target is not severely imbalanced: roughly 59% of the training examples are not dropped and 41% are dropped. This makes AUC a reasonable evaluation metric and means a trivial majority-class model is not enough.
+The target is not severely imbalanced: roughly 59% of the training examples are not dropped and 41% are dropped. This supports using AUC as the main evaluation metric.
 
-The official test file has similar missingness patterns to the labeled data. This means missing values must be handled by the preprocessing pipeline; dropping rows is not a valid final strategy because the submission requires one prediction for every official test row.
+The official test file has similar missingness patterns to the labeled data. The missing-value strategy therefore needs to transform all rows consistently in both validation and final prediction data.
 
 
 #### Missingness Versus Target
 
 For columns with meaningful missingness, I also check whether the fact that a value is missing is itself related to dropout. This helps decide whether to add missingness indicators.
+
 
 
 ```python
@@ -344,7 +343,8 @@ missingness_target_cols = [
 missingness_target_rows = []
 for col in missingness_target_cols:
     stats = (
-        df.assign(is_missing=df[col].isna())
+        df
+        .assign(is_missing=df[col].isna())
         .groupby("is_missing")[TARGET_NAME]
         .agg(count="size", dropout_rate="mean")
         .reset_index()
@@ -357,13 +357,14 @@ missingness_target_summary["dropout_rate_%"] = (
     missingness_target_summary["dropout_rate"] * 100
 ).round(1)
 
-missingness_target_summary[[
-    "column",
-    "is_missing",
-    "count",
-    "dropout_rate_%",
-]]
-
+missingness_target_summary[
+    [
+        "column",
+        "is_missing",
+        "count",
+        "dropout_rate_%",
+    ]
+]
 ```
 
 
@@ -392,12 +393,13 @@ missingness_target_summary[[
 
 
 
-Missingness is informative for some columns. Missing `Company_ID` is strongly associated with a higher dropout rate, which supports using a `has_company_id` feature. Missing `Agent_ID` also behaves differently from non-missing values. For `Registration_Days_Before` and `Physical_Course_Kits`, missingness itself is not the main signal, but adding missingness flags is still cheap and protects the model from treating imputed values as observed values.
+Missingness is informative for some columns. Missing `Company_ID` is associated with a much higher dropout rate, which supports adding a company-presence indicator. Missing `Agent_ID` also has a different dropout profile. For `Registration_Days_Before` and `Physical_Course_Kits`, missingness itself is weaker, but missingness indicators are still useful because they distinguish observed values from imputed values.
+
 
 ### Checking Cat cols
 
 
-Lets see whats going on with none-numeric columns
+First, inspect the non-numeric columns: missing values, cardinality, and the most frequent raw categories.
 
 
 
@@ -452,11 +454,9 @@ get_cat_smr(df, cat_cols)
 
 
 
-#### A few conclusions
+#### Categorical Data Quality
 
-We can clearly see that someone tried to get tricky and sneak in some Unicode into items such as “blue” with a hash in the middle, etc. So we’ll just take care of that with rejects. We also see a lot of question marks, which is weird, and some null values are labeled as “unknown.” Let’s use a function that fixes all of that.
-
-**Lets try to normlize them**
+The raw categorical values contain artificial noise: casing differences, punctuation inside labels, spacing issues, and placeholder strings such as `unknown` or `?`. For example, a value like `blu#e` should map back to the same category as `blue`. I normalize these values before deeper categorical analysis.
 
 
 
@@ -520,7 +520,6 @@ def normalize_cat_cols(df: pd.DataFrame, cat_cols):
 
 cat_normed_data = normalize_cat_cols(df, cat_cols)
 get_cat_smr(cat_normed_data, cat_cols)
-
 ```
 
 
@@ -546,7 +545,7 @@ get_cat_smr(cat_normed_data, cat_cols)
 
 
 
-MUCH BETTER :)
+After normalization, duplicate category variants collapse into cleaner groups.
 
 
 
@@ -635,18 +634,17 @@ for ax, col in zip(axes, plot_cols):
 
     if ax is axes[0]:
         ax.legend()
-
 ```
 
 
     
-![svg](<notebook_files/notebook_23_0.svg>)
+![svg](<notebook_files/notebook_22_0.svg>)
     
 
 
 
 
-Lets look closer at intresting ones
+Now I check whether the cleaned categorical values are actually related to dropout.
 
 
 
@@ -681,7 +679,6 @@ def show_cat_rate_table():
 
 
 show_cat_rate_table()
-
 ```
 
 
@@ -704,11 +701,12 @@ show_cat_rate_table()
 
 
 
-The compact table above is meant as a screening view: for each categorical feature it first keeps the frequent categories, then reports their dropout rate. I use it to decide which categorical variables deserve a cleaner final plot. `Lanyard_Color` and `Welcome_Gift_Type` do not show a meaningful business pattern, while `Payment_Terms`, `Client_Category`, `Submission_Source`, `Enrollment_Type`, and `Agent_ID` show large enough differences to keep investigating.
+The compact table above is a screening view: for each categorical feature it keeps the frequent categories and reports their dropout rate. This helps identify which categorical variables deserve cleaner final plots. `Lanyard_Color` and `Welcome_Gift_Type` show weak business patterns, while `Payment_Terms`, `Client_Category`, `Submission_Source`, `Enrollment_Type`, and `Agent_ID` show meaningful differences.
 
 
-**A big red flag**
-The data for payment terms doesn't make sense since the dropout rate is almost 100% for prepaid and nonrefundable. So this is either data leakage or something intentional, but it's definitely weird.
+**Payment terms signal**
+
+`Payment_Terms` is a very strong categorical signal: prepaid nonrefundable registrations have an unusually high dropout rate compared with pay-upon-start registrations. This feature should be retained and checked again during model evaluation because it may dominate the model.
 
 
 
@@ -734,18 +732,17 @@ normed_catted_df.groupby("Payment_Terms")["Dropped_Course"].agg(
 
 
 
-**Lets see the dates**
+**Course start date pattern**
 
 
 
 ```python
 plot_dropout_over_time(df)
-
 ```
 
 
     
-![svg](<notebook_files/notebook_31_0.svg>)
+![svg](<notebook_files/notebook_30_0.svg>)
     
 
 
@@ -785,15 +782,15 @@ plot_dropout_over_time(df)
 
 #### Categorical Conclusions
 
-The categorical analysis belongs in EDA because it reveals data-quality problems and predictive patterns. The actual normalization function should later be reused inside the preprocessing pipeline so the validation and official test rows receive the same cleaning.
+The categorical EDA reveals both data-quality issues and predictive patterns. Category normalization is therefore part of data cleaning, and the same normalization should be reused later for validation and final prediction data.
 
 Key conclusions:
 
-- `Payment_Terms` is the strongest categorical warning sign. `prepaid (nonrefundable)` has almost 100% dropout in the training split, which may represent a real business rule or a leakage-like artifact. I will keep it, but I should later verify whether models rely on it too heavily.
+- `Payment_Terms` is the strongest categorical signal.
 - `Client_Category`, `Submission_Source`, and `Enrollment_Type` show meaningful differences in dropout rates and should be encoded.
-- `Lanyard_Color` and `Welcome_Gift_Type` look weak or artificial, so they are candidates to drop unless later model evaluation shows value.
-- `Course_Start_Date` has too many exact categories for the first categorical bar chart, but the time plot shows a clear period effect. I will treat the date carefully: it may improve AUC, but it may also capture period-specific conditions rather than a stable causal feature.
-- Categorical missing values should be encoded explicitly, either as an `unknown/missing` category or through missingness indicators, because missingness is part of the registration process.
+- `Lanyard_Color` and `Welcome_Gift_Type` are candidates for removal because they do not show a useful relationship with dropout.
+- `Course_Start_Date` shows a clear time pattern. It should be represented through date-derived features or careful categorical handling.
+- Categorical missing values should be encoded explicitly as a `missing` category.
 
 
 ### Numeric cols
@@ -819,7 +816,7 @@ num_cols = [col for col in all_num_cols if col not in IDE_COLNAMES and col != TA
 #### Identifier columns
 
 
-We will analyze the `ide_cols` as categorial ones
+Analyze `Agent_ID` and `Company_ID` as categorical identifiers.
 
 
 
@@ -854,13 +851,9 @@ df["Client_ID"].nunique() == len(df)
 
 
 
-So far, we see a few interesting patterns. One is that client ID is a unique identifier, so even if a client is returning, it wouldn’t have the same client ID. Anyway, that one is useless for us.
+`Client_ID` is unique per row, so it is not useful as a predictive feature. `Agent_ID` and `Company_ID` are numeric identifiers, but their values represent categories rather than quantities, so they are analyzed as categorical variables.
 
-**About Agent & Company ID**
-
-We have to remember that the clients we talk about are enterprise clients, meaning groups. The data says agent ID is an identifier for the agent or salesperson who listed the group, and company ID is an identifier for the company that did that. So we can assume that Nova also has internal agents but also works with external companies that handle it for them. That is why company ID is probably missing 95 % of the time.
-
-That also explains why not all of them have an agent ID—some may have joined the program on their own, through a company, or through a documented reason. Even though we have a lot of nulls, that’s okay, because a missing value also tells us something. A dummy would probably solve it.
+`Company_ID` is missing for most rows. That missingness is meaningful because it separates registrations made through a company from registrations without a company identifier.
 
 
 
@@ -886,7 +879,6 @@ def plot_id_target_rate(
         top_n=top_n,
         figsize=figsize,
     )
-
 ```
 
 
@@ -896,7 +888,7 @@ plot_id_target_rate(df, "Agent_ID")
 
 
     
-![svg](<notebook_files/notebook_43_0.svg>)
+![svg](<notebook_files/notebook_42_0.svg>)
     
 
 
@@ -927,9 +919,9 @@ plot_id_target_rate(df, "Agent_ID")
 
 
 
-**Agent Matters A lot!!!**
+**Agent ID signal**
 
-So we see that agents matter a lot. Some explanation could be that some are more aggressive sellers than others, or some work by different methods, et cetera, but it definitely has a big predictive value.
+Dropout rates differ substantially between frequent agents. This indicates that `Agent_ID` contains useful categorical information.
 
 
 
@@ -944,7 +936,7 @@ plot_id_target_rate(
 
 
     
-![svg](<notebook_files/notebook_45_0.svg>)
+![svg](<notebook_files/notebook_44_0.svg>)
     
 
 
@@ -970,9 +962,7 @@ plot_id_target_rate(
 
 
 
-So we see that generally booking through a company reduces the rate risk, except for this one company, but the problem is that the stats are so low that it's not really reliable.
-
-Let's test the rate with a company or without a company to compare.
+Registrations with a company identifier have substantially lower dropout than registrations without one. This supports creating a `has_company_id` feature and treating `Company_ID` as a categorical feature only when enough observations are available.
 
 
 
@@ -994,7 +984,7 @@ df.groupby(df.Company_ID.notna()).Dropped_Course.agg(count="size", drop_rate="me
 
 
 
-Yeah. So definitely groups coming through a company are way less likely to drop, even though it's quite a small subset of the data.
+The company-presence comparison confirms that the registration path is meaningful: rows with a company identifier have lower dropout than rows without one.
 
 
 #### Numeric Columns
@@ -1029,7 +1019,6 @@ def plot_numeric_dist(df, col, target=TARGET_NAME):
 if CALC_PLOTS:
     for col in num_cols:
         plot_numeric_dist(df, col)
-
 ```
 
 
@@ -1102,14 +1091,14 @@ get_num_smr(df, num_cols)
 
 The numeric summary table gives the first pass: missingness, correlation with the target, central tendency, spread, and extreme values.
 
-Main missing-value decisions:
+Missing-value decisions:
 
-- `Registration_Days_Before` has the most numeric missingness, about 4%. Its missingness does not materially change the dropout rate by itself, but the non-missing values are strongly related to dropout. I will impute it rather than drop rows. KNN is a reasonable candidate, but it should be compared against simpler median imputation inside validation.
-- `Physical_Course_Kits` has moderate missingness and a weak direct relationship with the target. Median imputation plus a missingness flag is enough.
-- `Daily_Tuition_Cost` has very few missing values, but the missing rows have a higher dropout rate. I should not drop official test rows; use a missingness flag and either median imputation or a simple train-fitted regression imputer if it improves validation.
-- For other low-missingness numeric columns, use train-fitted imputation rather than row dropping.
+- Most numeric columns: use median imputation fitted on the development training split. This is stable and easy to justify.
+- Important missing columns: add missingness indicators, because missingness itself is informative for several features.
+- `Daily_Tuition_Cost`: use median imputation and keep a missingness indicator. The missing rate is very low, so this is simpler and easier to reuse safely than a separate model-based imputer.
+- Categorical columns: fill missing values with an explicit `missing` category after normalization.
 
-Important leakage rule: the imputer values or imputer model must be fitted only on `train_data` / `X_train` and then applied to validation and official test data.
+The CRISP-DM lecture emphasizes sklearn preprocessing tools. I therefore fit the imputers on the development training split and reuse the fitted objects for validation and final prediction data.
 
 
 
@@ -1126,7 +1115,6 @@ for col in sus_cols:
     print(col)
     print(", ".join(map(str, df[col].nlargest(20).unique())))
     br()
-
 ```
 
     Waiting_List_Days
@@ -1149,7 +1137,7 @@ for col in sus_cols:
     
 
 
-`Prev_Course_Attended` has high values but they look like a smooth tail rather than a clear error. `Daily_Tuition_Cost = 5400` is suspicious and should be flagged for later outlier handling, but most of the other high tuition values look plausible. `Students_Count = 9999` and extreme `Practical_Hours` values look like data-entry or placeholder errors rather than real observations.
+`Prev_Course_Attended` has high values, but they form a smooth tail and remain plausible for recurring organizations. `Daily_Tuition_Cost = 5400` is a suspicious high value and should be revisited in the outlier-analysis section. `Students_Count = 9999` and extreme `Practical_Hours` values look like placeholder or entry errors.
 
 
 
@@ -1161,7 +1149,6 @@ for col in sus_cols:
     print(f"\n{col}")
     print(df[col].quantile([0.9999, 0.999, 0.995, 0.99, 0.95, 0.9]))
     br()
-
 ```
 
     
@@ -1208,12 +1195,12 @@ for col in sus_cols:
 
 **Outlier candidates**
 
-The clear invalid/suspicious values are:
+The clearest invalid or suspicious values are:
 
-- `Students_Count`: values above the 99.9th percentile jump from normal small counts to `9999`, so these should be treated as invalid placeholders.
+- `Students_Count`: values above the 99.9th percentile jump from normal small counts to `9999`.
 - `Practical_Hours`: negative values and very large values such as `5000`/`10000` are not plausible course-hour values.
 
-`Waiting_List_Days` and `Registration_Days_Before` have long tails, but they are not automatically errors: long waits or early registrations can happen. I will keep them for now and let binned target-rate plots show whether the tail carries useful signal.
+`Waiting_List_Days` and `Registration_Days_Before` have long tails, but those values can represent real early registrations or long waiting periods, so they are retained at this stage.
 
 
 
@@ -1236,7 +1223,6 @@ def make_capped_copy(df: pd.DataFrame, cols: list[str], q: float = 0.999):
 
 df_capped, cap_summary = make_capped_copy(df, ["Students_Count", "Practical_Hours"])
 display(cap_summary)
-
 ```
 
 
@@ -1255,7 +1241,6 @@ display(cap_summary)
 corr_matrix = df_capped[num_cols].corr()
 plt.figure(figsize=(10, 8))
 sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", center=0)
-
 ```
 
 
@@ -1267,7 +1252,7 @@ sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", center=0)
 
 
     
-![svg](<notebook_files/notebook_58_1.svg>)
+![svg](<notebook_files/notebook_57_1.svg>)
     
 
 
@@ -1322,7 +1307,7 @@ corr_pairs
 
 ### Final EDA Plots
 
-These are the curated plots I would keep for the report. Earlier tables and screening plots are useful during exploration, but these final plots communicate the main EDA conclusions more clearly.
+These are the curated EDA plots kept for the report. Earlier tables are used for screening; these plots communicate the main conclusions more clearly.
 
 
 
@@ -1347,79 +1332,476 @@ support_tickets_stats = plot_dropout_by_numeric_bins(
     df_capped, "Pre_Course_Supports_Tickets", bins=6
 )
 course_start_stats = plot_dropout_over_time(df)
-
 ```
 
 
     
-![svg](<notebook_files/notebook_61_0.svg>)
+![svg](<notebook_files/notebook_60_0.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_61_1.svg>)
+![svg](<notebook_files/notebook_60_1.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_61_2.svg>)
+![svg](<notebook_files/notebook_60_2.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_61_3.svg>)
+![svg](<notebook_files/notebook_60_3.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_61_4.svg>)
+![svg](<notebook_files/notebook_60_4.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_61_5.svg>)
+![svg](<notebook_files/notebook_60_5.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_61_6.svg>)
+![svg](<notebook_files/notebook_60_6.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_61_7.svg>)
+![svg](<notebook_files/notebook_60_7.svg>)
     
 
 
 #### Final Plot Interpretation
 
-- `Payment_Terms`: `prepaid (nonrefundable)` is an extreme signal, with dropout close to 100%, while `pay upon start` is far lower. This is the strongest categorical pattern, but it should be treated carefully because it may encode a business process that is very close to the target.
-- `Client_Category`: dropout differs strongly by segment. `big tech & multinationals` is much higher than the dataset mean, while `nonprofit & edutech`, `fintech & banking`, and `industrial tech & iot` are lower. This supports keeping the business segment as a feature.
-- `Submission_Source`: direct website and dedicated sales registrations have lower dropout than B2B reseller/platform traffic. Missing submission source behaves closer to the high-risk B2B platform group, so missingness should not be silently discarded.
-- `Enrollment_Type`: organizational arrangements and affiliated admissions are lower risk than general admission and contractual agreement. This feature should be encoded.
-- `Agent_ID`: agents differ dramatically, from very low dropout to very high dropout among frequent agents. `Agent_ID` should be treated as a categorical feature, not as a numeric quantity. To reduce overfitting, rare agents should be grouped or handled with regularized encoding.
-- `Registration_Days_Before`: dropout rises as registration happens further before the course. The highest bin is far above the dataset mean, so this is a strong numeric signal. Missing values should be imputed, not dropped.
-- `Pre_Course_Supports_Tickets`: rows with more support tickets have lower dropout in this data. This may mean engaged clients are more likely to stay, so the feature is useful even though the direction is not intuitive at first.
-- `Course_Start_Date`: dropout changes over time, which suggests seasonality or period-specific business conditions. It can help prediction, but it should be handled carefully because exact dates can overfit to the historical period.
+- `Payment_Terms`: prepaid nonrefundable registrations have a much higher dropout rate than pay-upon-start registrations, making this one of the strongest categorical signals.
+- `Client_Category`: dropout differs strongly by segment. Big tech and multinational clients are above the dataset mean, while nonprofit/edtech, fintech/banking, and industrial tech/IoT are lower.
+- `Submission_Source`: direct website and dedicated-sales registrations are lower risk than B2B platform/reseller traffic.
+- `Enrollment_Type`: organizational arrangements and affiliated admissions are lower risk than general admission and contractual agreement.
+- `Agent_ID`: frequent agents have very different dropout rates, so the agent identifier carries useful categorical information.
+- `Registration_Days_Before`: dropout rises as registration happens further before the course, especially in the highest bin.
+- `Pre_Course_Supports_Tickets`: rows with more support tickets have lower dropout in this data, suggesting that pre-course engagement may be protective.
+- `Course_Start_Date`: dropout changes over time, suggesting a period or seasonality effect.
 
-Overall EDA conclusion: the strongest visible signals are payment terms, registration timing, agent/company registration path, client segment, source/enrollment channel, and support-ticket engagement. The next step is to convert these EDA decisions into a train-fitted preprocessing pipeline: categorical normalization/encoding, missing-value imputation with missingness flags, and outlier handling for the clearly invalid numeric placeholders.
+Overall EDA conclusion: the strongest visible signals are payment terms, registration timing, agent/company registration path, client segment, source/enrollment channel, and support-ticket engagement.
 
 
-### Boundary Between EDA, Missing Values, And Later Sections
+### Missing Value Completion
 
-My interpretation of the assignment is:
+The missing-value completion step follows the EDA conclusions. Numeric columns are filled with train-fitted medians, categorical columns receive an explicit `missing` category, and important missing columns receive missingness indicators. I use a simple median rule for `Daily_Tuition_Cost` as well: the missing rate is very low, and the median rule keeps the preprocessing easy to explain and reuse safely for validation and final prediction data.
 
-- EDA should analyze the labeled training data and justify cleaning decisions. It is fine to define category normalization here because discovering dirty categories is part of data understanding.
-- Missing-value completion belongs in Part A, but it should be implemented in a way that can be reused later in the modeling pipeline. The important point is not where the function is written; it is that fill statistics are fitted only on the training split.
-- The official test file should not be used for target-based analysis because it has no target. It is okay to inspect its schema and missingness so the final pipeline can handle all rows.
-- Outlier analysis is formally Part B, but identifying suspicious values during EDA is normal. The final outlier decisions and feature-engineering choices should be summarized again in Part B.
 
-So the notebook can include exploratory tables, but the final report should be curated: show the few plots/tables that support decisions, then explain what changed in preprocessing and why.
+
+```python
+ID_CATEGORICAL_COLS = ["Agent_ID", "Company_ID"]
+IMPORTANT_MISSING_FLAGS = [
+    "Agent_ID",
+    "Registration_Days_Before",
+    "Physical_Course_Kits",
+    "Daily_Tuition_Cost",
+    "Requested_Lab_Config",
+    "Payment_Terms",
+]
+
+
+def complete_missing_values(
+    data: pd.DataFrame,
+    train_df: pd.DataFrame = df,
+) -> pd.DataFrame:
+    df = data.copy()
+
+    num_cols = [
+        col
+        for col in train_df.select_dtypes(include=["int64", "float64"]).columns
+        if col not in {TARGET_NAME, "Client_ID", *ID_CATEGORICAL_COLS}
+    ]
+
+    cat_cols = train_df.select_dtypes(include=["object"]).columns.tolist()
+    num_medians = train_df[num_cols].median()
+
+    if "Client_ID" in df.columns:
+        df = df.drop(columns=["Client_ID"])
+
+    if "Company_ID" in df.columns:
+        df["has_company_id"] = df["Company_ID"].notna().astype(int)
+
+    for col in IMPORTANT_MISSING_FLAGS:
+        if col in df.columns:
+            df[f"{col}_missing"] = df[col].isna().astype(int)
+
+    present_numeric_cols = [col for col in num_cols if col in df.columns]
+    df[present_numeric_cols] = df[present_numeric_cols].fillna(
+        num_medians[present_numeric_cols]
+    )
+
+    present_categorical_cols = [col for col in cat_cols if col in df.columns]
+
+    df = normalize_cat_cols(df, present_categorical_cols)
+
+    df[present_categorical_cols] = (
+        df[present_categorical_cols].fillna("missing").astype("object")
+    )
+
+    for col in ID_CATEGORICAL_COLS:
+        if col in df.columns:
+            df[col] = (
+                df[col]
+                .astype("string")
+                .str.replace(r"\.0$", "", regex=True)
+                .fillna("missing")
+                .astype("object")
+            )
+
+    return df
+```
+
+## 2. Outlier Analysis & Feature Engineering
+
+
+### Baseline Model Benchmark
+
+The benchmark separates feature engineering from generic preprocessing. Each
+`prepare_features_*` function creates a concrete modeling table. The benchmark then
+handles only generic steps: missing-value imputation, categorical encoding, numeric
+scaling, and model fitting. This makes the experiment readable: every added feature
+group can be compared with the same benchmark.
+
+
+Utils:
+
+
+
+```python
+DF = pd.DataFrame  # a shorter alias for typechecking
+
+train_df = complete_missing_values(train_data, train_data)
+val_df = complete_missing_values(valid_data, train_data)
+
+test_df = complete_missing_values(
+    pd.read_csv("data/Test_Data_No_Target.csv"), train_data
+)
+
+
+def split_xy(df: DF, target=TARGET_NAME):
+    X, y = df.drop(columns=[target]), df[target]
+    return X, y
+
+
+def get_train_val_xy(train_df: DF, val_df: DF):
+    X_train, y_train = split_xy(train_df)
+    X_val, y_val = split_xy(val_df)
+    return X_train, y_train, X_val, y_val
+
+
+def encode_cats(X_train, X_val):
+    cat_cols = X_train.select_dtypes(include=["object", "string"]).columns
+
+    enc = OneHotEncoder(
+        handle_unknown="ignore",
+        sparse_output=False,
+        feature_name_combiner=lambda col, val: f"ohe__{col}__{val}",
+    ).set_output(transform="pandas")
+
+    return (
+        pd.concat(
+            [
+                X_train.drop(columns=cat_cols),
+                enc.fit_transform(X_train[cat_cols]),
+            ],
+            axis=1,
+        ),
+        pd.concat(
+            [
+                X_val.drop(columns=cat_cols),
+                enc.transform(X_val[cat_cols]),
+            ],
+            axis=1,
+        ),
+    )
+```
+
+**Scorring for 3 models**
+
+
+
+```python
+from sklearn.preprocessing import StandardScaler
+
+
+def get_lg_model():
+    return LogisticRegression(
+        max_iter=2000,
+    )
+
+
+def get_rf_model():
+    return RandomForestClassifier(
+        n_estimators=300,
+        max_depth=12,
+        random_state=42,
+        n_jobs=-1,
+    )
+
+
+def get_xgb_model():
+    return XGBClassifier(
+        n_estimators=300,
+        max_depth=5,
+        learning_rate=0.05,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        eval_metric="logloss",
+        random_state=42,
+        n_jobs=-1,
+    )
+
+
+def get_score(train_df, val_df, model, scale=False):
+    X_train, y_train, X_val, y_val = get_train_val_xy(train_df, val_df)
+    X_train, X_val = encode_cats(X_train, X_val)
+
+    if scale:
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_val = scaler.transform(X_val)
+
+    model.fit(X_train, y_train)
+    preds = model.predict_proba(X_val)[:, 1]
+
+    return roc_auc_score(y_val, preds)
+
+
+MODELS = {
+    "Logistic Regression": {
+        "model_getter": get_lg_model,
+        "scale": True,
+    },
+    "Random Forest": {
+        "model_getter": get_rf_model,
+        "scale": False,
+    },
+    "XGBoost": {
+        "model_getter": get_xgb_model,
+        "scale": False,
+    },
+}
+
+
+def benchmark_models(train_df, val_df):
+    rows = []
+
+    for name, cfg in MODELS.items():
+        score = get_score(
+            train_df,
+            val_df,
+            model=cfg["model_getter"](),
+            scale=cfg["scale"],
+        )
+
+        rows.append({
+            "model": name,
+            "auc": score,
+        })
+
+    return pd.DataFrame(rows).sort_values("auc", ascending=False)
+
+
+scores_0 = benchmark_models(train_df, val_df)
+display(scores_0)
+```
+
+
+
+
+|   Unnamed: 0 | model               |      auc |
+|-------------:|:--------------------|---------:|
+|            2 | XGBoost             | 0.943122 |
+|            1 | Random Forest       | 0.923396 |
+|            0 | Logistic Regression | 0.915387 |
+
+
+
+
+#### Conclusions
+
+All 3 models are doing surprinsgly well. I want to see what happens if i drop the start_date
+
+
+**Concerns about `Course_Start_Date`**
+
+Course start date has a few problems. One is simply that we have too many categories, which bloats the dimensions. The second, and more concerning, issue is that the test data includes dates that are not present in the training set. The model might find correlations between specific dates and drop rates, but those correlations could relate to events outside the data—such as an economic crisis. Many factors could impact the results over time, so we shouldn’t expect the old dates to predict the new ones. Let’s see how much it matters and whether it’s safe to drop it.
+
+
+
+```python
+train_no_date = train_df.drop(columns=["Course_Start_Date"])
+val_no_date = val_df.drop(columns=["Course_Start_Date"])
+
+scores_1 = benchmark_models(train_no_date, val_no_date)
+
+score_compare = scores_0.merge(
+    scores_1,
+    on="model",
+    suffixes=("_with_date", "_no_date"),
+)
+
+score_compare["diff"] = score_compare["auc_with_date"] - score_compare["auc_no_date"]
+score_compare = score_compare.sort_values("diff", ascending=False)
+
+display(score_compare)
+```
+
+
+
+
+|   Unnamed: 0 | model               |   auc_with_date |   auc_no_date |      diff |
+|-------------:|:--------------------|----------------:|--------------:|----------:|
+|            2 | Logistic Regression |        0.915387 |      0.912068 |  0.003319 |
+|            0 | XGBoost             |        0.943122 |      0.943394 | -0.000272 |
+|            1 | Random Forest       |        0.923396 |      0.927486 | -0.00409  |
+
+
+
+
+**Im dropping it.**
+
+
+
+```python
+def get_encoded_xy(train_df, val_df):
+    X_train, y_train, X_val, y_val = get_train_val_xy(train_df, val_df)
+    X_train, X_val = encode_cats(X_train, X_val)
+    return X_train, y_train, X_val, y_val
+
+
+X_train, y_train, X_val, y_val = get_encoded_xy(train_df, val_df)
+
+rf = get_rf_model()
+
+rf.fit(X_train, y_train)
+
+preds = rf.predict_proba(X_val)[:, 1]
+print("AUC:", roc_auc_score(y_val, preds))
+rf_importance = pd.DataFrame({
+    "feature": X_train.columns,
+    "importance": rf.feature_importances_,
+}).sort_values("importance", ascending=False)
+
+
+rf_importance.head(30)
+rf_importance.head(25).sort_values("importance").plot.barh(
+    x="feature",
+    y="importance",
+    figsize=(10, 8),
+    legend=False,
+)
+
+
+plt.title("Random Forest Feature Importance")
+plt.tight_layout()
+plt.show()
+pd.set_option("display.max_rows", None)
+pd.set_option("display.max_colwidth", None)
+display(rf_importance.head(70))
+```
+
+    AUC: 0.9233962690273925
+
+
+
+    
+![svg](<notebook_files/notebook_74_1.svg>)
+    
+
+
+
+
+
+|   Unnamed: 0 | feature                                             |   importance |
+|-------------:|:----------------------------------------------------|-------------:|
+|         1255 | ohe__Payment_Terms__prepaid (nonrefundable)         |     0.164193 |
+|         1254 | ohe__Payment_Terms__pay upon start                  |     0.120388 |
+|          802 | ohe__Origin_Country__prt                            |     0.082403 |
+|            8 | Pre_Course_Supports_Tickets                         |     0.069162 |
+|            6 | Prev_Course_Dropouts                                |     0.066158 |
+|            5 | Registration_Days_Before                            |     0.064263 |
+|          860 | ohe__Assigned_Lab_Config__standard pc (windows)     |     0.027766 |
+|          873 | ohe__Client_Category__big tech & multinationals     |     0.026138 |
+|          733 | ohe__Origin_Country__fra                            |     0.021555 |
+|          987 | ohe__Agent_ID__218                                  |     0.020938 |
+|          863 | ohe__Enrollment_Type__affiliated admission          |     0.019598 |
+|           11 | Registration_Changes                                |     0.019228 |
+|          955 | ohe__Agent_ID__184                                  |     0.017028 |
+|           13 | Daily_Tuition_Cost                                  |     0.016747 |
+|          879 | ohe__Client_Category__saas & software houses        |     0.016569 |
+|          865 | ohe__Enrollment_Type__general admission             |     0.015982 |
+|            9 | Physical_Course_Kits                                |     0.011383 |
+|          881 | ohe__Submission_Source__b2b platforms & resellers   |     0.011244 |
+|          722 | ohe__Origin_Country__deu                            |     0.010746 |
+|          857 | ohe__Assigned_Lab_Config__linux workstation         |     0.010743 |
+|           10 | Waiting_List_Days                                   |     0.009458 |
+|          875 | ohe__Client_Category__fintech & banking             |     0.008999 |
+|          890 | ohe__Agent_ID__104                                  |     0.008528 |
+|          880 | ohe__Client_Category__traditional it & telecomm     |     0.007566 |
+|          883 | ohe__Submission_Source__direct website registration |     0.006912 |
+|            4 | Theory_Hours                                        |     0.006794 |
+|            0 | Professionals_Count                                 |     0.00586  |
+|          993 | ohe__Agent_ID__224                                  |     0.00536  |
+|            7 | Prev_Course_Attended                                |     0.004733 |
+|         1030 | ohe__Agent_ID__264                                  |     0.004286 |
+|           14 | has_company_id                                      |     0.003945 |
+|          851 | ohe__Requested_Lab_Config__standard pc (windows)    |     0.00371  |
+|          848 | ohe__Requested_Lab_Config__linux workstation        |     0.003648 |
+|          729 | ohe__Origin_Country__esp                            |     0.003639 |
+|            3 | Practical_Hours                                     |     0.003399 |
+|         1252 | ohe__Company_ID__missing                            |     0.002727 |
+|          840 | ohe__Catering_Package__standard (coffee only)       |     0.002291 |
+|          839 | ohe__Catering_Package__no food plan                 |     0.002257 |
+|          876 | ohe__Client_Category__industrial tech & iot         |     0.002046 |
+|           12 | Returning_Client                                    |     0.001946 |
+|          919 | ohe__Agent_ID__139                                  |     0.001887 |
+|           15 | Agent_ID_missing                                    |     0.001851 |
+|          735 | ohe__Origin_Country__gbr                            |     0.00184  |
+|         1253 | ohe__Payment_Terms__missing                         |     0.001719 |
+|         1230 | ohe__Company_ID__5181                               |     0.001615 |
+|          837 | ohe__Catering_Package__lunch included               |     0.001595 |
+|         1082 | ohe__Agent_ID__missing                              |     0.001505 |
+|          882 | ohe__Submission_Source__dedicated sales team        |     0.001457 |
+|          864 | ohe__Enrollment_Type__contractual agreement         |     0.001363 |
+|          755 | ohe__Origin_Country__ita                            |     0.001358 |
+|          911 | ohe__Agent_ID__129                                  |     0.001276 |
+|         1073 | ohe__Agent_ID__314                                  |     0.00127  |
+|          698 | ohe__Origin_Country__aut                            |     0.001255 |
+|          856 | ohe__Assigned_Lab_Config__laptop docking station    |     0.001237 |
+|          858 | ohe__Assigned_Lab_Config__macos station             |     0.001203 |
+|            1 | Students_Count                                      |     0.001153 |
+|          700 | ohe__Origin_Country__bel                            |     0.00106  |
+|          792 | ohe__Origin_Country__nld                            |     0.000977 |
+|          263 | ohe__Course_Start_Date__20160228                    |     0.000975 |
+|         1091 | ohe__Company_ID__5013                               |     0.00095  |
+|          988 | ohe__Agent_ID__219                                  |     0.000945 |
+|          903 | ohe__Agent_ID__118                                  |     0.000935 |
+|          584 | ohe__Course_Start_Date__20170114                    |     0.000877 |
+|          829 | ohe__Origin_Country__usa                            |     0.000864 |
+|          974 | ohe__Agent_ID__205                                  |     0.000863 |
+|         1079 | ohe__Agent_ID__320                                  |     0.000855 |
+|          689 | ohe__Origin_Country__ago                            |     0.000788 |
+|           65 | ohe__Course_Start_Date__20150814                    |     0.000782 |
+|          364 | ohe__Course_Start_Date__20160608                    |     0.000724 |
+|          878 | ohe__Client_Category__nonprofit & edutech           |     0.000688 |
+
+
+
+
+The results are concerning because the strongest feature here is clearly the suspicious one: non‑refundable payment. It seems either to be an error or something they flipped, but it just doesn’t make sense that there would be an almost 100 % correlation between that and the dropout rate. It just doesn’t make sense, and that is concerning. What happens if we drop that from the model? How badly will it perform afterward? The question is whether we can trust the same corruption or weird coincidence to also apply in the test data. I’m not sure. So it’s a big question what we do about it.
 
