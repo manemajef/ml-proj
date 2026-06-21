@@ -1607,10 +1607,94 @@ def predict_test(
     return submission
 
 
+RUN_TEST = False
 SAVE_TEST = False
-if SAVE_TEST:
+ORiGINAL_PAHT = "data/Group_27_Submission.csv"
+OUTPUT_PATH = "data/test-proba.csv" if not SAVE_TEST else ORiGINAL_PAHT
+
+if RUN_TEST:
     submission = predict_test(
         pd.read_csv("data/Test_Data_No_Target.csv"),
-        output_path="data/Group_27_Submission.csv",
+        # output_path="data/Group_27_Submission.csv"
+        output_path=OUTPUT_PATH,
     )
 
+
+# %% [markdown]
+# # Original Min Term Test Results:
+#
+# |     | model               | auc      |
+# | --- | ------------------- | -------- |
+# | 2   | XGBoost             | 0.944639 |
+# | 1   | Random Forest       | 0.940116 |
+# | 0   | Logistic Regression | 0.910474 |
+#
+# ```
+# model     XGBoost
+# auc      0.944639
+# Name: 2, dtype: object
+# wrote data/Group_27_Submission.csv using XGBoost (val AUC=0.9446)
+# ```
+#
+
+# %% [markdown]
+# # Original Test Outputs
+#
+# <div>
+# <style scoped>
+#     .dataframe tbody tr th:only-of-type {
+#         vertical-align: middle;
+#     }
+#
+#     .dataframe tbody tr th {
+#         vertical-align: top;
+#     }
+#
+#     .dataframe thead th {
+#         text-align: right;
+#     }
+#
+# </style>
+# <table border="1" class="dataframe">
+#   <thead>
+#     <tr style="text-align: right;">
+#       <th></th>
+#       <th>model</th>
+#       <th>auc</th>
+#     </tr>
+#   </thead>
+#   <tbody>
+#     <tr>
+#       <th>2</th>
+#       <td>XGBoost</td>
+#       <td>0.944639</td>
+#     </tr>
+#     <tr>
+#       <th>1</th>
+#       <td>Random Forest</td>
+#       <td>0.940116</td>
+#     </tr>
+#     <tr>
+#       <th>0</th>
+#       <td>Logistic Regression</td>
+#       <td>0.910474</td>
+#     </tr>
+#   </tbody>
+# </table>
+# </div>
+#
+# ```text
+# model     XGBoost
+# auc      0.944639
+# Name: 2, dtype: object
+# wrote data/Group_27_Submission.csv using XGBoost (val AUC=0.9446)
+# ```
+#
+# # Original Grade
+#
+# 4th place : `0.886408` 😥
+#
+# **Original Test `csv` :**
+#
+# [`Group_27_Submission.csv`](Group_27_Submission)
+#

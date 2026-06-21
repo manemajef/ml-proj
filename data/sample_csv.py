@@ -1,7 +1,7 @@
 import pandas as pd
 
-TEST_INPUT = "Test_Data_No_Target.csv"
-TRAIN_INPUT = "Train_Data.csv"
+TEST_INPUT = "samples/Test_Data_No_Target.csv"
+TRAIN_INPUT = "samples/Train_Data.csv"
 
 
 def sample_csv(input, output, n=1000):
