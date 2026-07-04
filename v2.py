@@ -11,7 +11,7 @@
 # ---
 
 # %% [markdown]
-# # Claude pipeline — fresh rediscovery of the drop-prediction problem
+# # V2 pipeline — fresh rediscovery of the drop-prediction problem
 #
 # Goal: predict `Drop_Probability` for the official test set, beating the
 # previous leaderboard AUC (~0.886). Key insight driving every choice here:
@@ -22,10 +22,11 @@
 # holdout (last ~4 months of train) that mimics the leaderboard setup.
 #
 # Usage:
-#   python claude.py experiments   # run chrono-holdout experiments, print table
-#   python claude.py final         # fit chosen config on all data, write submission
+# python v2.py experiments # run chrono-holdout experiments, print table
+# python v2.py final # fit chosen config on all data, write submission
 #
-# Output: data/Group_27_Submission_02.csv  (Client_ID, Drop_Probability)
+# Output: data/Group_27_Submission.csv (Client_ID, Drop_Probability)
+#
 
 # %%
 import sys
@@ -50,19 +51,38 @@ SEED = 42
 # The categorical columns are deliberately dirty: mixed case, padded
 # whitespace, junk placeholder strings. Normalize everything to a canonical
 # lowercase form and unify known aliases (e.g. `cn` vs `chn` for China).
+#
 
 # %%
 COMMON_NANS = {
-    "", "-", "--", ".", "?", "na", "n/a", "nan", "none", "null",
-    "unknown", "unknonwn",
+    "",
+    "-",
+    "--",
+    ".",
+    "?",
+    "na",
+    "n/a",
+    "nan",
+    "none",
+    "null",
+    "unknown",
+    "unknonwn",
 }
 COUNTRY_ALIASES = {"cn": "chn"}
 
 CAT_COLS = [
-    "Origin_Country", "Catering_Package", "Welcome_Gift_Type",
-    "Requested_Lab_Config", "Assigned_Lab_Config", "Enrollment_Type",
-    "Lanyard_Color", "Client_Category", "Submission_Source",
-    "Payment_Terms", "Agent_ID", "Company_ID",
+    "Origin_Country",
+    "Catering_Package",
+    "Welcome_Gift_Type",
+    "Requested_Lab_Config",
+    "Assigned_Lab_Config",
+    "Enrollment_Type",
+    "Lanyard_Color",
+    "Client_Category",
+    "Submission_Source",
+    "Payment_Terms",
+    "Agent_ID",
+    "Company_ID",
 ]
 
 
@@ -78,7 +98,8 @@ def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
     for col in CAT_COLS:
         s = df[col].astype("string").str.strip().str.lower()
         s = (
-            s.str.replace(r"\band\b", "&", regex=True)
+            s.str
+            .replace(r"\band\b", "&", regex=True)
             .str.replace(r"[^a-z0-9&() .+-]+", "", regex=True)
             .str.replace(r"\s+", " ", regex=True)
             .str.strip()
@@ -101,6 +122,7 @@ def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
 #   train+test combined (no label involved, so no leakage).
 # - Numeric sanity caps for the known corrupted values
 #   (Students_Count=9999, negative Practical_Hours, tuition=5400).
+#
 
 # %%
 def build_features(df: pd.DataFrame, freq_maps: dict) -> pd.DataFrame:
@@ -154,8 +176,8 @@ def build_features(df: pd.DataFrame, freq_maps: dict) -> pd.DataFrame:
 
     # lab config: what matters is the request and whether it was honored
     out["got_requested_lab"] = (
-        (df["Requested_Lab_Config"] == df["Assigned_Lab_Config"]).astype(float)
-    )
+        df["Requested_Lab_Config"] == df["Assigned_Lab_Config"]
+    ).astype(float)
 
     # missingness / presence flags for IDs
     out["has_company_id"] = df["Company_ID"].notna().astype(int)
@@ -163,15 +185,20 @@ def build_features(df: pd.DataFrame, freq_maps: dict) -> pd.DataFrame:
 
     # frequency encodings (train+test combined counts, label-free)
     for col in ("Agent_ID", "Company_ID", "Origin_Country"):
-        out[f"{col}_freq"] = (
-            df[col].map(freq_maps[col]).fillna(0).astype(float)
-        )
+        out[f"{col}_freq"] = df[col].map(freq_maps[col]).fillna(0).astype(float)
 
     # native categoricals for the boosters
     for col in (
-        "Origin_Country", "Catering_Package", "Welcome_Gift_Type",
-        "Requested_Lab_Config", "Enrollment_Type", "Lanyard_Color",
-        "Client_Category", "Submission_Source", "Payment_Terms", "Agent_ID",
+        "Origin_Country",
+        "Catering_Package",
+        "Welcome_Gift_Type",
+        "Requested_Lab_Config",
+        "Enrollment_Type",
+        "Lanyard_Color",
+        "Client_Category",
+        "Submission_Source",
+        "Payment_Terms",
+        "Agent_ID",
     ):
         out[col] = df[col].fillna("missing").astype("category")
 
@@ -203,16 +230,24 @@ def align_categories(train_X: pd.DataFrame, *others: pd.DataFrame):
 # Three gradient boosters with native categorical handling. Moderate depth,
 # enough trees, mild regularization — tuned lightly against the chrono
 # holdout, not against random CV.
+#
 
 # %%
 def get_lgbm(**kw):
     from lightgbm import LGBMClassifier
 
     params = dict(
-        n_estimators=700, learning_rate=0.03, num_leaves=63,
-        min_child_samples=40, subsample=0.9, subsample_freq=1,
-        colsample_bytree=0.8, reg_lambda=1.0,
-        random_state=SEED, n_jobs=-1, verbosity=-1,
+        n_estimators=700,
+        learning_rate=0.03,
+        num_leaves=63,
+        min_child_samples=40,
+        subsample=0.9,
+        subsample_freq=1,
+        colsample_bytree=0.8,
+        reg_lambda=1.0,
+        random_state=SEED,
+        n_jobs=-1,
+        verbosity=-1,
     )
     params.update(kw)
     return LGBMClassifier(**params)
@@ -222,10 +257,18 @@ def get_xgb(**kw):
     from xgboost import XGBClassifier
 
     params = dict(
-        n_estimators=700, learning_rate=0.03, max_depth=6,
-        min_child_weight=5, subsample=0.9, colsample_bytree=0.8,
-        reg_lambda=1.0, enable_categorical=True, tree_method="hist",
-        eval_metric="auc", random_state=SEED, n_jobs=-1,
+        n_estimators=700,
+        learning_rate=0.03,
+        max_depth=6,
+        min_child_weight=5,
+        subsample=0.9,
+        colsample_bytree=0.8,
+        reg_lambda=1.0,
+        enable_categorical=True,
+        tree_method="hist",
+        eval_metric="auc",
+        random_state=SEED,
+        n_jobs=-1,
     )
     params.update(kw)
     return XGBClassifier(**params)
@@ -235,8 +278,12 @@ def get_cat(**kw):
     from catboost import CatBoostClassifier
 
     params = dict(
-        iterations=1200, learning_rate=0.05, depth=6,
-        l2_leaf_reg=3.0, random_seed=SEED, verbose=False,
+        iterations=1200,
+        learning_rate=0.05,
+        depth=6,
+        l2_leaf_reg=3.0,
+        random_seed=SEED,
+        verbose=False,
         eval_metric="AUC",
     )
     params.update(kw)
@@ -246,8 +293,7 @@ def get_cat(**kw):
 def fit_predict(name, X_tr, y_tr, X_va, sample_weight=None):
     if name == "cat":
         cat_idx = [
-            i for i, c in enumerate(X_tr.columns)
-            if str(X_tr[c].dtype) == "category"
+            i for i, c in enumerate(X_tr.columns) if str(X_tr[c].dtype) == "category"
         ]
         X_tr2 = X_tr.copy()
         X_va2 = X_va.copy()
@@ -267,6 +313,7 @@ def fit_predict(name, X_tr, y_tr, X_va, sample_weight=None):
 #
 # Fit on rows before 2017-01-01, validate on 2017 rows (~11.6k). This mirrors
 # "train on the past, score on the future" exactly like the leaderboard.
+#
 
 # %%
 def rank_avg(preds: list[np.ndarray]) -> np.ndarray:
@@ -283,8 +330,10 @@ def run_experiments():
     cutoff = pd.Timestamp(CHRONO_CUTOFF)
     tr_mask = train_raw["Course_Start_Date"] < cutoff
     tr_raw, va_raw = train_raw[tr_mask], train_raw[~tr_mask]
-    print(f"chrono split: fit={len(tr_raw)}  val={len(va_raw)}  "
-          f"val drop rate={va_raw[TARGET].mean():.3f}")
+    print(
+        f"chrono split: fit={len(tr_raw)}  val={len(va_raw)}  "
+        f"val drop rate={va_raw[TARGET].mean():.3f}"
+    )
 
     X_tr = build_features(tr_raw, freq_maps)
     X_va = build_features(va_raw, freq_maps)
@@ -340,8 +389,10 @@ def run_experiments():
     X_var = build_features(va_r, freq_maps)
     align_categories(X_trr, X_var)
     p = fit_predict("lgbm", X_trr, tr_r[TARGET].values, X_var)
-    print(f"{'lgbm random':>12}: AUC = {roc_auc_score(va_r[TARGET].values, p):.4f}"
-          f"   <- optimistic, do not trust")
+    print(
+        f"{'lgbm random':>12}: AUC = {roc_auc_score(va_r[TARGET].values, p):.4f}"
+        f"   <- optimistic, do not trust"
+    )
 
 
 # %% [markdown]
@@ -350,6 +401,7 @@ def run_experiments():
 # Retrain the winning configuration on ALL labeled rows and rank-average the
 # three boosters. Rank averaging preserves AUC ordering while washing out
 # calibration differences between the models.
+#
 
 # %%
 def run_final():
@@ -363,12 +415,8 @@ def run_final():
     # linear time index: validated on the chrono holdout, where it improved
     # every model (future rows land in the most-recent leaf)
     epoch = pd.Timestamp("2015-01-01")
-    X_tr["days_since_epoch"] = (
-        (train_raw["Course_Start_Date"] - epoch).dt.days.values
-    )
-    X_te["days_since_epoch"] = (
-        (test_raw["Course_Start_Date"] - epoch).dt.days.values
-    )
+    X_tr["days_since_epoch"] = (train_raw["Course_Start_Date"] - epoch).dt.days.values
+    X_te["days_since_epoch"] = (test_raw["Course_Start_Date"] - epoch).dt.days.values
 
     align_categories(X_tr, X_te)
     y_tr = train_raw[TARGET].values
