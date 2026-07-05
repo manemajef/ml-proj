@@ -16,6 +16,8 @@ where train ends and runs 4 months on). v1 was tuned on a random split that
 scored 0.944 but didn't reflect that; v2 validates on a chronological future
 window instead. Full story in [`notebook_v2.py`](notebook_v2.py).
 
+<div dir="rtl">
+
 ## תקציר (עברית)
 
 **התובנה המרכזית:** קבוצת הטסט היא ה"עתיד" — נתוני האימון נגמרים באפריל 2017 והטסט מתחיל בדיוק שם וממשיך ארבעה חודשים קדימה. לכן חלוקה אקראית לוולידציה נותנת ציון אופטימי מדי, ואנחנו בודקים מודלים על חלון זמן עתידי במקום.
@@ -42,12 +44,14 @@ window instead. Full story in [`notebook_v2.py`](notebook_v2.py).
 - **[חסר] חלק ה' — סיכום / תקציר מנהלים (5%)**: חסר לגמרי (עד עמוד אחד).
 
 **קבצי הגשה (מגישים כ-ZIP יחיד בשם `Group_27.zip` ל-Moodle):**
+
 - **[קיים]** `Group_27_Submission.csv`
 - **[חלקי]** `Group_27_Notebook.ipynb` — צריך נוטבוק הגשה נקי ומאוחד, עם **מספר הקבוצה + שמות המגישים + ת"ז** בראש, תיעוד מלא, והרצת ה-pipeline על הטסט.
 - **[חסר]** `Group_27_Report.pdf` — עד 10 עמודים, גופן David 12, רווח 1.5, שוליים רגילים, עם מספר קבוצה + שמות + ת"ז בראש.
 
 > **מועד הגשה סופי: 17.7.26 בשעה 23:59.** חריגה מפורמט ההגשה = הורדה של 5 נקודות.
 
+</div>
 
 ## Repository layout
 
