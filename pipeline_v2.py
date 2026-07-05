@@ -11,46 +11,42 @@
 # ---
 
 # %% [markdown]
-# # V2 pipeline — fresh rediscovery of the drop-prediction problem
+# # Pipeline v2 — production pipeline for the drop-probability model
 #
-# Goal: predict `Drop_Probability` for the official test set, beating the
-# previous leaderboard AUC (~0.886). Key insight driving every choice here:
-# the official test window (2017-04-26 .. 2017-08-31) is strictly LATER than
-# the train window (2015-07-01 .. 2017-04-26). Random-split validation gave
-# 0.944 while the leaderboard gave 0.886, so random CV is optimistic under
-# temporal drift. All model selection below therefore uses a CHRONOLOGICAL
-# holdout (last ~4 months of train) that mimics the leaderboard setup.
+# This is the **clean, runnable pipeline** distilled from the v2 exploration in [`notebook_v2.py`](notebook_v2.py). All plots, experiments, and rejected ideas live in that notebook; here we keep only the steps that produce the submission, plus the markdown that explains _why_ each step exists.
+#
+# **The one idea behind every choice:** the official test window (2017-04-26 → 2017-08-31) is strictly _later_ than the training window (2015-07-01 $\to$ 2017-04-26). Random-split CV therefore overstates real performance (it scored 0.944 while the leaderboard gave 0.886). Model and feature selection were done against a **chronological holdout** — see `notebook_v2.py` for the evidence. This file just applies the winners.
+#
+# **Result:** the blend below scored **0.889314 AUC** on the official
+# leaderboard (1st of 32 groups), up from v1's 0.886408.
 #
 # Usage:
-# python v2.py experiments # run chrono-holdout experiments, print table
-# python v2.py final # fit chosen config on all data, write submission
 #
-# Output: data/Group_27_Submission.csv (Client_ID, Drop_Probability)
+# ```bash
+# python pipeline_v2.py # fit on all data, write the submission
+# python pipeline_v2.py --out PATH # write to a custom path instead
+# ```
 #
 
 # %%
-import sys
+import argparse
 import warnings
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score
 
 warnings.filterwarnings("ignore")
 
 TRAIN_PATH = "data/Train_Data.csv"
 TEST_PATH = "data/Test_Data_No_Target.csv"
-SUBMISSION_PATH = "data/Group_27_Submission_02.csv"
+SUBMISSION_PATH = "data/Group_27_Submission.csv"  # the official v2 submission
 TARGET = "Dropped_Course"
-CHRONO_CUTOFF = "2017-01-01"  # val window ~4 months, same length as test window
 SEED = 42
 
 # %% [markdown]
 # ## 1. Cleaning
 #
-# The categorical columns are deliberately dirty: mixed case, padded
-# whitespace, junk placeholder strings. Normalize everything to a canonical
-# lowercase form and unify known aliases (e.g. `cn` vs `chn` for China).
+# The categorical columns are deliberately dirty: mixed case, padded whitespace, junk placeholder strings ("unknown", "-", "n/a", ...). Normalize everything to a canonical lowercase form, map junk to NaN, and unify known aliases (`cn` and `chn` are both China).
 #
 
 # %%
@@ -113,16 +109,21 @@ def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
 # %% [markdown]
 # ## 2. Feature engineering
 #
-# - Date parts: month / day-of-week / week-of-year for seasonality. No raw
-#   date or linear time index by default — trees extrapolate the last leaf,
-#   which is exactly what burned the previous submission (tested below).
-# - Group sizes and ratios, previous-history rates, lab-config match,
-#   missing-ness flags for the ID columns.
-# - Frequency encoding for the high-cardinality IDs, computed on
-#   train+test combined (no label involved, so no leakage).
-# - Numeric sanity caps for the known corrupted values
-#   (Students_Count=9999, negative Practical_Hours, tuition=5400).
+# - **Seasonality**: month / day-of-week / week-of-year from the start date.
+# - **A linear time index** (`days_since_epoch`): counterintuitive but it
+#   _improved_ every model on the future-window holdout — future rows land in
+#   the most-recent leaf, so the model scores them like the latest regime
+#   instead of averaging over 2015-2016. See `notebook_v2.py` for the ablation.
+# - **Composition & ratios**: group size, professional share, hours split,
+#   cost×hours, previous drop rate, per-participant kits/tickets.
+# - **Frequency encoding** for the high-cardinality IDs (Agent/Company/Country),
+#   counted on train+test combined — label-free, so no leakage.
+# - **Sanity caps** for the known corrupted values (Students_Count=9999,
+#   negative Practical_Hours, Daily_Tuition_Cost=5400).
+# - Categoricals are kept as native `category` dtype for the boosters rather
+#   than one-hot encoded.
 #
+
 
 # %%
 def build_features(df: pd.DataFrame, freq_maps: dict) -> pd.DataFrame:
@@ -145,11 +146,12 @@ def build_features(df: pd.DataFrame, freq_maps: dict) -> pd.DataFrame:
     out["Returning_Client"] = df["Returning_Client"]
     out["Daily_Tuition_Cost"] = df["Daily_Tuition_Cost"].clip(upper=600)
 
-    # date parts (seasonality only)
+    # date: seasonality parts + linear time index (validated in notebook_v2)
     d = df["Course_Start_Date"]
     out["start_month"] = d.dt.month
     out["start_dow"] = d.dt.dayofweek
     out["start_week"] = d.dt.isocalendar().week.astype(float)
+    out["days_since_epoch"] = (d - pd.Timestamp("2015-01-01")).dt.days
 
     # group composition
     total = (
@@ -206,6 +208,7 @@ def build_features(df: pd.DataFrame, freq_maps: dict) -> pd.DataFrame:
 
 
 def make_freq_maps(*dfs: pd.DataFrame) -> dict:
+    """Frequency of each ID value across all supplied frames (label-free)."""
     combined = pd.concat([normalize_cats(d) for d in dfs], ignore_index=True)
     return {
         col: combined[col].value_counts(normalize=True)
@@ -214,7 +217,7 @@ def make_freq_maps(*dfs: pd.DataFrame) -> dict:
 
 
 def align_categories(train_X: pd.DataFrame, *others: pd.DataFrame):
-    """Give every frame identical category levels so boosters agree."""
+    """Give every frame identical category levels so the boosters agree."""
     for col in train_X.select_dtypes("category").columns:
         cats = train_X[col].cat.categories
         for o in others:
@@ -227,10 +230,9 @@ def align_categories(train_X: pd.DataFrame, *others: pd.DataFrame):
 # %% [markdown]
 # ## 3. Models
 #
-# Three gradient boosters with native categorical handling. Moderate depth,
-# enough trees, mild regularization — tuned lightly against the chrono
-# holdout, not against random CV.
+# Three gradient boosters with native categorical handling, blended. Hyper-parameters were tuned lightly against the chronological holdout (not random CV). The blend beats every single model on the future window — see `notebook_v2.py`.
 #
+
 
 # %%
 def get_lgbm(**kw):
@@ -291,12 +293,12 @@ def get_cat(**kw):
 
 
 def fit_predict(name, X_tr, y_tr, X_va, sample_weight=None):
+    """Fit one booster by name ('lgbm' | 'xgb' | 'cat') and return P(drop)."""
     if name == "cat":
         cat_idx = [
             i for i, c in enumerate(X_tr.columns) if str(X_tr[c].dtype) == "category"
         ]
-        X_tr2 = X_tr.copy()
-        X_va2 = X_va.copy()
+        X_tr2, X_va2 = X_tr.copy(), X_va.copy()
         for c in X_tr2.columns[cat_idx]:
             X_tr2[c] = X_tr2[c].astype(str)
             X_va2[c] = X_va2[c].astype(str)
@@ -308,138 +310,59 @@ def fit_predict(name, X_tr, y_tr, X_va, sample_weight=None):
     return m.predict_proba(X_va)[:, 1]
 
 
-# %% [markdown]
-# ## 4. Chronological experiments
-#
-# Fit on rows before 2017-01-01, validate on 2017 rows (~11.6k). This mirrors
-# "train on the past, score on the future" exactly like the leaderboard.
-#
-
-# %%
 def rank_avg(preds: list[np.ndarray]) -> np.ndarray:
+    """Average of per-model rank-percentiles. Preserves AUC ordering while
+    ignoring calibration differences between the models."""
     from scipy.stats import rankdata
 
     return np.mean([rankdata(p) / len(p) for p in preds], axis=0)
 
 
-def run_experiments():
-    train_raw = load_raw(TRAIN_PATH)
-    test_raw = load_raw(TEST_PATH)
-    freq_maps = make_freq_maps(train_raw, test_raw)
-
-    cutoff = pd.Timestamp(CHRONO_CUTOFF)
-    tr_mask = train_raw["Course_Start_Date"] < cutoff
-    tr_raw, va_raw = train_raw[tr_mask], train_raw[~tr_mask]
-    print(
-        f"chrono split: fit={len(tr_raw)}  val={len(va_raw)}  "
-        f"val drop rate={va_raw[TARGET].mean():.3f}"
-    )
-
-    X_tr = build_features(tr_raw, freq_maps)
-    X_va = build_features(va_raw, freq_maps)
-    align_categories(X_tr, X_va)
-    y_tr, y_va = tr_raw[TARGET].values, va_raw[TARGET].values
-
-    # recency weights: half-life of 365 days
-    age_days = (tr_raw["Course_Start_Date"].max() - tr_raw["Course_Start_Date"]).dt.days
-    w_recency = np.power(0.5, age_days / 365.0).values
-
-    results = {}
-    for name in ("lgbm", "xgb", "cat"):
-        p = fit_predict(name, X_tr, y_tr, X_va)
-        results[name] = p
-        print(f"{name:>12}: chrono AUC = {roc_auc_score(y_va, p):.4f}")
-
-    p = fit_predict("lgbm", X_tr, y_tr, X_va, sample_weight=w_recency)
-    results["lgbm_recency"] = p
-    print(f"{'lgbm_recency':>12}: chrono AUC = {roc_auc_score(y_va, p):.4f}")
-
-    blend = rank_avg([results["lgbm"], results["xgb"], results["cat"]])
-    print(f"{'blend3':>12}: chrono AUC = {roc_auc_score(y_va, blend):.4f}")
-    blend_w = rank_avg([results["lgbm_recency"], results["xgb"], results["cat"]])
-    print(f"{'blend3_rec':>12}: chrono AUC = {roc_auc_score(y_va, blend_w):.4f}")
-
-    # ablation: does adding a linear time index help or hurt the future window?
-    X_tr2 = X_tr.copy()
-    X_va2 = X_va.copy()
-    epoch = pd.Timestamp("2015-01-01")
-    X_tr2["days_since_epoch"] = (tr_raw["Course_Start_Date"] - epoch).dt.days.values
-    X_va2["days_since_epoch"] = (va_raw["Course_Start_Date"] - epoch).dt.days.values
-    time_preds = {}
-    for name in ("lgbm", "xgb", "cat"):
-        p = fit_predict(name, X_tr2, y_tr, X_va2)
-        time_preds[name] = p
-        print(f"{name + '+time':>12}: chrono AUC = {roc_auc_score(y_va, p):.4f}")
-    blend_t = rank_avg(list(time_preds.values()))
-    print(f"{'blend3+time':>12}: chrono AUC = {roc_auc_score(y_va, blend_t):.4f}")
-
-    # recency weighting on top of the time feature, shorter half-life
-    age2 = (tr_raw["Course_Start_Date"].max() - tr_raw["Course_Start_Date"]).dt.days
-    w180 = np.power(0.5, age2 / 180.0).values
-    p = fit_predict("lgbm", X_tr2, y_tr, X_va2, sample_weight=w180)
-    print(f"{'lgbm+t+w180':>12}: chrono AUC = {roc_auc_score(y_va, p):.4f}")
-
-    # reference: random-split score, to document the optimism gap
-    from sklearn.model_selection import train_test_split
-
-    tr_r, va_r = train_test_split(
-        train_raw, test_size=0.2, random_state=SEED, stratify=train_raw[TARGET]
-    )
-    X_trr = build_features(tr_r, freq_maps)
-    X_var = build_features(va_r, freq_maps)
-    align_categories(X_trr, X_var)
-    p = fit_predict("lgbm", X_trr, tr_r[TARGET].values, X_var)
-    print(
-        f"{'lgbm random':>12}: AUC = {roc_auc_score(va_r[TARGET].values, p):.4f}"
-        f"   <- optimistic, do not trust"
-    )
-
-
 # %% [markdown]
-# ## 5. Final fit and submission
+# ## 4. Fit on all data and write the submission
 #
-# Retrain the winning configuration on ALL labeled rows and rank-average the
-# three boosters. Rank averaging preserves AUC ordering while washing out
-# calibration differences between the models.
+# Retrain all three boosters on every labeled row, rank-average their test predictions, and write the CSV.
 #
+
 
 # %%
-def run_final():
+def run_final(out_path: str = SUBMISSION_PATH) -> pd.DataFrame:
     train_raw = load_raw(TRAIN_PATH)
     test_raw = load_raw(TEST_PATH)
     freq_maps = make_freq_maps(train_raw, test_raw)
 
     X_tr = build_features(train_raw, freq_maps)
     X_te = build_features(test_raw, freq_maps)
-
-    # linear time index: validated on the chrono holdout, where it improved
-    # every model (future rows land in the most-recent leaf)
-    epoch = pd.Timestamp("2015-01-01")
-    X_tr["days_since_epoch"] = (train_raw["Course_Start_Date"] - epoch).dt.days.values
-    X_te["days_since_epoch"] = (test_raw["Course_Start_Date"] - epoch).dt.days.values
-
     align_categories(X_tr, X_te)
     y_tr = train_raw[TARGET].values
 
     preds = []
     for name in ("lgbm", "xgb", "cat"):
-        p = fit_predict(name, X_tr, y_tr, X_te)
-        preds.append(p)
+        preds.append(fit_predict(name, X_tr, y_tr, X_te))
         print(f"fitted {name} on {len(X_tr)} rows")
 
-    blend = rank_avg(preds)
     submission = pd.DataFrame({
         "Client_ID": test_raw["Client_ID"],
-        "Drop_Probability": blend,
+        "Drop_Probability": rank_avg(preds),
     })
-    submission.to_csv(SUBMISSION_PATH, index=False)
-    print(f"wrote {SUBMISSION_PATH}  ({len(submission)} rows)")
+
+    WRITE_CSV = False  # dont ovverride file everytime it runs
+    if not WRITE_CSV:
+        return submission
+    submission.to_csv(out_path, index=False)
+    print(f"wrote {out_path}  ({len(submission)} rows)")
+    return submission
 
 
 # %%
 if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else "experiments"
-    if mode == "experiments":
-        run_experiments()
-    elif mode == "final":
-        run_final()
+    parser = argparse.ArgumentParser(
+        description="Fit the v2 blend and write the submission."
+    )
+    parser.add_argument(
+        "--out",
+        default=SUBMISSION_PATH,
+        help=f"output CSV path (default: {SUBMISSION_PATH})",
+    )
+    args = parser.parse_args()
+    run_final(args.out)

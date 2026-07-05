@@ -14,9 +14,15 @@
 # ---
 
 # %% [markdown]
-# # ML Project Notebook
+# # Notebook v1 — exploration (EDA + first modelling pass)
 #
 # Rotem David Semah
+#
+# This is the original exploration: EDA, missing-value handling, feature ideas,
+# and a first benchmark of Logistic Regression / Random Forest / XGBoost. It is
+# **draft-quality** and kept for the record. The clean, runnable extract lives
+# in [`pipeline_v1.py`](pipeline_v1.py); the follow-up analysis that produced
+# the winning model is in [`notebook_v2.py`](notebook_v2.py).
 #
 
 # %%
@@ -40,7 +46,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 TARGET_NAME = "Dropped_Course"
 TRAIN_PATH = "data/Train_Data.csv"
-TEST_PATH = "data/Train_Data_No_Target.csv"
+TEST_PATH = "data/Test_Data_No_Target.csv"
 
 data = pd.read_csv("data/Train_Data.csv")
 official_test_data = pd.read_csv("data/Test_Data_No_Target.csv")
@@ -1384,6 +1390,7 @@ def apply_feature_eng(df: DF):
 # we've already seen in the EDA that there are some outliers concerns. for now, I would use the simple capping suggested in EDA and test if it helps.
 #
 
+
 # %%
 def find_sus_columns(df, num_cols, max_mult=10):
     sus = []
@@ -1483,6 +1490,7 @@ capped_train = apply_capping(train_df, show_plots=True)
 # ### Final bench mark for part 2
 #
 
+
 # %%
 def apply_preprocessing(df: DF, train_reference: DF) -> DF:
     """ """
@@ -1526,6 +1534,7 @@ benchmark_models(train_df, val_df)
 # %% [markdown]
 # # For Submission mid term
 #
+
 
 # %%
 def fit_predict_proba(
