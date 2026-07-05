@@ -7,7 +7,11 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.3
+#       jupytext_version: 1.19.4
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
 # ---
 
 # %% [markdown]
@@ -30,12 +34,7 @@ from sklearn.model_selection import train_test_split
 
 warnings.filterwarnings("ignore")
 
-try:
-    import matplotlib.pyplot as plt
-
-    HAVE_PLT = True
-except Exception:
-    HAVE_PLT = False
+import matplotlib.pyplot as plt
 
 TRAIN_PATH = "data/Train_Data.csv"
 TEST_PATH = "data/Test_Data_No_Target.csv"
@@ -62,33 +61,37 @@ def load_raw(path: str) -> pd.DataFrame:
 def show_time_ranges():
     train = load_raw(TRAIN_PATH)
     test = load_raw(TEST_PATH)
+
+    train_end = train.Course_Start_Date.max()
+    test_end = test.Course_Start_Date.max()
+
     print(
         f"train dates: {train.Course_Start_Date.min().date()} "
-        f"-> {train.Course_Start_Date.max().date()}  ({len(train)} rows)"
+        f"-> {train_end.date()}  ({len(train)} rows)"
     )
     print(
         f"test  dates: {test.Course_Start_Date.min().date()} "
-        f"-> {test.Course_Start_Date.max().date()}  ({len(test)} rows)"
+        f"-> {test_end.date()}  ({len(test)} rows)"
     )
-    overlap = (train.Course_Start_Date >= test.Course_Start_Date.min()).mean()
-    print(f"train rows falling inside the test window: {overlap:.2%}")
-    print("\ndrop rate by year:")
-    print(train.groupby(train.Course_Start_Date.dt.year)[TARGET].agg(["mean", "size"]))
 
-    if HAVE_PLT:
-        monthly = (
-            train
-            .groupby(train.Course_Start_Date.dt.to_period("M"))[TARGET]
-            .mean()
-            .mul(100)
-        )
-        ax = monthly.plot(marker="o", figsize=(12, 4))
-        ax.axhline(train[TARGET].mean() * 100, ls="--", label="overall")
-        ax.set_ylabel("drop rate (%)")
-        ax.set_title("Drop rate over time (train)")
-        ax.legend()
-        plt.tight_layout()
-        plt.show()
+    monthly = (
+        train.set_index("Course_Start_Date").resample("MS")[TARGET].mean().mul(100)
+    )
+
+    ax = monthly.plot(marker="o", figsize=(12, 4))
+
+    ax.axhline(train[TARGET].mean() * 100, ls="--", label="train average")
+    ax.axvline(train_end, ls="--", label=f"train ends ({train_end.date()})")
+    ax.axvline(test_end, ls=":", label=f"test ends ({test_end.date()})")
+
+    ax.set_xlim(train.Course_Start_Date.min(), test_end)
+
+    ax.set_ylabel("drop rate (%)")
+    ax.set_title("Drop rate over time: train period and hidden test horizon")
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 
 show_time_ranges()
@@ -308,6 +311,45 @@ def align_categories(train_X, *others):
             o[col] = o[col].cat.set_categories(cats)
 
 
+# %% [markdown]
+# ### Dimensionality handling: why v2 avoids one-hot expansion
+#
+# The course requirements ask us to address the curse of dimensionality. The risky place in this dataset is not the numeric columns; it is the categorical identifiers such as `Agent_ID`, `Company_ID`, and `Origin_Country`. A naive one-hot representation would create one dummy column per category, producing a wide sparse matrix.
+#
+# v1 handled this by keeping only frequent categories and collapsing the rest into `other`. That reduces dimensions, but loses identity: many rare-but-different agents/countries become the same value. v2 takes a different route: it keeps categorical variables in native categorical form for tree-boosting models and adds compact frequency features. `Company_ID`, the highest-cardinality identifier, is not kept as a raw categorical feature at all; it is represented through `Company_ID_freq` and `has_company_id`.
+#
+# The cell below compares the dimensionality of v2's native categorical representation to a hypothetical one-hot representation of the same features.
+#
+
+
+# %%
+def dimensionality_report():
+    train_raw = load_raw(TRAIN_PATH)
+    test_raw = load_raw(TEST_PATH)
+    freq_maps = make_freq_maps(train_raw, test_raw)
+
+    X = build_features(train_raw, freq_maps)
+    cat_cols = X.select_dtypes("category").columns
+
+    native_dim = X.shape[1]
+    onehot_dim = X.drop(columns=cat_cols).shape[1] + sum(
+        X[c].nunique(dropna=False) for c in cat_cols
+    )
+
+    print(f"features with native categorical handling: {native_dim}")
+    print(f"estimated dimensions after naive one-hot: {onehot_dim}")
+    print(f"avoided dummy columns: {onehot_dim - native_dim}")
+    print("\ncategory cardinalities:")
+    print(X[cat_cols].nunique(dropna=False).sort_values(ascending=False))
+
+
+dimensionality_report()
+
+# %% [markdown]
+# The point is not that the number of logical features becomes tiny; the point is that the model does not need a sparse dummy column for every category value. This avoids the one-hot dimensionality explosion while preserving more information than a hard top-$k$ collapse. The frequency features provide a compact numerical summary of how common an identifier is, and native categorical splits let the boosting models use category identity without manually expanding it into hundreds of binary variables.
+#
+
+
 # %%
 def fit_predict(name, X_tr, y_tr, X_va, sample_weight=None):
     if name == "lgbm":
@@ -326,7 +368,13 @@ def fit_predict(name, X_tr, y_tr, X_va, sample_weight=None):
             n_jobs=-1,
             verbosity=-1,
         )
-        m.fit(X_tr, y_tr, sample_weight=sample_weight)
+        cat_cols = X_tr.select_dtypes("category").columns.tolist()
+        m.fit(
+            X_tr,
+            y_tr,
+            sample_weight=sample_weight,
+            categorical_feature=cat_cols,
+        )
         return m.predict_proba(X_va)[:, 1]
     if name == "xgb":
         from xgboost import XGBClassifier
@@ -374,6 +422,15 @@ def rank_avg(preds):
     from scipy.stats import rankdata
 
     return np.mean([rankdata(p) / len(p) for p in preds], axis=0)
+
+
+# %% [markdown]
+# ### Why LightGBM and CatBoost were added
+#
+# The course explicitly allows and encourages using tools beyond the lecture material, as long as the modelling decisions are explained. XGBoost, LightGBM, and CatBoost are all gradient-boosted decision-tree models: each builds an ensemble of trees sequentially, where later trees try to correct the mistakes of earlier trees.
+#
+# We used them together for three reasons. First, tabular business data with nonlinear interactions is a strong use case for boosted trees. Second, their native or explicit categorical handling helps avoid a large one-hot-encoded feature matrix. Third, the models have slightly different implementations and inductive biases, so averaging their ranked predictions reduces dependence on one specific model's errors. The final blend was kept only because it improved chronological validation, not because the random split looked good.
+#
 
 
 # %% [markdown]
@@ -434,7 +491,7 @@ def run_experiments():
     align_categories(Xtr, Xvr)
     p = fit_predict("lgbm", Xtr, tr_r[TARGET].values, Xvr)
     print(
-        f"\n{'lgbm random':>14}: {roc_auc_score(va_r[TARGET].values, p):.4f}"
+        f"\n{'random split':>14}: {roc_auc_score(va_r[TARGET].values, p):.4f}"
         f"   <- optimistic, do NOT trust"
     )
 
@@ -532,6 +589,17 @@ def v1_repro_score(tr_raw, va_raw):
         ],
         axis=1,
     )
+
+    # XGBoost rejects feature names containing [, ], or <.
+    # OneHotEncoder can create such names from raw category text, so we sanitize
+    # the reproduced v1 feature names before fitting.
+    safe_cols = [
+        str(c).replace("[", "(").replace("]", ")").replace("<", "lt")
+        for c in Xt.columns
+    ]
+    Xt.columns = safe_cols
+    Xv.columns = safe_cols
+
     m = XGBClassifier(
         n_estimators=300,
         max_depth=5,
@@ -583,6 +651,116 @@ compare_v1_v2()
 #
 # v2 wins on **both** protocols, so the improvement is real and not an artifact of switching metrics. Calibrating against the known leaderboard gap (v1: 0.905 chrono → 0.886 real) suggests v2's ~0.916 chrono maps to roughly 0.89-0.90 on the leaderboard — which is what we saw: **0.889314**.
 #
+# %% [markdown]
+# ## Model interpretation with SHAP
+#
+# The final submission uses a rank-average blend. For interpretation, we analyze
+# one representative model: LightGBM + time. This keeps the explanation clean and
+# matches the requirement to choose one model for deeper analysis.
+#
+
+
+# %%
+def shap_lgbm_importance(k=20, sample_size=2000, force=False):
+    import pickle
+    from pathlib import Path
+
+    import shap
+    from lightgbm import LGBMClassifier
+
+    cache_path = Path("cache/shap_lgbm_chrono.pkl")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if cache_path.exists() and not force:
+        with cache_path.open("rb") as f:
+            result = pickle.load(f)
+    else:
+        train_raw = load_raw(TRAIN_PATH)
+        test_raw = load_raw(TEST_PATH)
+        freq_maps = make_freq_maps(train_raw, test_raw)
+
+        cutoff = pd.Timestamp(CHRONO_CUTOFF)
+        tr_raw = train_raw[train_raw["Course_Start_Date"] < cutoff]
+        va_raw = train_raw[train_raw["Course_Start_Date"] >= cutoff]
+
+        Xtr = build_features(tr_raw, freq_maps, add_time=True)
+        Xva = build_features(va_raw, freq_maps, add_time=True)
+        align_categories(Xtr, Xva)
+
+        model = LGBMClassifier(
+            n_estimators=700,
+            learning_rate=0.03,
+            num_leaves=63,
+            min_child_samples=40,
+            subsample=0.9,
+            subsample_freq=1,
+            colsample_bytree=0.8,
+            reg_lambda=1.0,
+            random_state=SEED,
+            n_jobs=-1,
+            verbosity=-1,
+        )
+
+        cat_cols = Xtr.select_dtypes("category").columns.tolist()
+        model.fit(Xtr, tr_raw[TARGET].values, categorical_feature=cat_cols)
+
+        X_sample = Xva.sample(min(sample_size, len(Xva)), random_state=SEED)
+
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_sample)
+        if isinstance(shap_values, list):
+            shap_values = shap_values[1]
+
+        importance = (
+            pd
+            .DataFrame({
+                "feature": X_sample.columns,
+                "mean_abs_shap": np.abs(shap_values).mean(axis=0),
+            })
+            .sort_values("mean_abs_shap", ascending=False)
+            .reset_index(drop=True)
+        )
+
+        result = {
+            "importance": importance,
+            "sample_size": len(X_sample),
+            "chrono_auc": roc_auc_score(
+                va_raw[TARGET].values,
+                model.predict_proba(Xva)[:, 1],
+            ),
+        }
+
+        with cache_path.open("wb") as f:
+            pickle.dump(result, f)
+
+    print(
+        f"LightGBM+time chrono AUC: {result['chrono_auc']:.4f}; "
+        f"SHAP sample size: {result['sample_size']}"
+    )
+
+    top = result["importance"].head(k)
+    try:
+        display(top)
+    except NameError:
+        print(top.to_string(index=False))
+
+    ax = top.sort_values("mean_abs_shap").plot.barh(
+        x="feature",
+        y="mean_abs_shap",
+        legend=False,
+        figsize=(8, max(4, 0.35 * len(top))),
+    )
+    ax.set_xlabel("mean |SHAP value|")
+    ax.set_ylabel("")
+    ax.set_title(f"Top {k} features by SHAP importance — LightGBM+time")
+    plt.tight_layout()
+    plt.show()
+
+    return result
+
+
+FORCE_RECOMPUTE_SHAP = False
+shap_result = shap_lgbm_importance(k=20, sample_size=2000, force=FORCE_RECOMPUTE_SHAP)
 
 # %% [markdown]
 # ## 7. Conclusions → what `pipeline_v2.py` implements

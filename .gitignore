@@ -12,5 +12,6 @@ Notes/
 archive/trash/
 catboost_info/
 .idea/ 
+cache/
 
 __marimo__/

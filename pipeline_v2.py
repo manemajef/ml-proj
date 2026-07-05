@@ -7,7 +7,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.3
+#       jupytext_version: 1.19.4
 # ---
 
 # %% [markdown]
@@ -23,8 +23,9 @@
 # Usage:
 #
 # ```bash
-# python pipeline_v2.py # fit on all data, write the submission
-# python pipeline_v2.py --out PATH # write to a custom path instead
+# python pipeline_v2.py # fit on all data, dry run only, do not write CSV
+# python pipeline_v2.py --write # write the official submission path
+# python pipeline_v2.py --write --out PATH # write to a custom path instead
 # ```
 #
 
@@ -306,7 +307,16 @@ def fit_predict(name, X_tr, y_tr, X_va, sample_weight=None):
         m.fit(X_tr2, y_tr, sample_weight=sample_weight)
         return m.predict_proba(X_va2)[:, 1]
     m = get_lgbm() if name == "lgbm" else get_xgb()
-    m.fit(X_tr, y_tr, sample_weight=sample_weight)
+    if name == "lgbm":
+        cat_cols = X_tr.select_dtypes("category").columns.tolist()
+        m.fit(
+            X_tr,
+            y_tr,
+            sample_weight=sample_weight,
+            categorical_feature=cat_cols,
+        )
+    else:
+        m.fit(X_tr, y_tr, sample_weight=sample_weight)
     return m.predict_proba(X_va)[:, 1]
 
 
@@ -326,7 +336,7 @@ def rank_avg(preds: list[np.ndarray]) -> np.ndarray:
 
 
 # %%
-def run_final(out_path: str = SUBMISSION_PATH) -> pd.DataFrame:
+def run_final(out_path: str = SUBMISSION_PATH, write: bool = False) -> pd.DataFrame:
     train_raw = load_raw(TRAIN_PATH)
     test_raw = load_raw(TEST_PATH)
     freq_maps = make_freq_maps(train_raw, test_raw)
@@ -346,9 +356,9 @@ def run_final(out_path: str = SUBMISSION_PATH) -> pd.DataFrame:
         "Drop_Probability": rank_avg(preds),
     })
 
-    WRITE_CSV = False  # dont ovverride file everytime it runs
-    if not WRITE_CSV:
+    if not write:
         return submission
+
     submission.to_csv(out_path, index=False)
     print(f"wrote {out_path}  ({len(submission)} rows)")
     return submission
@@ -364,5 +374,15 @@ if __name__ == "__main__":
         default=SUBMISSION_PATH,
         help=f"output CSV path (default: {SUBMISSION_PATH})",
     )
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="write the submission CSV; by default the script only returns predictions",
+    )
     args = parser.parse_args()
-    run_final(args.out)
+    run_final(args.out, write=args.write)
+    if not args.write:
+        print(
+            "dry run complete; CSV was not written. "
+            "Use --write to create/overwrite the submission file."
+        )
