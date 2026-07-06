@@ -14,7 +14,7 @@ Predict the probability that a B2B training-course registration is **cancelled**
 The jump came from one insight: **the test set is the future** (test starts
 where train ends and runs 4 months on). v1 was tuned on a random split that
 scored 0.944 but didn't reflect that; v2 validates on a chronological future
-window instead. Full story in [`notebook_v2.py`](notebook_v2.py).
+window instead. Full story in [`notebook_v2.py`](<notebook_v2.py>).
 
 <div dir="rtl">
 
@@ -24,8 +24,8 @@ window instead. Full story in [`notebook_v2.py`](notebook_v2.py).
 
 **שני הקבצים החשובים (נוטבוקים רגילים):**
 
-- [`pipeline_v2.ipynb`](pipeline_v2.ipynb) — הצינור שמייצר את התחזיות (המודל הסופי).
-- [`notebook_v2.ipynb`](notebook_v2.ipynb) — כל ההסבר וההיגיון מאחורי ההחלטות.
+- [`pipeline_v2.ipynb`](<pipeline_v2.ipynb>) — הצינור שמייצר את התחזיות (המודל הסופי).
+- [`notebook_v2.ipynb`](<notebook_v2.ipynb>) — כל ההסבר וההיגיון מאחורי ההחלטות.
 
 **איך מריצים:**:
 פותחים את ה-Notebook, מוודאים שקבצי הדאטה נמצאים בתיקייה `data/`, ולוחצים Run All. זהו.
@@ -57,7 +57,7 @@ window instead. Full story in [`notebook_v2.py`](notebook_v2.py).
 
 ### TLDR:
 
-**The current last pipeline is written in [pipeline_v2.ipynb](pipeline_v2.ipynb)**. The reasoning is written in [notebook_v2.ipynb](notebook_v2.ipynb)
+**The current last pipeline is written in [pipeline_v2.ipynb](<pipeline_v2.ipynb>)**. The reasoning is written in [notebook_v2.ipynb](<notebook_v2.ipynb>)
 
 > [!NOTE] The code assumes data lives in `data/Train_Data.csv`
 >
@@ -73,10 +73,10 @@ the pipelines.
 
 | File                               | Role                                                                     |
 | ---------------------------------- | ------------------------------------------------------------------------ |
-| [`notebook_v1.py`](notebook_v1.py) | v1 exploration — EDA + first modelling pass (draft-quality)              |
-| [`pipeline_v1.py`](pipeline_v1.py) | v1 pipeline — reproduces the midterm submission (0.886)                  |
-| [`notebook_v2.py`](notebook_v2.py) | v2 exploration — temporal discovery, chrono validation, model comparison |
-| [`pipeline_v2.py`](pipeline_v2.py) | v2 pipeline — the current best; writes the official submission           |
+| [`notebook_v1.py`](<notebook_v1.py>) | v1 exploration — EDA + first modelling pass (draft-quality)              |
+| [`pipeline_v1.py`](<pipeline_v1.py>) | v1 pipeline — reproduces the midterm submission (0.886)                  |
+| [`notebook_v2.py`](<notebook_v2.py>) | v2 exploration — temporal discovery, chrono validation, model comparison |
+| [`pipeline_v2.py`](<pipeline_v2.py>) | v2 pipeline — the current best; writes the official submission           |
 
 Each `.py` is a [jupytext](https://jupytext.readthedocs.io/) _percent_ notebook
 paired with a `.ipynb` of the same name. **Edit the `.py`** (cleaner diffs), then
