@@ -6,15 +6,16 @@ Predict the probability that a B2B training-course registration is **cancelled**
 
 ## Status
 
-| Version          | Approach                                       | Leaderboard AUC          |
-| ---------------- | ---------------------------------------------- | ------------------------ |
-| v1 (midterm)     | Single XGBoost, date dropped, one-hot          | 0.886408                 |
-| **v2 (current)** | LGBM+XGB+CatBoost blend, time-aware validation | **0.889314 — 1st of 32** |
+| Version          | Approach                                                     | Leaderboard AUC          |
+|------------------|--------------------------------------------------------------|--------------------------|
+| v1 (midterm)     | Single XGBoost, date dropped, one-hot                        | 0.886408                 |
+| v2 (Second term) | LGBM+XGB+CatBoost blend, time-aware validation               | **0.889314 — 1st of 32** |
+| **V3(Current)**  | Same as V2. added plots and calcs from [Project_Ron_V3.ipynb](<Project_Ron_V3.ipynb>)  | **0.889314 — 1st of 32** |
 
-The jump came from one insight: **the test set is the future** (test starts
-where train ends and runs 4 months on). v1 was tuned on a random split that
-scored 0.944 but didn't reflect that; v2 validates on a chronological future
-window instead. Full story in [`notebook_v2.py`](<notebook_v2.py>).
+The jump came from one insight: **the test set is the future** (test starts where train ends and runs 4 months on). v1 was tuned on a random split that scored 0.944 but didn't reflect that; v2 validates on a chronological future window instead. Full story in [￼`notebook_v2.ipynb`￼](%3Cnotebook_v2.ipynb%3E).
+
+**Submission notebook:** [`notebook_v3.ipynb`](<notebook_v3.ipynb>) is the clean, unified CRISP-DM write-up for hand-in. It merges the v1 and Ron exploration around the v2 model and covers every graded part (EDA, missing values, feature engineering, outliers, dimensionality, ≥3 model families + tuning, evaluation with confusion matrix, SHAP, executive summary). Run it top to bottom to
+reproduce the result; add the submitters' IDs at the top before zipping.
 
 <div dir="rtl">
 
@@ -22,14 +23,16 @@ window instead. Full story in [`notebook_v2.py`](<notebook_v2.py>).
 
 **התובנה המרכזית:** קבוצת הטסט היא ה"עתיד" — נתוני האימון נגמרים באפריל 2017 והטסט מתחיל בדיוק שם וממשיך ארבעה חודשים קדימה. לכן חלוקה אקראית לוולידציה נותנת ציון אופטימי מדי, ואנחנו בודקים מודלים על חלון זמן עתידי במקום.
 
-**שני הקבצים החשובים (נוטבוקים רגילים):**
 
-- [`pipeline_v2.ipynb`](<pipeline_v2.ipynb>) — הצינור שמייצר את התחזיות (המודל הסופי).
-- [`notebook_v2.ipynb`](<notebook_v2.ipynb>) — כל ההסבר וההיגיון מאחורי ההחלטות.
+**המחברת הכי עדכנית:**  > [`notebook_v3.ipynb`](<notebook_v3.ipynb>) , ניתן לראות את תוצאות המחברת ב- [￼`notebook_v3.md`￼](%3Coutput/notebook_v3.md%3E)
 
-**איך מריצים:**:
-פותחים את ה-Notebook, מוודאים שקבצי הדאטה נמצאים בתיקייה `data/`, ולוחצים Run All. זהו.
 **מה חסר** :
+
+> **עדכון:** [`notebook_v3.ipynb`](<notebook_v3.ipynb>) הוא נוטבוק ההגשה המאוחד
+> שמכסה את כל החלקים הנדרשים (EDA, השלמת חסרים, Feature Engineering, Outliers,
+> קללת המימדיות, 3+ מודלים + tuning, Confusion Matrix ומדדים, SHAP, ותקציר
+> מנהלים). נשאר: למלא ת"ז של המגישים בראש הנוטבוק, ולכתוב את דו"ח ה-PDF
+> (`Group_27_Report.pdf`). הרשימה למטה מתארת את המצב **לפני** v3.
 
 יש לנו כבר קובץ הגשה (CSV) עם AUC של 0.889 — הרבה מעל רף המעבר (0.70). מה שחסר הוא בעיקר ה**תיעוד וההסברים** שהפרויקט נמדד עליהם. לפי החלוקה של ההוראות:
 
@@ -57,7 +60,7 @@ window instead. Full story in [`notebook_v2.py`](<notebook_v2.py>).
 
 ### TLDR:
 
-**The current last pipeline is written in [pipeline_v2.ipynb](<pipeline_v2.ipynb>)**. The reasoning is written in [notebook_v2.ipynb](<notebook_v2.ipynb>)
+**The current last pipeline is written in [pipeline_v2.ipynb](<pipelines/pipeline_v2.ipynb>)**. The reasoning is written in [notebook_v2.ipynb](<notebook_v2.ipynb>)
 
 > [!NOTE] The code assumes data lives in `data/Train_Data.csv`
 >
@@ -74,11 +77,13 @@ the pipelines.
 | File                               | Role                                                                     |
 | ---------------------------------- | ------------------------------------------------------------------------ |
 | [`notebook_v1.py`](<notebook_v1.py>) | v1 exploration — EDA + first modelling pass (draft-quality)              |
-| [`pipeline_v1.py`](<pipeline_v1.py>) | v1 pipeline — reproduces the midterm submission (0.886)                  |
+| [`pipeline_v1.py`](<pipelines/pipeline_v1.py>) | v1 pipeline — reproduces the midterm submission (0.886)                  |
 | [`notebook_v2.py`](<notebook_v2.py>) | v2 exploration — temporal discovery, chrono validation, model comparison |
-| [`pipeline_v2.py`](<pipeline_v2.py>) | v2 pipeline — the current best; writes the official submission           |
+| [`pipeline_v2.py`](<pipelines/pipeline_v2.py>) | v2 pipeline — the current best; writes the official submission           |
+| [`notebook_v3.ipynb`](<notebook_v3.ipynb>) | **submission notebook** — unified CRISP-DM write-up covering every graded part |
 
-Each `.py` is a [jupytext](https://jupytext.readthedocs.io/) _percent_ notebook
+`notebook_v3` has no paired pipeline — it *is* the final deliverable, and the
+runnable model already lives in `pipeline_v2.py`. Each other `.py` is a [jupytext](https://jupytext.readthedocs.io/) _percent_ notebook
 paired with a `.ipynb` of the same name. **Edit the `.py`** (cleaner diffs), then
 `jupytext --sync <file>.py` to refresh the `.ipynb`. Notebooks are better for
 humans; `.py` is better for version control and AI assistance.
@@ -98,10 +103,11 @@ humans; `.py` is better for version control and AI assistance.
 - `LiveCodingSession.*` — lecturer's walkthrough of a similar project.
 - `crisp-dm-lec.*` — CRISP-DM / data-prep lecture.
 
-### Exports — `output/`
+### Exports — `archive/output/`
 
 Readable Markdown renders of notebooks (with plots), produced by
-`save_output.py`.
+`save_output.py`. Moved under `archive/` to keep the project root focused on the
+notebooks and pipelines.
 
 ## Getting started
 
