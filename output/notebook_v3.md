@@ -4,11 +4,11 @@
 
 ---
 
-This is the **merged CRISP-DM analysis notebook** for the project. It tells the story end to end: business understanding → data exploration → cleaning → feature engineering → modelling → evaluation → interpretation → conclusions.
+This is the **current integrated CRISP-DM-style analysis notebook** for the project. It tells the story end to end: business understanding → data exploration → cleaning → feature engineering → modelling → evaluation → interpretation → conclusions.
 
-It combines two exploratory lines of work (`notebook_v1.py` and `Project_Ron_V3.ipynb`) around the selected chronological pipeline, whose clean runnable form lives in `pipeline_v2.py`. Running this notebook top to bottom reproduces the current best submission.
+It combines two exploratory lines of work (`notebook_v1.py` and `Project_Ron_V3.ipynb`) around the selected chronological pipeline, whose clean runnable form lives in `pipelines/pipeline_v2.py`. Running this notebook top to bottom rebuilds the current submission logic.
 
-**The one idea that shaped every decision:** the hidden test set is the **future** — it begins exactly where training ends and runs four months further. So the task is _forecasting_, not interpolating, and any validation that mixes past and future rows (a random split) is measuring the wrong thing. Fixing the validation to respect time, then engineering and blending around it, lifted our leaderboard AUC from the first submission's **0.886** to **0.889314 — 1st of 32 groups**.
+**The one idea that shaped the modelling choices:** the hidden test set is the **future** — it begins exactly where training ends and runs four months further. So the task is _forecasting_, not interpolating, and any validation that mixes past and future rows (a random split) is measuring the wrong thing. Respecting time in validation helped explain the improvement from the first submission's **0.886** leaderboard AUC to the current **0.889314 — 1st of 32 groups**.
 
 
 
@@ -103,13 +103,17 @@ def load_raw(path: str) -> pd.DataFrame:
     return df
 ```
 
+    /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+      from .autonotebook import tqdm as notebook_tqdm
+
+
 # 1. Business understanding
 
 Nova Academy runs paid, in-person B2B technical trainings. Preparing a course is expensive and largely **sunk before it starts** — cloud environments, catering, physical equipment kits, room capacity. When a registered group cancels (`Dropped_Course = 1`), the company loses that spend _and_ the empty seats block other groups from being scheduled.
 
 **Goal.** Given a new registration, predict the **probability** that it will be cancelled, so operations can manage risk (overbook cautiously, follow up with high-risk groups, hold back irreversible spend).
 
-**Why probability, not a hard label.** Operations needs to _rank_ and _size_ risk, not receive a yes/no. The submission is therefore a calibrated-ish score, and the grading metric is **AUC** — a threshold-free measure of how well the score ranks droppers above non-droppers. The passing bar is AUC ≥ 0.70.
+**Why probability-like scores, not hard labels.** Operations needs to _rank_ and _size_ risk, not receive a yes/no. The grading metric is **AUC** — a threshold-free measure of how well a score ranks droppers above non-droppers. The selected CSV uses a rank-average boosted-tree score optimized for this ranking task; threshold diagnostics below use mean model probabilities separately because the rank score is not calibrated. The passing bar is AUC ≥ 0.70.
 
 **CRISP-DM framing.** The rest of the notebook follows the standard cycle: understand the data, prepare it, model, evaluate, and translate results back into business insight.
 
@@ -314,7 +318,7 @@ plt.show()
 
 **Reading the plot.** Training runs `2015-07 → 2017-04`; the test window starts exactly where training ends and continues to `2017-08`, with essentially **zero overlap in time**. The drop rate also **drifts year to year** — it is not a stationary process.
 
-**Consequence.** The real task is "train on the past, predict the future". A random train/validation split leaks future rows into training and produces an _optimistic_ score that does not transfer to the leaderboard. This single fact dictates our validation strategy (Section 6) and even a feature choice (the time index, Section 5). It is the main reason the chronological pipeline beat the first random-split attempt.
+**Consequence.** The real task is "train on the past, predict the future". A random train/validation split leaks future rows into training and produces an _optimistic_ score that does not transfer to the leaderboard. This time structure drives our validation strategy (Section 6) and motivates a feature choice (the time index, Section 5). It likely explains much of the gap between random-split validation and leaderboard behavior, while other feature and model changes also contributed.
 
 
 ## 3.2 Missing values
@@ -561,7 +565,7 @@ plt.show()
 **Findings.**
 
 - **`Payment_Terms` is the single strongest categorical signal.** _Prepaid (non-refundable)_ orders drop far more often than _pay-on-start_ ones.
-  - This is counter-intuitive (why cancel something you can't refund?) and strong enough that we flag it for a leakage check during interpretation (Section 9). We keep it, but watch it.
+  - This is counter-intuitive (why cancel something you can't refund?) and strong enough that we flag it for a leakage plausibility assessment during interpretation (Section 9). We keep it, but watch it.
 - **`Client_Category`**: big-tech / multinational segments drop above average; fintech/banking and industrial/IoT below.
 - **`Submission_Source`**: direct-website and dedicated-sales orders are lower risk than B2B-platform / reseller traffic.
 - **`Enrollment_Type`**: organisational / affiliated arrangements are lower risk than general or one-off contractual admissions.
@@ -691,7 +695,7 @@ plt.show()
     
 
 
-**Reading the heatmap.** No single raw numeric feature correlates strongly with the target — the signal is spread out and largely **non-linear / interaction driven**, which is exactly where gradient-boosted trees shine and where a plain linear model struggles. Inter-feature correlations are mild, so there is no severe multicollinearity forcing us to drop columns; the dimensionality problem lives in the _categoricals_, not here (Section 5.2).
+**Reading the heatmap.** No single raw numeric feature correlates strongly with the target. That is consistent with **non-linear / interaction-driven** signal, which we test later by comparing linear baselines with gradient-boosted trees. Inter-feature correlations are mild, so there is no severe multicollinearity forcing us to drop columns; the dimensionality problem lives in the _categoricals_, not here (Section 5.2).
 
 
 ## 3.6 Numeric drop-rate profiles
@@ -813,7 +817,7 @@ display(suspect_report(test_raw, num_cols))
 
 
 
-The test set introduces **no new kinds** of corruption, so caps learned from domain reasoning on train transfer safely. We also check a logical constraint:
+The test set introduces **no new kinds** of corruption, so caps learned from domain reasoning on train transfer safely. We also inspect the relationship between two historical counters:
 
 
 
@@ -821,14 +825,14 @@ The test set introduces **no new kinds** of corruption, so caps learned from dom
 impossible = train_raw[
     train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]
 ]
-print(f"rows where prev dropouts > prev attended (impossible): {len(impossible)}")
+print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
 ```
 
-    rows where prev dropouts > prev attended (impossible): 4985
+    rows where historical dropouts exceed historical attended: 4985
 
 
 **Decisions and justification.**
-We **clip (winsorize) rather than drop rows**: the _other_ fields in a corrupted row are still valid and informative, and clipping keeps train and test aligned. The table quantifies the affected rows; the figure shows the distribution before and after each cap.
+We **clip (winsorize) rather than drop rows** for fields with clear placeholder or physically impossible values: the _other_ fields in those rows are still valid and informative, and clipping keeps train and test aligned. The 4,985 rows where historical dropouts exceed historical attended are not treated as corruption: these appear to be independent historical counters, not two counts over the same registration set. Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap. The table quantifies the clipped rows; the figure shows the distribution before and after each cap.
 
 
 
@@ -945,7 +949,7 @@ This is a deliberate change from the first modeling attempt, which median-impute
 
 # 5. Feature engineering & dimensionality
 
-Every feature below is justified by the EDA or by domain logic. This is the exact transform that `pipeline_v2.py` applies to produce the submission.
+Every feature below is justified by the EDA or by domain logic. This notebook mirrors the selected feature transform implemented in `pipelines/pipeline_v2.py`.
 
 
 ## 5.1 The engineered features and their rationale
@@ -972,7 +976,7 @@ The curse of dimensionality here comes from the **identifiers**, not the numeric
 
 ```python
 def make_freq_maps(*dfs):
-    """Label-free frequency of each ID value across all frames (no leakage)."""
+    """Label-free frequency of each ID value across the supplied frames."""
     combined = pd.concat([normalize_cats(d) for d in dfs], ignore_index=True)
     return {
         col: combined[col].value_counts(normalize=True)
@@ -988,7 +992,7 @@ def build_features(
 ) -> pd.DataFrame:
     """Cleaning + feature engineering. Identical transform for train and test.
 
-    Mirrors ``pipeline_v2.build_features`` exactly (source of truth)."""
+    Mirrors the selected ``pipelines/pipeline_v2.build_features`` transform."""
     df = normalize_cats(df)
     out = pd.DataFrame(index=df.index)
 
@@ -1200,7 +1204,7 @@ The classifier separates test from train **comfortably above chance**, driven by
 
 ## 6.2 The chronological holdout
 
-We select every model and feature on a **chronological holdout**: fit on rows before `2017-01-01`, validate on the 2017 rows (~4 months, matching the real test window). This reproduces the leaderboard's "train on the past, score the future" setup, so improvements here move in the same direction as the real score.
+We select every model and feature on a **chronological holdout**: fit on rows before `2017-01-01`, validate on the 2017 rows (~4 months, matching the real test window). This mirrors the leaderboard's "train on the past, score the future" setup, so improvements here should move in the same direction as the real score.
 
 
 
@@ -1215,12 +1219,15 @@ print(
     f"(val drop rate={va_raw[TARGET].mean():.3f})"
 )
 
-# feature matrices reused across all experiments below
-Xtr_t = build_features(tr_raw, freq_maps, add_time=True)
-Xva_t = build_features(va_raw, freq_maps, add_time=True)
+# feature matrices reused across all experiments below. For chronological
+# validation, frequency maps are fit only on the past training window. The
+# train+test map above is reserved for submission-time label-free transductive scoring.
+freq_maps_chrono = make_freq_maps(tr_raw)
+Xtr_t = build_features(tr_raw, freq_maps_chrono, add_time=True)
+Xva_t = build_features(va_raw, freq_maps_chrono, add_time=True)
 align_categories(Xtr_t, Xva_t)
-Xtr_n = build_features(tr_raw, freq_maps, add_time=False)
-Xva_n = build_features(va_raw, freq_maps, add_time=False)
+Xtr_n = build_features(tr_raw, freq_maps_chrono, add_time=False)
+Xva_n = build_features(va_raw, freq_maps_chrono, add_time=False)
 align_categories(Xtr_n, Xva_n)
 ```
 
@@ -1369,7 +1376,7 @@ def encode_for_continuous_models(X_tr, X_va, min_count=30):
 
 The assignment asks for tuning for each model. We keep the search compact: one meaningful regularisation/capacity axis per family, always comparing **train AUC** to **chronological validation AUC**. AUC is the project metric, so higher is better. When train AUC keeps rising but validation AUC flattens or falls, that is the bias-variance warning: the model is fitting the training set more tightly without improving out-of-time generalization.
 
-To keep the notebook runnable, the boosted-tree tuning plot uses a reduced boosting budget. The full selected models are evaluated in the next section and used for the final submission.
+To keep the notebook runnable, the boosted-tree tuning plot uses a reduced boosting budget. The full selected models are evaluated in the next section and used for the current submission builder.
 
 
 
@@ -1456,6 +1463,18 @@ for profile_idx, (profile_name, params_by_model) in enumerate(
         pred_train, pred_val = fit_predict_pair(
             model_name, Xtr_t, y_tr, Xva_t, **fit_params
         )
+        tuning_rows.append({
+            "family": {
+                "lgbm": "LightGBM profile",
+                "xgb": "XGBoost profile",
+                "cat": "CatBoost profile",
+            }[model_name],
+            "setting": profile_name,
+            "capacity": profile_idx,
+            "x_label": "capacity profile",
+            "train_AUC": roc_auc_score(y_tr, pred_train),
+            "chrono_AUC": roc_auc_score(y_va, pred_val),
+        })
         train_preds.append(pred_train)
         val_preds.append(pred_val)
     pred_train_blend = rank_avg(train_preds)
@@ -1484,7 +1503,9 @@ display(
     ]
 )
 
-plot_tuning = tuning.melt(
+plot_tuning = tuning[
+    tuning["family"].isin(["Logistic Regression", "MLP", "Boosted-tree blend"])
+].melt(
     id_vars=["family", "setting", "capacity", "x_label"],
     value_vars=["train_AUC", "chrono_AUC"],
     var_name="split",
@@ -1555,18 +1576,27 @@ plt.show()
 
 |   Unnamed: 0 | family              | setting                       |   train_AUC |   chrono_AUC |    gap | best_chrono   |
 |-------------:|:--------------------|:------------------------------|------------:|-------------:|-------:|:--------------|
-|            9 | Boosted-tree blend  | conservative                  |      0.9611 |       0.9129 | 0.0482 | False         |
-|           10 | Boosted-tree blend  | selected                      |      0.971  |       0.9153 | 0.0558 | False         |
-|           11 | Boosted-tree blend  | aggressive                    |      0.9793 |       0.9154 | 0.0639 | True          |
-|            0 | Logistic Regression | C=0.01                        |      0.9239 |       0.8791 | 0.0448 | True          |
-|            1 | Logistic Regression | C=0.1                         |      0.924  |       0.8777 | 0.0463 | False         |
-|            2 | Logistic Regression | C=1                           |      0.9241 |       0.8774 | 0.0467 | False         |
-|            3 | Logistic Regression | C=10                          |      0.9241 |       0.8773 | 0.0468 | False         |
+|           12 | Boosted-tree blend  | conservative                  |      0.9612 |       0.9131 | 0.0481 | False         |
+|           16 | Boosted-tree blend  | selected                      |      0.971  |       0.9148 | 0.0562 | False         |
+|           20 | Boosted-tree blend  | aggressive                    |      0.9793 |       0.9155 | 0.0638 | True          |
+|           11 | CatBoost profile    | conservative                  |      0.9585 |       0.9107 | 0.0479 | False         |
+|           15 | CatBoost profile    | selected                      |      0.9671 |       0.9127 | 0.0544 | False         |
+|           19 | CatBoost profile    | aggressive                    |      0.9727 |       0.9131 | 0.0597 | True          |
+|            9 | LightGBM profile    | conservative                  |      0.9687 |       0.9135 | 0.0552 | False         |
+|           13 | LightGBM profile    | selected                      |      0.9788 |       0.9143 | 0.0645 | False         |
+|           17 | LightGBM profile    | aggressive                    |      0.9897 |       0.9144 | 0.0754 | True          |
+|            0 | Logistic Regression | C=0.01                        |      0.9239 |       0.879  | 0.0448 | True          |
+|            1 | Logistic Regression | C=0.1                         |      0.924  |       0.8776 | 0.0464 | False         |
+|            2 | Logistic Regression | C=1                           |      0.9241 |       0.8773 | 0.0467 | False         |
+|            3 | Logistic Regression | C=10                          |      0.9241 |       0.8772 | 0.0468 | False         |
 |            4 | Logistic Regression | C=100                         |      0.9241 |       0.8773 | 0.0468 | False         |
-|            5 | MLP                 | hidden=(64, 32), alpha=0.1    |      0.9725 |       0.8707 | 0.1018 | False         |
-|            6 | MLP                 | hidden=(64, 32), alpha=0.01   |      0.9773 |       0.8637 | 0.1136 | False         |
-|            7 | MLP                 | hidden=(64, 32), alpha=0.001  |      0.9691 |       0.8722 | 0.0969 | False         |
-|            8 | MLP                 | hidden=(64, 32), alpha=0.0001 |      0.968  |       0.8767 | 0.0913 | True          |
+|            5 | MLP                 | hidden=(64, 32), alpha=0.1    |      0.9645 |       0.8762 | 0.0883 | True          |
+|            6 | MLP                 | hidden=(64, 32), alpha=0.01   |      0.9746 |       0.8668 | 0.1078 | False         |
+|            7 | MLP                 | hidden=(64, 32), alpha=0.001  |      0.9734 |       0.8702 | 0.1032 | False         |
+|            8 | MLP                 | hidden=(64, 32), alpha=0.0001 |      0.9732 |       0.8696 | 0.1036 | False         |
+|           10 | XGBoost profile     | conservative                  |      0.9497 |       0.9081 | 0.0416 | False         |
+|           14 | XGBoost profile     | selected                      |      0.9621 |       0.9119 | 0.0503 | False         |
+|           18 | XGBoost profile     | aggressive                    |      0.9699 |       0.9126 | 0.0573 | True          |
 
 
 
@@ -1577,12 +1607,12 @@ plt.show()
     
 
 
-**Reading the tuning plot.** Logistic Regression is stable but capped by a linear decision surface. MLP is tuned through its L2 penalty (`alpha`): reducing regularisation gives more flexibility, but the validation gain is limited compared with the extra train fit, which is the expected risk for dense models on medium-sized tabular data. The boosted-tree panel tunes the **rank-average blend** itself using conservative, selected, and aggressive capacity profiles across LightGBM, XGBoost, and CatBoost. The reduced-round profile search is for model-selection evidence; the full selected models are scored below. The selected profile keeps moderate tree complexity and regularisation; pushing the family more aggressively mostly widens the generalization gap.
+**Reading the tuning plot and table.** Logistic Regression is stable but capped by a linear decision surface. MLP is tuned through its L2 penalty (`alpha`): reducing regularisation gives more flexibility, but the validation gain is limited compared with the extra train fit, which is the expected risk for dense models on medium-sized tabular data. For the boosted-tree family, the table shows a compact sensitivity check for LightGBM, XGBoost, CatBoost, and their **rank-average blend** across conservative, selected, and aggressive profiles. The reduced-round profile search is for model-selection evidence, not an exhaustive grid. In this shortcut search, the aggressive profile is slightly stronger on the holdout for several boosted-tree rows, while the selected profile keeps more moderate tree complexity and regularisation for the current submission builder.
 
 
 ## 7.3 Tuned family comparison on the chronological holdout
 
-After tuning, we compare the selected settings on the same 2017 holdout. Logistic Regression and MLP use the encoded/scaled matrix; the boosters use native categoricals. The boosted-tree row includes the individual implementations and the final rank-average blend.
+After tuning, we compare the selected settings on the same 2017 holdout. Logistic Regression and MLP use the encoded/scaled matrix; the boosters use native categoricals. The boosted-tree row includes the individual implementations and the selected rank-average blend.
 
 
 
@@ -1609,6 +1639,7 @@ pred_t = {
     name: fit_predict(name, Xtr_t, y_tr, Xva_t) for name in ("lgbm", "xgb", "cat")
 }
 blend_t = rank_avg(list(pred_t.values()))
+blend_prob = np.mean([pred_t[k] for k in pred_t], axis=0)
 
 family_scores = (
     pd
@@ -1619,15 +1650,15 @@ family_scores = (
             "LightGBM",
             "XGBoost",
             "CatBoost",
-            "Blend (LGBM+XGB+Cat)",
+            "Rank-average blend (LGBM+XGB+Cat)",
         ],
         "family": [
             "linear",
             "neural network",
-            "boosting",
-            "boosting",
-            "boosting",
-            "ensemble",
+            "boosted-tree family",
+            "boosted-tree family",
+            "boosted-tree family",
+            "selected rank-average blend",
         ],
         "chrono_AUC": [
             roc_auc_score(y_va, pred_lr),
@@ -1647,19 +1678,19 @@ display(family_scores)
 
 
 
-|   Unnamed: 0 | model                | family         |   chrono_AUC |
-|-------------:|:---------------------|:---------------|-------------:|
-|            0 | Blend (LGBM+XGB+Cat) | ensemble       |     0.915661 |
-|            1 | LightGBM             | boosting       |     0.914305 |
-|            2 | XGBoost              | boosting       |     0.913735 |
-|            3 | CatBoost             | boosting       |     0.91129  |
-|            4 | Logistic Regression  | linear         |     0.877375 |
-|            5 | MLP neural network   | neural network |     0.872201 |
+|   Unnamed: 0 | model                             | family                      |   chrono_AUC |
+|-------------:|:----------------------------------|:----------------------------|-------------:|
+|            0 | Rank-average blend (LGBM+XGB+Cat) | selected rank-average blend |     0.915618 |
+|            1 | XGBoost                           | boosted-tree family         |     0.913536 |
+|            2 | LightGBM                          | boosted-tree family         |     0.913464 |
+|            3 | CatBoost                          | boosted-tree family         |     0.913025 |
+|            4 | Logistic Regression               | linear                      |     0.877344 |
+|            5 | MLP neural network                | neural network              |     0.870219 |
 
 
 
 
-**The tuned boosters dominate the tuned continuous-input baselines**, confirming the EDA's hint that the signal is non-linear, interaction-driven, and tabular. Logistic Regression is a useful linear reference; the MLP shows that a flexible neural model is not automatically better when the signal lives in categorical splits, missingness, and threshold effects. The three boosters score within a whisker of each other but make _different_ errors — so their **rank-average blend edges out every single model**. That blend is our selected model.
+**The tuned boosters dominate the tuned continuous-input baselines**, confirming the EDA's hint that the signal is non-linear, interaction-driven, and tabular. Logistic Regression is a useful linear reference; the MLP shows that a flexible neural model is not automatically better when the signal lives in categorical splits, missingness, and threshold effects. LightGBM, XGBoost, and CatBoost are three implementations of the same gradient-boosted tree family; in this comparison, their **rank-average blend has the best holdout AUC**. That blend is our selected ranking model.
 
 
 ## 7.4 The key ablation: does the linear time index help?
@@ -1709,9 +1740,9 @@ display(ablation)
 
 |   Unnamed: 0 | configuration                                     |      AUC | validation   |
 |-------------:|:--------------------------------------------------|---------:|:-------------|
-|            0 | LightGBM, no time index                           | 0.910559 | chrono       |
-|            1 | LightGBM, + time index                            | 0.914305 | chrono       |
-|            2 | LightGBM + recency weights (rejected)             | 0.913381 | chrono       |
+|            0 | LightGBM, no time index                           | 0.911242 | chrono       |
+|            1 | LightGBM, + time index                            | 0.913464 | chrono       |
+|            2 | LightGBM + recency weights (rejected)             | 0.91223  | chrono       |
 |            3 | LightGBM, random split (optimistic — do NOT tr... | 0.963738 | random       |
 
 
@@ -1722,27 +1753,28 @@ display(ablation)
 - Adding the **time index improves LightGBM on the future holdout** — the
   counter-intuitive win. It only shows up _because_ we validate on the future; a
   random split would have hidden (or reversed) it.
-- **Recency weighting is rejected**: the time index already captures the trend,
-  so re-weighting adds nothing.
+- **This recency weighting setting is rejected**: a 1-year half-life on
+  LightGBM did not help beyond the time index. Other decay rates were not
+  explored in this compact notebook.
 - The **random split scores far higher (~0.96)** than any honest chrono number —
   exactly the trap the first attempt fell into (random CV 0.944 → leaderboard 0.886). We ignore
   it.
 
 ### First attempt vs selected pipeline, on the same footing
 
-Scored on identical splits, the selected pipeline beats the first approach (date dropped, top-$k$ collapse, one-hot, single XGBoost) on **both** protocols — so the gain is real, not an artefact of changing metrics:
+In prior notebook/pipeline experiments on identical splits, the selected pipeline beat the first approach (date dropped, top-$k$ collapse, one-hot, single XGBoost) on **both** protocols — so the gain was not just an artefact of changing metrics:
 
 | Pipeline                                            | Random 80/20 | Chrono holdout |
 | --------------------------------------------------- | ------------ | -------------- |
 | First attempt (drop date, one-hot, single XGB)      | ≈ 0.940      | ≈ 0.905        |
 | **Selected chronological pipeline (this notebook)** | ≈ 0.962      | **≈ 0.916**    |
 
-Calibrating against the known first-attempt gap (0.905 chrono → 0.886 real) maps the selected pipeline's ~0.916 to roughly **0.89 on the leaderboard — which is what we scored (0.889314, 1st of 32).**
+Comparing against the known first-attempt gap (0.905 chrono → 0.886 real) suggested the selected pipeline's ~0.916 chrono score should land near **0.89 on the leaderboard**, consistent with the scored file's **0.889314**.
 
 
 # 8. Model evaluation
 
-AUC is the competition metric, but operations act on a **threshold**. We evaluate the chosen blend on the chronological holdout with the full confusion-matrix family of metrics, plus ROC and precision–recall curves.
+AUC is the competition metric, but operations act on a **threshold**. We evaluate the chosen blend on the chronological holdout with ROC and precision–recall curves. For confusion-matrix diagnostics, we use the mean boosted-tree probability (`blend_prob`), because the submitted rank-average score (`blend_t`) is optimized for ranking and is not calibrated.
 
 
 ## 8.1 ROC & precision–recall curves
@@ -1757,7 +1789,7 @@ for pred, name in [
     (pred_t["lgbm"], "LightGBM"),
     (pred_t["xgb"], "XGBoost"),
     (pred_t["cat"], "CatBoost"),
-    (blend_t, "Blend (final)"),
+    (blend_t, "Rank-average blend (selected)"),
 ]:
     fpr, tpr, _ = roc_curve(y_va, pred)
     axes[0].plot(
@@ -1791,17 +1823,17 @@ plt.show()
     
 
 
-The blend's ROC curve sits on or above every individual model across the range, which is why it wins on AUC.
+The blend has the best holdout AUC in this comparison, so it is the selected ranking score.
 
 
 ## 8.2 Confusion matrix & threshold metrics
 
-At the default 0.5 threshold we turn the blend's scores into hard decisions and read off the operational metrics.
+At the default 0.5 threshold we turn the mean boosted-tree probabilities into hard decisions and read off the operational metrics. This is a diagnostic threshold, not the submitted rank-average score.
 
 
 
 ```python
-y_hat = (blend_t >= 0.5).astype(int)
+y_hat = (blend_prob >= 0.5).astype(int)
 cm = confusion_matrix(y_va, y_hat)
 
 fig, ax = plt.subplots(figsize=(5, 4))
@@ -1815,14 +1847,15 @@ sns.heatmap(
     yticklabels=["true completed", "true dropped"],
     ax=ax,
 )
-ax.set_title("Confusion matrix — blend @ 0.5 (chrono holdout)")
+ax.set_title("Confusion matrix — mean booster probability @ 0.5")
 plt.tight_layout()
 plt.show()
 
 print(
     classification_report(y_va, y_hat, target_names=["completed", "dropped"], digits=3)
 )
-print(f"AUC (threshold-free): {roc_auc_score(y_va, blend_t):.4f}")
+print(f"AUC of selected rank-average score: {roc_auc_score(y_va, blend_t):.4f}")
+print(f"AUC of mean booster probability: {roc_auc_score(y_va, blend_prob):.4f}")
 ```
 
 
@@ -1833,14 +1866,15 @@ print(f"AUC (threshold-free): {roc_auc_score(y_va, blend_t):.4f}")
 
                   precision    recall  f1-score   support
     
-       completed      0.888     0.769     0.825      6754
-         dropped      0.731     0.866     0.793      4888
+       completed      0.862     0.826     0.844      6754
+         dropped      0.773     0.817     0.794      4888
     
-        accuracy                          0.810     11642
-       macro avg      0.810     0.818     0.809     11642
-    weighted avg      0.822     0.810     0.811     11642
+        accuracy                          0.822     11642
+       macro avg      0.817     0.822     0.819     11642
+    weighted avg      0.825     0.822     0.823     11642
     
-    AUC (threshold-free): 0.9157
+    AUC of selected rank-average score: 0.9156
+    AUC of mean booster probability: 0.9156
 
 
 **What each metric means here.**
@@ -1851,27 +1885,27 @@ print(f"AUC (threshold-free): {roc_auc_score(y_va, blend_t):.4f}")
   Low recall ⇒ we get blindsided by cancellations.
 - **Accuracy / F1** — overall correctness; useful but threshold-dependent.
 
-Because operations can trade these off by moving the threshold (and the grade is AUC), we submit **probabilities, not hard labels**, and let the business pick the cut point that matches the cost of a missed cancellation vs a false alarm.
+Because operations can trade these off by moving the threshold (and the grade is AUC), we submit a continuous risk score, not hard labels. If the business needs the score to read as a true probability, a separate calibration step should be added.
 
 
 ## 8.3 Where is the model unsure?
 
-The distribution of predicted probabilities shows how _confident_ the model is and how many borderline cases it produces.
+The distribution of mean boosted-tree probabilities shows how many borderline cases the representative probability diagnostic produces.
 
 
 
 ```python
 plt.figure(figsize=(9, 4.5))
-sns.histplot(blend_t, bins=50, kde=True, color="teal")
+sns.histplot(blend_prob, bins=50, kde=True, color="teal")
 plt.axvline(0.5, color="red", ls="--", label="decision boundary")
 plt.axvspan(0.40, 0.60, color="orange", alpha=0.2, label="low-confidence zone")
-plt.xlabel("predicted P(drop)")
-plt.title("Prediction confidence — final blend (chrono holdout)")
+plt.xlabel("mean predicted P(drop)")
+plt.title("Prediction diagnostic — mean boosted-tree probability")
 plt.legend()
 plt.tight_layout()
 plt.show()
 
-uncertain = ((blend_t > 0.40) & (blend_t < 0.60)).mean() * 100
+uncertain = ((blend_prob > 0.40) & (blend_prob < 0.60)).mean() * 100
 print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}%")
 ```
 
@@ -1881,15 +1915,15 @@ print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}
     
 
 
-    share of holdout in the 0.40–0.60 low-confidence zone: 20.3%
+    share of holdout in the 0.40–0.60 low-confidence zone: 10.5%
 
 
-The scores are well spread toward the extremes (the model is decisive on most orders), with a minority of genuinely ambiguous cases in the 0.4–0.6 band. We dig into _why_ individual cases land there using SHAP next.
+The probability diagnostic is separate from the submitted rank score. Cases in the 0.4–0.6 band are useful examples of orders where the representative models are less separated. We dig into _why_ one such case lands there using SHAP next.
 
 
 # 9. Interpretation with SHAP
 
-For interpretation we analyse **one** representative model — **LightGBM+time** — as the assignment requires. This interpretability direction comes from the parallel exploratory notebook and is kept here in a cleaner, PDF-safe form. SHAP (SHapley Additive exPlanations) attributes each prediction to its features via a game-theoretic allocation, giving both global importance and per-observation explanations.
+For interpretation we analyse **one** representative model — **LightGBM+time** — as the assignment requires. This is not SHAP for the selected rank-average blend: it uses a fixed sample of up to 2,000 chronological-validation rows from one representative LightGBM model. SHAP (SHapley Additive exPlanations) attributes each prediction to its features via a game-theoretic allocation, giving both global importance and per-observation explanations.
 
 
 
@@ -1924,7 +1958,7 @@ if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
     shap_values = shap_values[:, :, 1]
 ```
 
-    LightGBM+time chrono AUC: 0.9143
+    LightGBM+time chrono AUC: 0.9135
 
 
 ## 9.1 Global importance (beeswarm + bar)
@@ -1974,35 +2008,70 @@ display(top)
 
 |   Unnamed: 0 | feature                     |   mean_abs_shap |
 |-------------:|:----------------------------|----------------:|
-|            0 | Payment_Terms               |        1.79596  |
-|            1 | Origin_Country              |        0.817795 |
-|            2 | Agent_ID                    |        0.614655 |
-|            3 | days_since_epoch            |        0.549641 |
-|            4 | tickets_per_participant     |        0.405572 |
-|            5 | Registration_Days_Before    |        0.340751 |
-|            6 | prev_drop_rate              |        0.264592 |
-|            7 | Origin_Country_freq         |        0.254313 |
-|            8 | Enrollment_Type             |        0.251744 |
-|            9 | Client_Category             |        0.222782 |
-|           10 | got_requested_lab           |        0.218971 |
-|           11 | Pre_Course_Supports_Tickets |        0.168922 |
-|           12 | Physical_Course_Kits        |        0.164371 |
-|           13 | Agent_ID_freq               |        0.163966 |
-|           14 | Registration_Changes        |        0.1288   |
-|           15 | Daily_Tuition_Cost          |        0.087879 |
-|           16 | start_week                  |        0.087614 |
-|           17 | cost_x_days                 |        0.074776 |
-|           18 | Prev_Course_Dropouts        |        0.074337 |
-|           19 | kits_per_participant        |        0.048645 |
+|            0 | Payment_Terms               |        1.8385   |
+|            1 | Origin_Country              |        0.830426 |
+|            2 | Agent_ID                    |        0.619574 |
+|            3 | days_since_epoch            |        0.517341 |
+|            4 | tickets_per_participant     |        0.38972  |
+|            5 | Registration_Days_Before    |        0.333383 |
+|            6 | prev_drop_rate              |        0.262812 |
+|            7 | Origin_Country_freq         |        0.262718 |
+|            8 | Enrollment_Type             |        0.253015 |
+|            9 | Client_Category             |        0.231775 |
+|           10 | got_requested_lab           |        0.221456 |
+|           11 | Pre_Course_Supports_Tickets |        0.174588 |
+|           12 | Physical_Course_Kits        |        0.167875 |
+|           13 | Agent_ID_freq               |        0.134112 |
+|           14 | Registration_Changes        |        0.131967 |
+|           15 | Daily_Tuition_Cost          |        0.084264 |
+|           16 | cost_x_days                 |        0.076468 |
+|           17 | Prev_Course_Dropouts        |        0.073362 |
+|           18 | start_week                  |        0.067339 |
+|           19 | kits_per_participant        |        0.042859 |
 
 
 
 
-**Reading the SHAP importance.** The drivers line up with the EDA: `Payment_Terms`, the **time index** (`days_since_epoch`) and seasonality, the **frequency-encoded IDs** (`Agent_ID_freq`, `Company_ID_freq`), registration timing, and the engineered **history/ratio** features. The prominence of the time index confirms Section 7.3: the model genuinely leans on _when_ an order occurs to score the future correctly.
+**Reading the SHAP importance.** The drivers line up with the EDA: `Payment_Terms`, the **time index** (`days_since_epoch`) and seasonality, the **frequency-encoded IDs** (`Agent_ID_freq`, `Company_ID_freq`), registration timing, and the engineered **history/ratio** features. The prominence of the time index is consistent with the representative LightGBM ablation in Section 7.4: this representative model uses _when_ an order occurs to score the future window.
 
-### The `Payment_Terms` leakage check
+### The `Payment_Terms` leakage plausibility assessment
 
-EDA flagged prepaid-non-refundable as suspiciously strong. SHAP confirms it is influential but **not a lone dominator** — the model spreads its weight across many features. That, plus the fact that payment terms are set _at registration_ (before any cancellation), argues it is a genuine early risk signal (buyer's remorse / procurement friction) rather than a post-hoc label leak. We keep it but would confirm with the data owner before productionising.
+EDA flagged prepaid-non-refundable as suspiciously strong. SHAP confirms it is influential, but SHAP importance alone cannot prove absence of leakage. We therefore run one small sensitivity check: refit representative LightGBM without `Payment_Terms` and compare chronological AUC.
+
+
+
+```python
+pred_lgbm_no_payment = fit_predict(
+    "lgbm",
+    Xtr_t.drop(columns=["Payment_Terms"]),
+    y_tr,
+    Xva_t.drop(columns=["Payment_Terms"]),
+)
+payment_check = pd.DataFrame({
+    "model": ["LightGBM + time", "LightGBM + time, no Payment_Terms"],
+    "chrono_AUC": [
+        roc_auc_score(y_va, pred_t["lgbm"]),
+        roc_auc_score(y_va, pred_lgbm_no_payment),
+    ],
+})
+payment_check["delta_vs_with_payment"] = (
+    payment_check["chrono_AUC"] - payment_check.loc[0, "chrono_AUC"]
+)
+display(payment_check)
+```
+
+
+
+
+|   Unnamed: 0 | model                             |   chrono_AUC |   delta_vs_with_payment |
+|-------------:|:----------------------------------|-------------:|------------------------:|
+|            0 | LightGBM + time                   |     0.913464 |                0        |
+|            1 | LightGBM + time, no Payment_Terms |     0.906128 |               -0.007336 |
+
+
+
+
+The feature remains useful in this representative check, but that is still not a data-lineage proof. The working assumption is that payment terms are set _at registration_ (before cancellation), making them a plausible early risk signal rather than a post-hoc label leak. Before production use, the timing should be confirmed with the data owner.
 
 
 ## 9.2 Dependence view for the top signal
@@ -2073,13 +2142,13 @@ except Exception as e:
 
 
     
-![png](<notebook_v3_files/notebook_v3_81_0.png>)
+![png](<notebook_v3_files/notebook_v3_83_0.png>)
     
 
 
 ## 9.3 Explaining a single low-confidence order
 
-To answer "_how_ does the model handle uncertain observations?", we pick a borderline case (P(drop) ≈ 0.5) and decompose its prediction. The waterfall shows which features pushed the score up vs down — for ambiguous orders these forces roughly cancel.
+To answer "_how_ does the model handle uncertain observations?", we pick one illustrative LightGBM sample case near P(drop) ≈ 0.5 and decompose its prediction. The waterfall shows which features pushed the score up vs down.
 
 
 
@@ -2105,21 +2174,21 @@ plt.tight_layout()
 plt.show()
 ```
 
-    explaining order at sample position 36 — model P(drop)=0.504
+    explaining order at sample position 10 — model P(drop)=0.476
 
 
 
     
-![png](<notebook_v3_files/notebook_v3_83_1.png>)
+![png](<notebook_v3_files/notebook_v3_85_1.png>)
     
 
 
-For this borderline order the positive and negative contributions nearly balance — which is exactly why the model is unsure. Operationally these are the orders where a human follow-up adds the most value, since the model is honestly signalling "could go either way".
+For this illustrative borderline order, the positive and negative contributions nearly balance in the representative LightGBM model. Operationally, cases like this are natural candidates for human follow-up because the model score is near the decision boundary.
 
 
-# 10. Final model & submission
+# 10. Current submission model & CSV builder
 
-We refit all three boosters on **every** labelled row (train has no future to leak against once we are producing the final scores), rank-average their test predictions, and write the submission CSV. This is exactly `pipeline_v2.py`.
+We refit all three boosters on **every** labelled row, build label-free frequency maps from train+test covariates for the submission scoring transform, rank-average their test predictions, and optionally write the submission CSV. This mirrors `pipelines/pipeline_v2.py`. The train+test frequency maps are a transductive shortcut: they use no target labels, but they do use test covariate frequencies.
 
 
 
@@ -2151,6 +2220,40 @@ def build_submission(out_path="data/Group_27_Submission_v3.csv", write=False):
 submission = build_submission(write=False)
 display(submission.head())
 print(submission["Drop_Probability"].describe())
+
+scored_path = Path("data/Group_27_Submission.csv")
+if scored_path.exists():
+    scored_submission = pd.read_csv(scored_path)
+    comparison = scored_submission.merge(
+        submission,
+        on="Client_ID",
+        suffixes=("_scored_file", "_rebuilt"),
+        validate="one_to_one",
+    )
+    diff = (
+        comparison["Drop_Probability_scored_file"]
+        - comparison["Drop_Probability_rebuilt"]
+    ).abs()
+    submission_match = pd.DataFrame({
+        "rows_compared": [len(comparison)],
+        "max_abs_diff": [diff.max()],
+        "mean_abs_diff": [diff.mean()],
+        "spearman_corr": [
+            comparison["Drop_Probability_scored_file"].corr(
+                comparison["Drop_Probability_rebuilt"], method="spearman"
+            )
+        ],
+    })
+    display(submission_match)
+    if diff.max() < 1e-12:
+        print("rebuilt predictions match the scored file exactly.")
+    else:
+        print(
+            "rebuilt predictions are not byte-identical to the scored file; "
+            "use the stored scored CSV as the official leaderboard record."
+        )
+else:
+    print(f"{scored_path} not found; skipped scored-file comparison.")
 ```
 
     fitted lgbm on 63,464 rows
@@ -2183,18 +2286,31 @@ print(submission["Drop_Probability"].describe())
     Name: Drop_Probability, dtype: float64
 
 
-The output has the required schema (`Client_ID`, `Drop_Probability`), one row per test order, with probabilities spread across `[0, 1]`. It matches the officially-scored file (`data/Group_27_Submission.csv`) that placed **1st of 32** at **AUC 0.889314**.
 
 
-# 11. Conclusions — executive summary
+
+|   Unnamed: 0 |   rows_compared |   max_abs_diff |   mean_abs_diff |   spearman_corr |
+|-------------:|----------------:|---------------:|----------------:|----------------:|
+|            0 |           15866 |       0.096202 |        0.011032 |        0.998639 |
+
+
+
+
+    rebuilt predictions are not byte-identical to the scored file; use the stored scored CSV as the official leaderboard record.
+
+
+The output has the required schema (`Client_ID`, `Drop_Probability`), one row per test order, with rank-average risk scores spread across `[0, 1]`. When the local officially scored file is available, the comparison table above verifies whether this notebook's rebuilt current logic matches it exactly or only approximately. If the max difference is non-zero, the stored scored CSV remains the source of truth for the reported leaderboard result.
+
+
+# 11. Current conclusions — executive summary
 
 **The problem.** Predict the probability a B2B course registration is cancelled, so Nova Academy can stop sinking cost into orders that will fall through.
 
-**The process.** A full CRISP-DM pass: EDA → cleaning → feature engineering → chronologically-validated modelling → evaluation → SHAP interpretation.
+**The process.** A CRISP-DM-style pass: EDA → cleaning → feature engineering → chronologically-validated modelling → evaluation → SHAP interpretation.
 
 **The central discovery.** _The test set is the future._ Train ends where test begins, and the drop rate drifts over time (confirmed by adversarial validation, AUC ≫ 0.5). This reframed the task as forecasting and made a
 
-**chronological holdout** — not a random split — the only trustworthy yardstick. It is the single biggest reason our score rose.
+**chronological holdout** — not a random split — the yardstick used for model decisions. It helped reveal why changes that look small in random CV matter for the future-window test.
 
 **What worked.**
 
@@ -2205,14 +2321,15 @@ The output has the required schema (`Client_ID`, `Drop_Probability`), one row pe
 3. **Domain-driven features** — composition/ratio/history features and, counter
    to intuition, a **linear time index** that lets trees score future rows in
    the latest regime.
-4. **A rank-average blend** of LightGBM + XGBoost + CatBoost, which beat every
-   single model on the future holdout.
+4. **A rank-average blend** of LightGBM + XGBoost + CatBoost, three
+   implementations of one gradient-boosted tree family, which had the best
+   holdout AUC in this comparison.
 
 **Key findings for the business.** The strongest, actionable drivers are payment
 terms (prepaid-non-refundable is high-risk — worth a process review), the registration channel and enrolment type, agent/company identity and the presence of a company id, how early the group registered, and pre-course engagement (support tickets ⇒ commitment).
 
-**Result.** Leaderboard **AUC 0.889314 — 1st of 32 groups**, far above the 0.70
-bar.
+**Current scored result.** The locally available scored CSV is associated with
+leaderboard **AUC 0.889314 — 1st of 32 groups**, far above the 0.70 bar.
 
 **Ways to push further (not yet implemented).**
 

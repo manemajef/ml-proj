@@ -1,145 +1,227 @@
-# ML Course Project — B2B Course-Drop Prediction (TAU)
+# Group 27 - Course-Drop Prediction
 
-Predict the probability that a B2B training-course registration is **cancelled**
-(`Dropped_Course`). Scored by **AUC**. The submission is a CSV of
-`Client_ID, Drop_Probability` for the official test set.
+TAU Intro to Machine Learning final project: predict the probability that a Nova
+Academy B2B course registration will be cancelled (`Dropped_Course`).
 
-## Status
+**Deadline:** 17.7.26 at 23:59.  
+**Best scored submission:** [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>), produced by
+[`pipelines/pipeline_v2.py`](<pipelines/pipeline_v2.py>), with documented leaderboard AUC `0.889314`
+(1st of 32).  
+**Current notebook/report direction:** [`notebook_v3.ipynb`](<notebook_v3.ipynb>) is the integrated
+draft. It is the right direction to review next, but it is not final or
+submission-ready yet.
 
-| Version          | Approach                                                     | Leaderboard AUC          |
-|------------------|--------------------------------------------------------------|--------------------------|
-| v1 (midterm)     | Single XGBoost, date dropped, one-hot                        | 0.886408                 |
-| v2 (Second term) | LGBM+XGB+CatBoost blend, time-aware validation               | **0.889314 — 1st of 32** |
-| **V3(Current)**  | Same as V2. added plots and calcs from [Project_Ron_V3.ipynb](<Project_Ron_V3.ipynb>)  | **0.889314 — 1st of 32** |
+Open these first:
 
-The jump came from one insight: **the test set is the future** (test starts where train ends and runs 4 months on). v1 was tuned on a random split that scored 0.944 but didn't reflect that; v2 validates on a chronological future window instead. Full story in [￼`notebook_v2.ipynb`￼](%3Cnotebook_v2.ipynb%3E).
+- [`output/notebook_v3.md`](<output/notebook_v3.md>) - rendered draft with outputs; fastest review path.
+- [`notebook_v3.ipynb`](<notebook_v3.ipynb>) - current integrated draft notebook.
+- [`References/instructions.md`](<References/instructions.md>) - assignment requirements and grading source of
+  truth.
 
-**Submission notebook:** [`notebook_v3.ipynb`](<notebook_v3.ipynb>) is the clean, unified CRISP-DM write-up for hand-in. It merges the v1 and Ron exploration around the v2 model and covers every graded part (EDA, missing values, feature engineering, outliers, dimensionality, ≥3 model families + tuning, evaluation with confusion matrix, SHAP, executive summary). Run it top to bottom to
-reproduce the result; add the submitters' IDs at the top before zipping.
+If [`notebook_v3.ipynb`](<notebook_v3.ipynb>) changes, refresh [`output/notebook_v3.md`](<output/notebook_v3.md>) before treating
+the Markdown as current.
 
-<div dir="rtl">
+# סטטוס לרון - רשימת עבודה
 
-## תקציר (עברית)
+המטרה כרגע: להשתמש ב-[`notebook_v3.ipynb`](<notebook_v3.ipynb>) כבסיס למחברת ולדו"ח, בלי לשבור את ההגשה
+המנוקדת שכבר קיימת מ-[`pipeline_v2.py`](<pipelines/pipeline_v2.py>).
 
-**התובנה המרכזית:** קבוצת הטסט היא ה"עתיד" — נתוני האימון נגמרים באפריל 2017 והטסט מתחיל בדיוק שם וממשיך ארבעה חודשים קדימה. לכן חלוקה אקראית לוולידציה נותנת ציון אופטימי מדי, ואנחנו בודקים מודלים על חלון זמן עתידי במקום.
+## כבר עשינו / די יציב
 
+- יש CSV מנוקד: [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>).
+- יש pipeline שמייצר את המודל המנוקד: [`pipelines/pipeline_v2.py`](<pipelines/pipeline_v2.py>).
+- הכיוון המרכזי ברור: הטסט הוא חלון זמן עתידי, ולכן ולידציה כרונולוגית עדיפה
+  על פיצול אקראי.
+- [`notebook_v3.ipynb`](<notebook_v3.ipynb>) כבר מרכז את רוב הסיפור במקום אחד: EDA, ניקוי, פיצ'רים,
+  מודלים, הערכה, SHAP וסיכום.
+- Step 3 במחברת תוקן בכיוון הנכון, אבל זה עדיין לא אומר שכל דרישות העבודה
+  סגורות.
 
-**המחברת הכי עדכנית:**  > [`notebook_v3.ipynb`](<notebook_v3.ipynb>) , ניתן לראות את תוצאות המחברת ב- [￼`notebook_v3.md`￼](%3Coutput/notebook_v3.md%3E)
+## חומר שכבר אפשר להכניס לדו"ח
 
-**מה חסר** :
+- סיפור הבעיה העסקית: ביטולי קורסים גורמים להפסד תפעולי וכספי, ולכן צריך
+  דירוג סיכון/הסתברות ביטול.
+- ההחלטה לעבוד עם AUC ועם score רציף, לא רק החלטת 0/1.
+- התובנה שהטסט הוא העתיד: התאריכים ב-test מתחילים איפה שה-train נגמר, ולכן
+  random 80/20 split נותן AUC אופטימי מדי.
+- גם בלי להסתכל על ה-label, train ו-test לא נראים כמו אותה התפלגות: מודל
+  adversarial מצליח לזהות אם שורה הגיעה מ-train או test עם AUC בערך `0.935`.
+- יש שינוי חזק באחוזי הביטול לאורך זמן בתוך ה-train. זה רמז טוב לכך שהעסק או
+  תמהיל הלקוחות השתנו, ולא רק שהמודל "למד רעש".
+- הבחירה ב-validation כרונולוגי כבסיס להשוואת מודלים, במקום לבחור לפי split
+  אקראי שמערבב עבר ועתיד.
+- `Payment_Terms` הוא הממצא הכי חשוד וחזק ב-EDA: הערך
+  `prepaid (non-refundable)` מופיע בכ-10.7k שורות ומתקרב ל-100% ביטולים
+  (`0.998`). זה מוזר עסקית, כי דווקא קבוצה ששילמה מראש בלי החזר לא אמורה
+  כמעט תמיד לבטל. בדו"ח כדאי להציג את זה כממצא חזק שדורש בדיקת leakage/timing,
+  לא כהוכחה סופית.
+- רוב גדול יחסית של הדאטה מגיע מפורטוגל: `prt` הוא בערך 42% מה-train, ושם
+  אחוז הביטול גבוה יחסית (`0.638`). זה יכול להיכנס כממצא EDA על תמהיל מדינות.
+- יש פער גדול בין קבוצות עם `Company_ID` ובלי: רק בערך 5% מהשורות כוללות
+  `Company_ID`, ושם אחוז הביטול נמוך בהרבה (`0.212` מול `0.425`). לכן
+  `has_company_id` הוא פיצ'ר הגיוני.
+- גם `Agent_ID` ו-`Origin_Country` חשובים: הם מופיעים גבוה גם ב-EDA וגם ב-SHAP,
+  ולכן לא נכון למחוק אותם רק כי הם מזהים/קטגוריים.
+- הנתונים הקטגוריים מלוכלכים מאוד: casing, רווחים, סימנים מוזרים ודוגמאות כמו
+  `blu#e`. ניקוי טקסט מצמצם קטגוריות בצורה דרמטית, למשל `Payment_Terms`
+  מ-236 ערכים גולמיים ל-3, ו-`Origin_Country` מ-721 ל-153.
+- הסיפור של מימדיות: הבעיה היא לא כמות הפיצ'רים הנומריים אלא one-hot על
+  קטגוריות. עם native categorical/frequency encoding יש בערך 42 פיצ'רים, לעומת
+  כ-435 מימדים ב-one-hot נאיבי.
+- פיצ'ר הזמן `days_since_epoch` הוא החלטה חשובה: בעץ, כל שורות test שנמצאות
+  אחרי תקופת train יכולות ליפול לאזורים/עלים מאוחרים יותר, וזה נותן למודל דרך
+  ללמוד את שינוי המשטר בזמן. זה צריך הסבר פשוט בדו"ח, כי זה לא אינטואיטיבי.
+- SHAP מחזק את אותו סיפור: הפיצ'רים הבולטים הם `Payment_Terms`,
+  `Origin_Country`, `Agent_ID`, `days_since_epoch`, ותדירויות מזהים. זה מתאים
+  למה שראינו ב-EDA ולא נראה כמו importance אקראי.
+- הכיוון של המודל הנבחר: blend של LightGBM/XGBoost/CatBoost סביב [`pipeline_v2.py`](<pipelines/pipeline_v2.py>).
+- תוצאת ה-leaderboard של הקובץ הקיים: AUC `0.889314`, מקום 1 מתוך 32.
 
-> **עדכון:** [`notebook_v3.ipynb`](<notebook_v3.ipynb>) הוא נוטבוק ההגשה המאוחד
-> שמכסה את כל החלקים הנדרשים (EDA, השלמת חסרים, Feature Engineering, Outliers,
-> קללת המימדיות, 3+ מודלים + tuning, Confusion Matrix ומדדים, SHAP, ותקציר
-> מנהלים). נשאר: למלא ת"ז של המגישים בראש הנוטבוק, ולכתוב את דו"ח ה-PDF
-> (`Group_27_Report.pdf`). הרשימה למטה מתארת את המצב **לפני** v3.
+## כנראה לא נספיק / לא כדאי לפתוח בלי סיבה טובה
 
-יש לנו כבר קובץ הגשה (CSV) עם AUC של 0.889 — הרבה מעל רף המעבר (0.70). מה שחסר הוא בעיקר ה**תיעוד וההסברים** שהפרויקט נמדד עליהם. לפי החלוקה של ההוראות:
+- מודל חדש לגמרי או שינוי עמוק ב-[`pipeline_v2.py`](<pipelines/pipeline_v2.py>).
+- החלפת אסטרטגיית validation בשלב מאוחר.
+- חיפוש tuning גדול ורחב אם המטרה היא לסיים דו"ח ומחברת בזמן.
+- כיול הסתברויות מלא. אפשר להזכיר כעבודה עתידית אם צריך.
+- בדיקות production מול data owner, למשל אימות מלא של `Payment_Terms`.
 
-- **[קיים] קובץ הפלט (CSV)** — `Group_27_Submission.csv`.
-- **[חלקי] חלק א' — EDA והשלמת חסרים (25%)**: יש EDA טיוטתי ב-`notebook_v1`. חסר: הרבה ויזואליזציות מוסברות, ניתוח סטטיסטי לכל משתנה, קורלציות מול משתנה המטרה, והסבר מנומק של השלמת החסרים כולל גרפים של ההתפלגות לפני/אחרי השלמה.
-- **[חלקי] חלק ב' — Feature Engineering ו-Outlier Analysis (20%)**: ההנדסה וה-capping קיימים בקוד. חסר: פלוט שמצדיק כל feature חדש, פלוטים שמצדיקים את ה-caps ל-outliers, הסבר מתמטי (נוסחאות) היכן שרלוונטי, והסבר מפורש איך התמודדנו עם "קללת המימדיות" (השתמשנו ב-frequency encoding ובקטגוריות native במקום one-hot מתפוצץ).
-- **[חלקי/חסר] חלק ג' + Model Evaluation (35% = 20% מודלים + 15% הערכה)**:
-  - **[חסר] Hyperparameter tuning** — צריך tuning שיטתי (לולאה שמנסה פרמטרים על ולידציה **כרונולוגית** ובוחרת את הטוב ביותר). כרגע הפרמטרים כווננו ידנית.
-  - **[חלקי] 3+ מודלים** — יש שלושה (LightGBM/XGBoost/CatBoost). כדאי להוסיף גם Random Forest ו-Logistic Regression ממשפחות שונות (כבר קיימים ב-`pipeline_v1`) עם הסבר קצר על כל מודל וההיפר-פרמטרים שלו. כנראה לא נשתמש בהם בהגשה, אבל זה מחזק את חלק ג'.
-  - **[חסר] Confusion Matrix + מדדים** — צריך מטריצת בלבול ומדדים נגזרים (precision / recall / F1 / accuracy) עם הסבר מה כל מדד אומר בהקשר של חיזוי ביטולים.
-  - **[חסר] SHAP** — חסר לגמרי. נדרש לבחור מודל אחד ולנתח אותו עם SHAP (חשיבות מסבירים ואיך המודל מחליט).
-- **[חסר] חלק ה' — סיכום / תקציר מנהלים (5%)**: חסר לגמרי (עד עמוד אחד).
+## לא להכניס לדו"ח עדיין כי זה עלול להשתנות
 
-**קבצי הגשה (מגישים כ-ZIP יחיד בשם `Group_27.zip` ל-Moodle):**
+- ניסוח שאומר ש-[`notebook_v3.ipynb`](<notebook_v3.ipynb>) הוא final או submission-ready.
+- טענה שכל דרישה מכוסה במלואה לפני שעוברים מול [`References/instructions.md`](<References/instructions.md>).
+- מסקנות חזקות מדי על SHAP: כרגע זה ניתוח של מודל LightGBM מייצג, לא הסבר
+  מלא לכל ה-blend.
+- ניסוח שאומר ש-`Payment_Terms` הוא בוודאות leakage. יותר נכון להגיד שזה ממצא
+  חשוד מאוד שדורש בדיקה של מתי השדה נקבע ביחס לביטול.
+- טענה שה-CSV שנבנה מתוך [`notebook_v3.ipynb`](<notebook_v3.ipynb>) זהה בוודאות לקובץ המנוקד, אלא אם
+  בדקנו את זה בפועל באותו רגע.
+- ניסוחים שמציגים shortcuts כמו tuning מצומצם או sample ל-SHAP כאילו היו
+  ניסוי מלא.
 
-- **[קיים]** `Group_27_Submission.csv`
-- **[חלקי]** `Group_27_Notebook.ipynb` — צריך נוטבוק הגשה נקי ומאוחד, עם **מספר הקבוצה + שמות המגישים + ת"ז** בראש, תיעוד מלא, והרצת ה-pipeline על הטסט.
-- **[חסר]** `Group_27_Report.pdf` — עד 10 עמודים, גופן David 12, רווח 1.5, שוליים רגילים, עם מספר קבוצה + שמות + ת"ז בראש.
+## לאן אנחנו מתקדמים
 
-> **מועד הגשה סופי: 17.7.26 בשעה 23:59.** חריגה מפורמט ההגשה = הורדה של 5 נקודות.
+- קרובים לסגירה: הסיפור המרכזי, המודל המנוקד, validation כרונולוגי, קובץ CSV.
+- צריך עוד עבודה: התאמת המחברת לדרישות אחת-אחת, ליטוש ניסוחים, בדיקת
+  הוויזואליזציות והסברים, והפקת דו"ח PDF.
+- החלטה שעדיין צריך לקבל: האם [`notebook_v3.ipynb`](<notebook_v3.ipynb>) מספיק טוב אחרי review, או שצריך
+  תיקוני מחברת נקודתיים לפני שממירים אותו לשם ההגשה.
 
-</div>
+## TODO למחברת
 
-## Repository layout
+- [ ] לעבור על [`notebook_v3.ipynb`](<notebook_v3.ipynb>) מול [`References/instructions.md`](<References/instructions.md>) סעיף-סעיף, ולא לסמן דרישה כסגורה רק כי יש לה כותרת במחברת.
+- [ ] לוודא שה-Markdown המסונכרן [`output/notebook_v3.md`](<output/notebook_v3.md>) באמת משקף את הגרסה האחרונה של המחברת לפני שרון עובד ממנו.
+- [ ] לבדוק שכל plot חשוב מלווה בהסבר קצר: מה רואים, למה זה משנה, ואיזו החלטה זה תמך.
+- [ ] לחזק את סיפור ה-EDA בדו"ח/מחברת: future test window, adversarial validation, drift לאורך זמן, `Payment_Terms`, פורטוגל, `Company_ID`, agents/countries, וניקוי הקטגוריות.
+- [ ] לוודא שחלק missing values מסביר לא רק מה מולא, אלא למה המדיניות הזאת הגיונית ל-train ול-test.
+- [ ] לוודא שחלק outliers מצדיק מה clipped ומה נשאר כמו שהוא, עם הסבר עסקי ולא רק טכני.
+- [ ] לוודא שחלק feature engineering מסביר את הפיצ'רים החדשים ואת `days_since_epoch` בצורה שרון יוכל להעתיק לדו"ח בלי לנחש.
+- [ ] לבדוק שחלק dimensionality אומר במפורש למה native categoricals/frequency encoding עדיפים כאן על one-hot נאיבי.
+- [ ] לעבור על model comparison/tuning ולוודא שהניסוח לא מוכר את ה-search כרחב יותר ממה שהוא באמת.
+- [ ] לוודא שחלק evaluation כולל confusion matrix/threshold metrics עם משמעות עסקית, ולא רק טבלה מספרית.
+- [ ] להשאיר את SHAP כניתוח של מודל LightGBM מייצג, לא כהסבר מלא של כל ה-blend.
+- [ ] לבדוק את ניסוח `Payment_Terms`: חזק וחשוד, אבל לא לקרוא לו leakage ודאי בלי הוכחת timing.
+- [ ] לבדוק האם בניית ה-CSV מתוך המחברת תואמת את [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>); אם לא, לכתוב שהקובץ המנוקד הוא source of truth.
+- [ ] להכין גרסת submission בשם הנדרש רק אחרי review: `Group_27_Notebook.ipynb`.
+- [ ] אחרי תיקוני מחברת, לרענן את [`output/notebook_v3.md`](<output/notebook_v3.md>) כדי שה-review הבא לא יקרא פלט ישן.
 
-### TLDR:
+## לא לגעת בלי כוונה מפורשת
 
-**The current last pipeline is written in [pipeline_v2.ipynb](<pipelines/pipeline_v2.ipynb>)**. The reasoning is written in [notebook_v2.ipynb](<notebook_v2.ipynb>)
+- לא לדרוס את [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>).
+- לא לשנות את [`pipelines/pipeline_v2.py`](<pipelines/pipeline_v2.py>) אם עובדים רק על הדו"ח/מחברת.
+- לא להפוך קבצי [`_agent/`](_agent/) לקבצי הגשה. אלה קבצי תכנון מקומיים בלבד.
 
-> [!NOTE] The code assumes data lives in `data/Train_Data.csv`
->
-> - If youre data files are at root, copy them into `./data/*` folder
+## Project Story
 
-### Code — the `v{N}` convention
+The first submission already passed comfortably, but it was tuned around a
+random split. The later work found the important mismatch: the hidden test set is
+later in time than the training set. That made the project a forecasting problem
+rather than a same-distribution interpolation problem.
 
-Every version has an **exploration** file and a **pipeline** file. Exploration
-files carry the reasoning, plots, and dead ends; pipeline files are the clean,
-runnable extract that produces a submission (same logic, no plots, keeps the
-explanatory prose). Exploration files are standalone — they do **not** import
-the pipelines.
+The current scored direction keeps the model that worked best on that framing:
+clean the dirty categorical data, preserve high-cardinality identity signal
+without one-hot explosion, validate on a future window, and submit a rank-average
+blend of boosted tree models. [`notebook_v3.ipynb`](<notebook_v3.ipynb>) is the attempt to turn that modelling
+work into a coherent CRISP-DM-style notebook and report story.
 
-| File                               | Role                                                                     |
-| ---------------------------------- | ------------------------------------------------------------------------ |
-| [`notebook_v1.py`](<notebook_v1.py>) | v1 exploration — EDA + first modelling pass (draft-quality)              |
-| [`pipeline_v1.py`](<pipelines/pipeline_v1.py>) | v1 pipeline — reproduces the midterm submission (0.886)                  |
-| [`notebook_v2.py`](<notebook_v2.py>) | v2 exploration — temporal discovery, chrono validation, model comparison |
-| [`pipeline_v2.py`](<pipelines/pipeline_v2.py>) | v2 pipeline — the current best; writes the official submission           |
-| [`notebook_v3.ipynb`](<notebook_v3.ipynb>) | **submission notebook** — unified CRISP-DM write-up covering every graded part |
+Still-open decisions are mostly documentation and sufficiency decisions, not a
+need to restart modelling: how much tuning evidence is enough, how strongly to
+word SHAP and leakage claims, whether the evaluation section is clear enough,
+and what should be included in the final PDF versus left as future work.
 
-`notebook_v3` has no paired pipeline — it *is* the final deliverable, and the
-runnable model already lives in `pipeline_v2.py`. Each other `.py` is a [jupytext](https://jupytext.readthedocs.io/) _percent_ notebook
-paired with a `.ipynb` of the same name. **Edit the `.py`** (cleaner diffs), then
-`jupytext --sync <file>.py` to refresh the `.ipynb`. Notebooks are better for
-humans; `.py` is better for version control and AI assistance.
+## Files
 
-### Data — `data/`
+| Path | Role |
+| --- | --- |
+| [`output/notebook_v3.md`](<output/notebook_v3.md>) | Rendered version of the current integrated draft; open this first for review. |
+| [`notebook_v3.ipynb`](<notebook_v3.ipynb>) | Current integrated draft notebook; review before any submission decision. |
+| [`notebook_v3.py`](<notebook_v3.py>) | Text source for the draft notebook; do not edit unless intentionally updating the notebook. |
+| [`pipelines/pipeline_v2.py`](<pipelines/pipeline_v2.py>) | Current scored pipeline/model logic. |
+| [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>) | Current scored CSV submission; do not overwrite casually. |
+| [`References/instructions.md`](<References/instructions.md>) | Markdown copy of the assignment requirements. |
+| [`_agent/`](_agent/) | Local planning/audit workspace only; not a submission folder. |
 
-- `Train_Data.csv`, `Test_Data_No_Target.csv` — the given data.
-- `Group_27_Submission.csv` — **the current official submission (v2). Do not
-  modify**; it is the file that was scored.
-- `Group_27_Submission_v{N}.csv` — older versioned submissions.
-- `samples/`, `bak/` — small samples and backups.
+Older notebooks and pipelines ([`notebook_v1.py`](<notebook_v1.py>), [`notebook_v2.py`](<notebook_v2.py>), [`pipeline_v1.py`](<pipelines/pipeline_v1.py>),
+[`Project_Ron_V3.ipynb`](<Project_Ron_V3.ipynb>)) are useful for history and comparison, but they are not
+the current landing path.
 
-### References — `References/`
+## Requirements Status
 
-- `instructions.pdf` / `instructions.md` — **the assignment** (Markdown copy is
-  for AI assistance).
-- `LiveCodingSession.*` — lecturer's walkthrough of a similar project.
-- `crisp-dm-lec.*` — CRISP-DM / data-prep lecture.
+Required final delivery is a single `Group_27.zip` containing:
 
-### Exports — `archive/output/`
+- `Group_27_Submission.csv` - exists as [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>) and is
+  the currently scored submission.
+- `Group_27_Notebook.ipynb` - not yet assembled under the final submission name;
+  [`notebook_v3.ipynb`](<notebook_v3.ipynb>) is the current draft to review and adapt.
+- `Group_27_Report.pdf` - still needs to be written/exported.
 
-Readable Markdown renders of notebooks (with plots), produced by
-`save_output.py`. Moved under `archive/` to keep the project root focused on the
-notebooks and pipelines.
+Do not claim the notebook covers every assignment requirement until the
+notebook/report review confirms it directly. In particular, review the EDA,
+missing-value handling, feature engineering, outlier analysis, dimensionality,
+model comparison, tuning, threshold metrics, SHAP interpretation, and executive
+summary against [`References/instructions.md`](<References/instructions.md>).
 
-## Getting started
+## How To Run
 
-Requires Python 3.13 and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.13 and `uv`.
 
 ```bash
-uv sync                       # create .venv and install deps (incl. lightgbm, catboost)
-
-# reproduce a submission (writes to a versioned path by default)
-uv run python pipeline_v1.py                    # -> data/Group_27_Submission_v1.csv
-uv run python pipeline_v2.py --out data/tmp.csv # v2 blend; omit --out to write the official file
-
-# re-run the exploration / experiments
-uv run python notebook_v2.py                    # prints the chrono-holdout tables
-
-# refresh a notebook after editing its .py, or export to Markdown
-uv run jupytext --sync notebook_v2.py
-uv run python save_output.py notebook_v2.ipynb  # -> output/notebook_v2.md
+uv sync
 ```
 
-> `pipeline_v2.py` with no `--out` overwrites `data/Group_27_Submission.csv`.
-> Pass `--out` while iterating so you don't clobber the scored file.
+Dry-run the currently scored pipeline without writing a CSV:
 
-## Conventions for collaborators
+```bash
+uv run python pipelines/pipeline_v2.py
+```
 
-- **Versioning:** start a new `v{N}` for a materially different approach. Copy
-  `notebook_v{N-1}.py` → `notebook_v{N}.py`, iterate there, then extract the
-  winners into `pipeline_v{N}.py`. Don't rewrite old versions — they're the
-  baseline history.
-- **Validation:** select models on the **chronological** holdout, not a random
-  split (see `notebook_v2.py` for why). Random-split AUC is optimistic here.
-- **Reproducibility:** everything is seeded (`SEED = 42`); no notebook writes to
-  `data/Group_27_Submission.csv` except a deliberate `pipeline_v2.py` run.
-- **Ignored files:** `AGENT.md`, `Notes/`, `archive/` are gitignored scratch —
-  not part of the shared project.
+Write a test CSV without touching the scored submission:
+
+```bash
+uv run python pipelines/pipeline_v2.py --write --out data/tmp_submission.csv
+```
+
+Only overwrite [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>) deliberately:
+
+```bash
+uv run python pipelines/pipeline_v2.py --write
+```
+
+Run the current integrated draft notebook as a script only when you intentionally
+want to validate or refresh its execution:
+
+```bash
+uv run python notebook_v3.py
+```
+
+## If You Are An Agent
+
+- Read [`_agent/README.md`](<_agent/README.md>) before creating or editing local planning/audit files.
+- Treat [`References/instructions.md`](<References/instructions.md>) as the grading source of truth.
+- Keep [`_agent/`](_agent/) outputs out of the submission package.
+- Do not edit [`notebook_v3.py`](<notebook_v3.py>) or [`notebook_v3.ipynb`](<notebook_v3.ipynb>) for README-only tasks.
+- Keep [`pipeline_v2.py`](<pipelines/pipeline_v2.py>) / [`data/Group_27_Submission.csv`](<data/Group_27_Submission.csv>) separate from
+  [`notebook_v3.ipynb`](<notebook_v3.ipynb>): v2 is the currently scored submission, while v3 is the current
+  integrated draft.
+- Prefer honest status language. Do not call [`notebook_v3.ipynb`](<notebook_v3.ipynb>) final,
+  submission-ready, or fully requirement-complete unless the notebook/report
+  work proves that.

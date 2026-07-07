@@ -8,10 +8,16 @@ lec\ -\ ML\ \ project\ and\ preprocessing.pdf
 *.pyc
 .DS_Store
 AGENT.md
+TODOS.md
 Notes/
 archive/trash/
 catboost_info/
 .idea/ 
 cache/
+_agent/*
+!_agent/
+!_agent/README.md
+!_agent/base-grading-agent-prompt.md
+
 
 __marimo__/
