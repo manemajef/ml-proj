@@ -264,7 +264,9 @@ missing_compare = missing_compare[
 display(missing_compare)
 
 # %% [markdown]
-# Missingness patterns are **consistent between train and test**, so a single imputation policy is safe to reuse for scoring. Next: is missingness itself a signal?
+# Missingness patterns are **consistent between train and test**, so a single imputation policy is safe to reuse for scoring.
+#
+# **Next**: is missingness itself a signal?
 #
 
 # %%
@@ -294,16 +296,23 @@ for col in missingness_cols:
 display(pd.DataFrame(rows))
 
 # %% [markdown]
-# **Missingness is informative.** Rows _without_ a `Company_ID` drop at a noticeably higher rate than rows with one — a registration made through a known company is a more committed order. `Agent_ID` missingness shows a different profile too. This justifies explicit **presence flags** (`has_company_id`, `has_agent_id`) rather than silently imputing these away.
+# **Missingness is informative.**
+#
+# - Rows _without_ a `Company_ID` drop at a noticeably higher rate than rows with one — a registration made through a known company is a more committed order.
+# - `Agent_ID` missingness shows a different profile too. This justifies explicit **presence flags** (`has_company_id`, `has_agent_id`) rather than silently imputing these away.
 #
 
 # %% [markdown]
 # ## 3.3 Categorical data quality (and why cleaning is mandatory)
 #
-# The categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` → `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
+# Upon previous explorations, we'e fount that the categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` → `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
 #
 
 # %%
+# TODO proof the claim
+
+# %%
+# The data contains many variations of <na>s,
 COMMON_NANS = {
     "",
     "-",
@@ -318,7 +327,10 @@ COMMON_NANS = {
     "unknown",
     "unknonwn",
 }
-COUNTRY_ALIASES = {"cn": "chn"}  # both codes mean China (found in EDA)
+
+COUNTRY_ALIASES = {
+    "cn": "chn"
+}  # both codes mean China (found in EDA), fount in previous exploration
 CAT_COLS = [
     "Origin_Country",
     "Catering_Package",
@@ -432,6 +444,98 @@ plt.show()
 #
 
 # %% [markdown]
+# ### Origin Country carries weight.
+#
+# See:
+#
+
+# %%
+country_min_n = 150
+country_top_n = 12
+
+
+overall_drop = clean_train[TARGET].mean()
+
+country_stats = (
+    clean_train
+    .groupby("Origin_Country", dropna=False)[TARGET]
+    .agg(count="size", drop_rate="mean")
+    .assign(
+        drop_rate_pct=lambda d: d["drop_rate"] * 100,
+        lift_pp=lambda d: (d["drop_rate"] - overall_drop) * 100,
+    )
+)
+
+top_by_size = country_stats.sort_values("count", ascending=False).head(country_top_n)
+
+# Pick countries whose drop rate is farthest from the overall mean, after filtering tiny countries.
+extreme_by_lift = (
+    country_stats[
+        country_stats["count"] >= country_min_n
+    ]  # get rid of too small (<150) countries
+    .iloc[
+        lambda d: (
+            d["lift_pp"].abs().sort_values(ascending=False).index.map(d.index.get_loc)
+        )
+    ]  # Sort desc remaining countries by thye diff of thyre mean from the data mean
+    .head(country_top_n)
+)
+
+
+def plot_country_dropout(stats, title, ax):
+    stats = stats.sort_values("drop_rate_pct")
+    labels = [
+        f"{idx if pd.notna(idx) else '<missing>'} (n={int(row['count']):,})"
+        for idx, row in stats.iterrows()
+    ]
+    colors = np.where(stats["lift_pp"] >= 0, "#c44e52", "#4c72b0")
+
+    ax.barh(labels, stats["drop_rate_pct"], color=colors)
+    ax.axvline(
+        overall_drop * 100,
+        ls="--",
+        color="black",
+        lw=1,
+        label=f"overall ({overall_drop * 100:.1f}%)",
+    )
+    ax.set_xlabel("drop rate (%)")
+    ax.set_title(title)
+    ax.legend()
+
+
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+plot_country_dropout(
+    top_by_size,
+    f"Drop rate by largest {country_top_n} countries",
+    axes[0],
+)
+
+plot_country_dropout(
+    extreme_by_lift,
+    f"Most unusual country drop rates (n >= {country_min_n})",
+    axes[1],
+)
+
+plt.tight_layout()
+plt.show()
+
+display(
+    country_stats
+    .sort_values("count", ascending=False)
+    .head(country_top_n)[["count", "drop_rate_pct", "lift_pp"]]
+    .round(2)
+)
+
+# %% [markdown]
+# Seems like banning portugal from nova could help :) if only it wouldnt have been its larget country ..
+#
+# So it's clear that the Portuguese are the bad guys, but they're also the big group. So they're going to have to learn to suffer them. The surprising thing is that all the other extremes were on the other side. That means most of the countries are somewhere around the mean, and there is no single country that is extreme in the direction of Portugal—not even one among all 150.
+#
+# Based only on country, we could divide them into groups: those that are quite chill and nice; a group that is kind of annoying—about 40 % grade annoying; and then Portugal, which is its own thing.
+#
+
+# %% [markdown]
 # ### The identifier columns carry signal too
 #
 # `Agent_ID` and `Company_ID` are labels, not numbers. Frequent agents have very different drop rates, and _having_ a company id lowers risk — so identity here is predictive and we must keep it without exploding the feature space (Section 5.2).
@@ -454,6 +558,20 @@ axes[1].set_title("Drop rate by Company_ID presence")
 plt.tight_layout()
 plt.show()
 display(company_presence)
+
+# %% [markdown]
+# #TODO: talk abit about results. what do we learn ? a draft example:
+#
+# - Some agents tend to bring groups that suck, while others bring excellent groups. That suggests there are different agents with different goals: some may be optimizing for quantity, while others focus on higher‑quality people. This could also relate to other factors. For example, if we don’t have access to that data, we could guess that a difference in drop rate by country might indicate that some agents belong to those countries.
+#
+# - Client that came through a company, which is basically like a big corporation with a lot of money and stuff. So they're way less likely to drop since they don't care. They have a lot of money, so it's not like the small teams. These are the big ones, but unfortunately, to Nova, they're about 5%. So yeah.
+#
+
+# %% [markdown]
+# ### Now lets look into different countries
+#
+# #TODO Plot hist of bins of countries against drop out,
+#
 
 # %% [markdown]
 # ## 3.5 Numeric features: summary, correlation, and suspects
@@ -544,7 +662,15 @@ plt.show()
 # - **`Pre_Course_Supports_Tickets`**: more pre-course engagement is associated
 #   with _lower_ dropping — a group that is actively preparing is committed.
 #
-# **EDA takeaways carried forward:** time structure (headline), payment terms, registration timing, company/agent identity, client segment & channel, and support engagement are the strongest visible signals.
+# ### #TODO I have a suspicion
+#
+# - It could be that agents work on… maybe, for example, Portuguese‑speaking agents are speaking Portuguese, thus they’re dealing with people from Portugal, and you’ll see them as bad agents—just because they’re assigned to the “bad” Portuguese. The same could happen with an agent who’s doing very well; perhaps he speaks Swedish and happens to bring groups from Sweden.
+#
+# So we could be landing in some multicollinearity issues. It might not be a problem and could even be useful, but it’s a good idea to address it and verify whether I’m correct, because I might just be bullshitting myself. Let’s verify it.
+#
+# ### 3.7. **EDA takeaways carried forward:**
+#
+# time structure (headline), payment terms, registration timing, company/agent identity, client segment & channel, and support engagement are the strongest visible signals.
 #
 
 # %% [markdown]
@@ -561,7 +687,7 @@ plt.show()
 
 
 # %%
-def suspect_report(df, cols, max_mult=10):
+def sus_report(df, cols, max_mult=10):
     out = []
     for c in cols:
         s = df[c].dropna()
@@ -585,9 +711,9 @@ def suspect_report(df, cols, max_mult=10):
 
 
 print("Suspect columns — TRAIN")
-display(suspect_report(train_raw, num_cols))
+display(sus_report(train_raw, num_cols))
 print("Suspect columns — TEST")
-display(suspect_report(test_raw, num_cols))
+display(sus_report(test_raw, num_cols))
 
 # %% [markdown]
 # The test set introduces **no new kinds** of corruption, so caps learned from domain reasoning on train transfer safely. We also inspect the relationship between two historical counters:
@@ -598,6 +724,8 @@ impossible = train_raw[
     train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]
 ]
 print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
+
+# TODO Whoa, whoa, whoa. You just dropped a bomb here—like the data is lying or corrupt—but are we supposed to just let it go, be like, “Okay, we have 5,000 rows that are impossible, so we’re just going to ignore it,” or should we investigate more? Maybe we misunderstood those features. What does this suggest? At least we need to do something. Either we could say, “Yeah, it’s bad, but we choose to ignore it,” or try to justify it or do something else. Probably don’t leave it like that. Come on.
 
 # %% [markdown]
 # **Decisions and justification.**
