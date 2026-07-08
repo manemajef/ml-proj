@@ -305,11 +305,8 @@ display(pd.DataFrame(rows))
 # %% [markdown]
 # ## 3.3 Categorical data quality (and why cleaning is mandatory)
 #
-# Upon previous explorations, we'e fount that the categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` → `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
+# Previous exploration showed that the categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` -> `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
 #
-
-# %%
-# TODO proof the claim
 
 # %%
 # The data contains many variations of <na>s,
@@ -444,9 +441,9 @@ plt.show()
 #
 
 # %% [markdown]
-# ### Origin Country carries weight.
+# ### Country, agent, and acquisition context
 #
-# See:
+# The categorical EDA suggests that dropout risk is not only attached to course logistics. Several business-context fields move together: country, agent, company presence, payment terms, and registration source.
 #
 
 # %%
@@ -472,12 +469,12 @@ top_by_size = country_stats.sort_values("count", ascending=False).head(country_t
 extreme_by_lift = (
     country_stats[
         country_stats["count"] >= country_min_n
-    ]  # get rid of too small (<150) countries
+    ]  # ignore countries with too few rows for a stable rate
     .iloc[
         lambda d: (
             d["lift_pp"].abs().sort_values(ascending=False).index.map(d.index.get_loc)
         )
-    ]  # Sort desc remaining countries by thye diff of thyre mean from the data mean
+    ]  # sort by distance from the overall drop rate
     .head(country_top_n)
 )
 
@@ -528,17 +525,65 @@ display(
 )
 
 # %% [markdown]
-# Seems like banning portugal from nova could help :) if only it wouldnt have been its larget country ..
+# `Origin_Country` is a major categorical signal, and Portugal is the clearest example because it is both very common and far above the overall dropout rate. This is not a rare-country artefact: the large-country plot and the extreme-country plot tell the same story.
 #
-# So it's clear that the Portuguese are the bad guys, but they're also the big group. So they're going to have to learn to suffer them. The surprising thing is that all the other extremes were on the other side. That means most of the countries are somewhere around the mean, and there is no single country that is extreme in the direction of Portugal—not even one among all 150.
-#
-# Based only on country, we could divide them into groups: those that are quite chill and nice; a group that is kind of annoying—about 40 % grade annoying; and then Portugal, which is its own thing.
+# Still, country alone is not the full explanation. A high-risk country can also concentrate particular payment terms, submission sources, client segments, or agents. We therefore treat country as a useful context signal, not as a causal explanation by itself.
 #
 
+# %%
+is_portugal = clean_train["Origin_Country"].eq("prt").fillna(False).to_numpy(dtype=bool)
+country_group = np.where(is_portugal, "Portugal", "Other countries")
+
+portugal_summary = (
+    clean_train
+    .assign(country_group=country_group)
+    .groupby("country_group")[TARGET]
+    .agg(count="size", drop_rate="mean")
+    .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)
+)
+
+dropper_country_mix = (
+    pd
+    .crosstab(
+        clean_train[TARGET].map({0: "completed", 1: "dropped"}),
+        country_group,
+        normalize="index",
+    )
+    .mul(100)
+    .round(1)
+)
+
+display(portugal_summary.round(3))
+display(dropper_country_mix)
+
+# %%
+portugal_slices = []
+for col in ["Payment_Terms", "Submission_Source", "Client_Category"]:
+    top_levels = (
+        clean_train[is_portugal]
+        .groupby(col, dropna=False)[TARGET]
+        .agg(count="size", drop_rate="mean")
+        .sort_values("count", ascending=False)
+        .head(5)
+        .reset_index()
+        .rename(columns={col: "level"})
+    )
+    top_levels.insert(0, "field", col)
+    portugal_slices.append(top_levels)
+
+display(
+    pd
+    .concat(portugal_slices, ignore_index=True)
+    .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)[
+        ["field", "level", "count", "drop_rate_pct"]
+    ]
+    .round(2)
+)
+
 # %% [markdown]
-# ### The identifier columns carry signal too
+# The Portugal slice shows why the country effect should not be read too literally. Portugal is high-risk overall, but the risk is concentrated in specific acquisition patterns, especially payment terms and B2B/reseller traffic. Some Portugal subgroups are much closer to ordinary dropout rates.
 #
-# `Agent_ID` and `Company_ID` are labels, not numbers. Frequent agents have very different drop rates, and _having_ a company id lowers risk — so identity here is predictive and we must keep it without exploding the feature space (Section 5.2).
+# The identifier columns carry signal too. `Agent_ID` and `Company_ID` are labels, not numbers. Frequent agents have very different drop rates, and _having_ a company id lowers risk, so identity is predictive and we must keep it without exploding the feature space (Section 5.2).
 #
 
 # %%
@@ -560,17 +605,52 @@ plt.show()
 display(company_presence)
 
 # %% [markdown]
-# #TODO: talk abit about results. what do we learn ? a draft example:
-#
-# - Some agents tend to bring groups that suck, while others bring excellent groups. That suggests there are different agents with different goals: some may be optimizing for quantity, while others focus on higher‑quality people. This could also relate to other factors. For example, if we don’t have access to that data, we could guess that a difference in drop rate by country might indicate that some agents belong to those countries.
-#
-# - Client that came through a company, which is basically like a big corporation with a lot of money and stuff. So they're way less likely to drop since they don't care. They have a lot of money, so it's not like the small teams. These are the big ones, but unfortunately, to Nova, they're about 5%. So yeah.
+# The agent plot is useful, but it raises a fair concern: risky agents may simply be agents assigned to risky countries or channels. This is not classical numeric multicollinearity; it is overlapping categorical signal. We check it directly by asking how well `Agent_ID` predicts `Origin_Country`.
 #
 
+# %%
+agent_country_pairs = clean_train[["Agent_ID", "Origin_Country"]].dropna()
+
+agent_country = agent_country_pairs.groupby("Agent_ID")["Origin_Country"].agg(
+    count="size",
+    countries="nunique",
+    top_country=lambda s: s.value_counts().idxmax(),
+    top_country_share=lambda s: s.value_counts(normalize=True).iloc[0],
+)
+
+country_tr, country_va = train_test_split(
+    agent_country_pairs, test_size=0.25, random_state=SEED
+)
+majority_country = country_tr["Origin_Country"].mode().iat[0]
+agent_country_map = country_tr.groupby("Agent_ID")["Origin_Country"].agg(
+    lambda s: s.value_counts().idxmax()
+)
+agent_country_pred = (
+    country_va["Agent_ID"].map(agent_country_map).fillna(majority_country)
+)
+
+display(
+    pd.DataFrame({
+        "check": ["majority country baseline", "agent modal country"],
+        "accuracy": [
+            country_va["Origin_Country"].eq(majority_country).mean(),
+            agent_country_pred.eq(country_va["Origin_Country"]).mean(),
+        ],
+    }).round(3)
+)
+
+display(
+    agent_country
+    .sort_values("count", ascending=False)
+    .head(12)
+    .assign(top_country_share_pct=lambda d: d["top_country_share"] * 100)[
+        ["count", "countries", "top_country", "top_country_share_pct"]
+    ]
+    .round(1)
+)
+
 # %% [markdown]
-# ### Now lets look into different countries
-#
-# #TODO Plot hist of bins of countries against drop out,
+# The overlap is real but incomplete. Some agents are heavily country-focused, especially around Portugal, while the largest agent serves many countries. So country does not fully explain agent behavior, and agent does not fully explain country behavior. We keep both signals, but encode them compactly later instead of one-hotting hundreds of levels.
 #
 
 # %% [markdown]
@@ -662,15 +742,9 @@ plt.show()
 # - **`Pre_Course_Supports_Tickets`**: more pre-course engagement is associated
 #   with _lower_ dropping — a group that is actively preparing is committed.
 #
-# ### #TODO I have a suspicion
-#
-# - It could be that agents work on… maybe, for example, Portuguese‑speaking agents are speaking Portuguese, thus they’re dealing with people from Portugal, and you’ll see them as bad agents—just because they’re assigned to the “bad” Portuguese. The same could happen with an agent who’s doing very well; perhaps he speaks Swedish and happens to bring groups from Sweden.
-#
-# So we could be landing in some multicollinearity issues. It might not be a problem and could even be useful, but it’s a good idea to address it and verify whether I’m correct, because I might just be bullshitting myself. Let’s verify it.
-#
 # ### 3.7. **EDA takeaways carried forward:**
 #
-# time structure (headline), payment terms, registration timing, company/agent identity, client segment & channel, and support engagement are the strongest visible signals.
+# time structure (headline), payment terms, registration timing, country/agent/company context, client segment & channel, and support engagement are the strongest visible signals.
 #
 
 # %% [markdown]
@@ -725,11 +799,13 @@ impossible = train_raw[
 ]
 print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
 
-# TODO Whoa, whoa, whoa. You just dropped a bomb here—like the data is lying or corrupt—but are we supposed to just let it go, be like, “Okay, we have 5,000 rows that are impossible, so we’re just going to ignore it,” or should we investigate more? Maybe we misunderstood those features. What does this suggest? At least we need to do something. Either we could say, “Yeah, it’s bad, but we choose to ignore it,” or try to justify it or do something else. Probably don’t leave it like that. Come on.
-
 # %% [markdown]
 # **Decisions and justification.**
-# We **clip (winsorize) rather than drop rows** for fields with clear placeholder or physically impossible values: the _other_ fields in those rows are still valid and informative, and clipping keeps train and test aligned. The 4,985 rows where historical dropouts exceed historical attended are not treated as corruption: these appear to be independent historical counters, not two counts over the same registration set. Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap. The table quantifies the clipped rows; the figure shows the distribution before and after each cap.
+# We **clip (winsorize) rather than drop rows** for fields with clear placeholder or physically impossible values: the _other_ fields in those rows are still valid and informative, and clipping keeps train and test aligned.
+#
+# The 4,985 rows where historical dropouts exceed historical attended require a different interpretation. Section 5 uses these columns to build `prev_drop_rate`, so this check means we should not present that engineered value as a literal probability. Instead, we treat it as a smoothed **dropout-intensity** signal: high values indicate heavier prior dropout history relative to prior attendance, but values above 1 can occur if the two counters describe different historical windows or independent aggregates.
+#
+# For that reason, we keep both raw counters and the ratio-like signal, but we do **not** force the ratio into `[0, 1]` and do **not** drop the affected rows. Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap. The table quantifies the clipped rows; the figure shows the distribution before and after each cap.
 #
 
 # %%
@@ -836,16 +912,16 @@ plt.show()
 #
 # Each engineered feature either preserves useful raw information in a more model-friendly form, or compresses a noisy/high-cardinality signal without using the target label.
 #
-# | Raw signal                | Engineered feature(s)                                        | Why it helps                                                            |
-# | ------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
-# | `Course_Start_Date`       | `start_month`, `start_dow`, `start_week`, `days_since_epoch` | Keeps seasonality and the time trend visible in the future test window. |
-# | Participant counts        | `total_participants`, `prof_share`                           | Converts raw counts into comparable group composition.                  |
-# | Practical/theory hours    | `total_hours`, `practical_share`                             | Represents course intensity and hands-on share directly.                |
-# | Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Uses a smoothed history rate instead of two scale-dependent counts.     |
-# | Tuition cost + hours      | `cost_x_days`                                                | Approximates the contract value at risk.                                |
-# | Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the requested setup was honored.                       |
-# | Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves missingness signals seen in Section 3.2.                      |
-# | Agent/company/country IDs | frequency encodings + native categoricals                    | Keeps identity/frequency signal without one-hot explosion.              |
+# | Raw signal                | Engineered feature(s)                                        | Why it helps                                                                                                                                 |
+# | ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+# | `Course_Start_Date`       | `start_month`, `start_dow`, `start_week`, `days_since_epoch` | Keeps seasonality and the time trend visible in the future test window.                                                                      |
+# | Participant counts        | `total_participants`, `prof_share`                           | Converts raw counts into comparable group composition.                                                                                       |
+# | Practical/theory hours    | `total_hours`, `practical_share`                             | Represents course intensity and hands-on share directly.                                                                                     |
+# | Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Adds a smoothed dropout-intensity signal; not treated as a bounded probability because the historical counters are not perfectly consistent. |
+# | Tuition cost + hours      | `cost_x_days`                                                | Approximates the contract value at risk.                                                                                                     |
+# | Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the requested setup was honored.                                                                                            |
+# | Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves missingness signals seen in Section 3.2.                                                                                           |
+# | Agent/company/country IDs | frequency encodings + native categoricals                    | Keeps identity/frequency signal without one-hot explosion.                                                                                   |
 #
 
 # %% [markdown]

@@ -263,7 +263,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_8_1.png>)
+![png](notebook_v3_files/notebook_v3_8_1.png)
     
 
 
@@ -312,7 +312,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_12_1.png>)
+![png](notebook_v3_files/notebook_v3_12_1.png)
     
 
 
@@ -359,7 +359,9 @@ display(missing_compare)
 
 
 
-Missingness patterns are **consistent between train and test**, so a single imputation policy is safe to reuse for scoring. Next: is missingness itself a signal?
+Missingness patterns are **consistent between train and test**, so a single imputation policy is safe to reuse for scoring.
+
+**Next**: is missingness itself a signal?
 
 
 
@@ -411,16 +413,20 @@ display(pd.DataFrame(rows))
 
 
 
-**Missingness is informative.** Rows _without_ a `Company_ID` drop at a noticeably higher rate than rows with one — a registration made through a known company is a more committed order. `Agent_ID` missingness shows a different profile too. This justifies explicit **presence flags** (`has_company_id`, `has_agent_id`) rather than silently imputing these away.
+**Missingness is informative.**
+
+- Rows _without_ a `Company_ID` drop at a noticeably higher rate than rows with one — a registration made through a known company is a more committed order.
+- `Agent_ID` missingness shows a different profile too. This justifies explicit **presence flags** (`has_company_id`, `has_agent_id`) rather than silently imputing these away.
 
 
 ## 3.3 Categorical data quality (and why cleaning is mandatory)
 
-The categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` → `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
+Previous exploration showed that the categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` -> `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
 
 
 
 ```python
+# The data contains many variations of <na>s,
 COMMON_NANS = {
     "",
     "-",
@@ -435,7 +441,10 @@ COMMON_NANS = {
     "unknown",
     "unknonwn",
 }
-COUNTRY_ALIASES = {"cn": "chn"}  # both codes mean China (found in EDA)
+
+COUNTRY_ALIASES = {
+    "cn": "chn"
+}  # both codes mean China (found in EDA), fount in previous exploration
 CAT_COLS = [
     "Origin_Country",
     "Catering_Package",
@@ -558,7 +567,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_23_0.png>)
+![png](notebook_v3_files/notebook_v3_23_0.png)
     
 
 
@@ -573,9 +582,225 @@ plt.show()
 By contrast, `Lanyard_Color` and `Welcome_Gift_Type` show no stable pattern and have no business reason to matter — candidates to drop as noise.
 
 
-### The identifier columns carry signal too
+### Country, agent, and acquisition context
 
-`Agent_ID` and `Company_ID` are labels, not numbers. Frequent agents have very different drop rates, and _having_ a company id lowers risk — so identity here is predictive and we must keep it without exploding the feature space (Section 5.2).
+The categorical EDA suggests that dropout risk is not only attached to course logistics. Several business-context fields move together: country, agent, company presence, payment terms, and registration source.
+
+
+
+```python
+country_min_n = 150
+country_top_n = 12
+
+
+overall_drop = clean_train[TARGET].mean()
+
+country_stats = (
+    clean_train
+    .groupby("Origin_Country", dropna=False)[TARGET]
+    .agg(count="size", drop_rate="mean")
+    .assign(
+        drop_rate_pct=lambda d: d["drop_rate"] * 100,
+        lift_pp=lambda d: (d["drop_rate"] - overall_drop) * 100,
+    )
+)
+
+top_by_size = country_stats.sort_values("count", ascending=False).head(country_top_n)
+
+# Pick countries whose drop rate is farthest from the overall mean, after filtering tiny countries.
+extreme_by_lift = (
+    country_stats[
+        country_stats["count"] >= country_min_n
+    ]  # ignore countries with too few rows for a stable rate
+    .iloc[
+        lambda d: (
+            d["lift_pp"].abs().sort_values(ascending=False).index.map(d.index.get_loc)
+        )
+    ]  # sort by distance from the overall drop rate
+    .head(country_top_n)
+)
+
+
+def plot_country_dropout(stats, title, ax):
+    stats = stats.sort_values("drop_rate_pct")
+    labels = [
+        f"{idx if pd.notna(idx) else '<missing>'} (n={int(row['count']):,})"
+        for idx, row in stats.iterrows()
+    ]
+    colors = np.where(stats["lift_pp"] >= 0, "#c44e52", "#4c72b0")
+
+    ax.barh(labels, stats["drop_rate_pct"], color=colors)
+    ax.axvline(
+        overall_drop * 100,
+        ls="--",
+        color="black",
+        lw=1,
+        label=f"overall ({overall_drop * 100:.1f}%)",
+    )
+    ax.set_xlabel("drop rate (%)")
+    ax.set_title(title)
+    ax.legend()
+
+
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+plot_country_dropout(
+    top_by_size,
+    f"Drop rate by largest {country_top_n} countries",
+    axes[0],
+)
+
+plot_country_dropout(
+    extreme_by_lift,
+    f"Most unusual country drop rates (n >= {country_min_n})",
+    axes[1],
+)
+
+plt.tight_layout()
+plt.show()
+
+display(
+    country_stats
+    .sort_values("count", ascending=False)
+    .head(country_top_n)[["count", "drop_rate_pct", "lift_pp"]]
+    .round(2)
+)
+```
+
+
+    
+![png](notebook_v3_files/notebook_v3_26_0.png)
+    
+
+
+
+
+
+| ('Unnamed: 0_level_0', 'Origin_Country')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate_pct', 'Unnamed: 2_level_1') |   ('lift_pp', 'Unnamed: 3_level_1') |
+|:-------------------------------------------|----------------------------------:|------------------------------------------:|------------------------------------:|
+| prt                                        |                             26429 |                                     63.78 |                               22.34 |
+| fra                                        |                              6961 |                                     17.28 |                              -24.16 |
+| deu                                        |                              4400 |                                     16.7  |                              -24.73 |
+| esp                                        |                              3896 |                                     27.31 |                              -14.13 |
+| gbr                                        |                              3514 |                                     27.8  |                              -13.64 |
+| ita                                        |                              2726 |                                     35.88 |                               -5.56 |
+| bra                                        |                              1402 |                                     38.02 |                               -3.42 |
+| bel                                        |                              1324 |                                     19.18 |                              -22.25 |
+| nld                                        |                              1222 |                                     19.97 |                              -21.47 |
+| usa                                        |                              1072 |                                     22.39 |                              -19.05 |
+| chn                                        |                              1054 |                                     42.79 |                                1.35 |
+| che                                        |                               935 |                                     22.78 |                              -18.66 |
+
+
+
+
+`Origin_Country` is a major categorical signal, and Portugal is the clearest example because it is both very common and far above the overall dropout rate. This is not a rare-country artefact: the large-country plot and the extreme-country plot tell the same story.
+
+Still, country alone is not the full explanation. A high-risk country can also concentrate particular payment terms, submission sources, client segments, or agents. We therefore treat country as a useful context signal, not as a causal explanation by itself.
+
+
+
+```python
+is_portugal = clean_train["Origin_Country"].eq("prt").fillna(False).to_numpy(dtype=bool)
+country_group = np.where(is_portugal, "Portugal", "Other countries")
+
+portugal_summary = (
+    clean_train
+    .assign(country_group=country_group)
+    .groupby("country_group")[TARGET]
+    .agg(count="size", drop_rate="mean")
+    .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)
+)
+
+dropper_country_mix = (
+    pd
+    .crosstab(
+        clean_train[TARGET].map({0: "completed", 1: "dropped"}),
+        country_group,
+        normalize="index",
+    )
+    .mul(100)
+    .round(1)
+)
+
+display(portugal_summary.round(3))
+display(dropper_country_mix)
+```
+
+
+
+
+| ('Unnamed: 0_level_0', 'country_group')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate', 'Unnamed: 2_level_1') |   ('drop_rate_pct', 'Unnamed: 3_level_1') |
+|:------------------------------------------|----------------------------------:|--------------------------------------:|------------------------------------------:|
+| Other countries                           |                             37035 |                                 0.255 |                                    25.498 |
+| Portugal                                  |                             26429 |                                 0.638 |                                    63.778 |
+
+
+
+
+
+
+
+| ('col_0', 'Dropped_Course')   |   ('Other countries', 'Unnamed: 1_level_1') |   ('Portugal', 'Unnamed: 2_level_1') |
+|:------------------------------|--------------------------------------------:|-------------------------------------:|
+| completed                     |                                        74.2 |                                 25.8 |
+| dropped                       |                                        35.9 |                                 64.1 |
+
+
+
+
+
+```python
+portugal_slices = []
+for col in ["Payment_Terms", "Submission_Source", "Client_Category"]:
+    top_levels = (
+        clean_train[is_portugal]
+        .groupby(col, dropna=False)[TARGET]
+        .agg(count="size", drop_rate="mean")
+        .sort_values("count", ascending=False)
+        .head(5)
+        .reset_index()
+        .rename(columns={col: "level"})
+    )
+    top_levels.insert(0, "field", col)
+    portugal_slices.append(top_levels)
+
+display(
+    pd
+    .concat(portugal_slices, ignore_index=True)
+    .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)[
+        ["field", "level", "count", "drop_rate_pct"]
+    ]
+    .round(2)
+)
+```
+
+
+
+
+|   Unnamed: 0 | field             | level                         |   count |   drop_rate_pct |
+|-------------:|:------------------|:------------------------------|--------:|----------------:|
+|            0 | Payment_Terms     | pay upon start                |   15554 |           39.58 |
+|            1 | Payment_Terms     | prepaid (non-refundable)      |   10482 |           99.85 |
+|            2 | Payment_Terms     | nan                           |     392 |           59.18 |
+|            3 | Payment_Terms     | refundable deposit            |       1 |          100    |
+|            4 | Submission_Source | b2b platforms & resellers     |   21790 |           70.52 |
+|            5 | Submission_Source | direct website registration   |    2197 |           25.72 |
+|            6 | Submission_Source | dedicated sales team          |    1993 |           31.71 |
+|            7 | Submission_Source | nan                           |     431 |           67.29 |
+|            8 | Submission_Source | government procurement system |      18 |           16.67 |
+|            9 | Client_Category   | big tech & multinationals     |    9284 |           85.65 |
+|           10 | Client_Category   | traditional it & telecomm     |    8231 |           72.4  |
+|           11 | Client_Category   | saas & software houses        |    4692 |           40.03 |
+|           12 | Client_Category   | industrial tech & iot         |    1958 |           27.48 |
+|           13 | Client_Category   | fintech & banking             |    1761 |           25.72 |
+
+
+
+
+The Portugal slice shows why the country effect should not be read too literally. Portugal is high-risk overall, but the risk is concentrated in specific acquisition patterns, especially payment terms and B2B/reseller traffic. Some Portugal subgroups are much closer to ordinary dropout rates.
+
+The identifier columns carry signal too. `Agent_ID` and `Company_ID` are labels, not numbers. Frequent agents have very different drop rates, and _having_ a company id lowers risk, so identity is predictive and we must keep it without exploding the feature space (Section 5.2).
 
 
 
@@ -600,7 +825,7 @@ display(company_presence)
 
 
     
-![png](<notebook_v3_files/notebook_v3_26_0.png>)
+![png](notebook_v3_files/notebook_v3_31_0.png)
     
 
 
@@ -613,6 +838,87 @@ display(company_presence)
 | has company_id |    3120 |    0.212179 |
 
 
+
+
+The agent plot is useful, but it raises a fair concern: risky agents may simply be agents assigned to risky countries or channels. This is not classical numeric multicollinearity; it is overlapping categorical signal. We check it directly by asking how well `Agent_ID` predicts `Origin_Country`.
+
+
+
+```python
+agent_country_pairs = clean_train[["Agent_ID", "Origin_Country"]].dropna()
+
+agent_country = agent_country_pairs.groupby("Agent_ID")["Origin_Country"].agg(
+    count="size",
+    countries="nunique",
+    top_country=lambda s: s.value_counts().idxmax(),
+    top_country_share=lambda s: s.value_counts(normalize=True).iloc[0],
+)
+
+country_tr, country_va = train_test_split(
+    agent_country_pairs, test_size=0.25, random_state=SEED
+)
+majority_country = country_tr["Origin_Country"].mode().iat[0]
+agent_country_map = country_tr.groupby("Agent_ID")["Origin_Country"].agg(
+    lambda s: s.value_counts().idxmax()
+)
+agent_country_pred = (
+    country_va["Agent_ID"].map(agent_country_map).fillna(majority_country)
+)
+
+display(
+    pd.DataFrame({
+        "check": ["majority country baseline", "agent modal country"],
+        "accuracy": [
+            country_va["Origin_Country"].eq(majority_country).mean(),
+            agent_country_pred.eq(country_va["Origin_Country"]).mean(),
+        ],
+    }).round(3)
+)
+
+display(
+    agent_country
+    .sort_values("count", ascending=False)
+    .head(12)
+    .assign(top_country_share_pct=lambda d: d["top_country_share"] * 100)[
+        ["count", "countries", "top_country", "top_country_share_pct"]
+    ]
+    .round(1)
+)
+```
+
+
+
+
+|   Unnamed: 0 | check                     |   accuracy |
+|-------------:|:--------------------------|-----------:|
+|            0 | majority country baseline |      0.391 |
+|            1 | agent modal country       |      0.421 |
+
+
+
+
+
+
+
+|   ('Unnamed: 0_level_0', 'Agent_ID') |   ('count', 'Unnamed: 1_level_1') |   ('countries', 'Unnamed: 2_level_1') | ('top_country', 'Unnamed: 3_level_1')   |   ('top_country_share_pct', 'Unnamed: 4_level_1') |
+|-------------------------------------:|----------------------------------:|--------------------------------------:|:----------------------------------------|--------------------------------------------------:|
+|                                  184 |                             21923 |                                   135 | fra                                     |                                              14.8 |
+|                                  218 |                              6488 |                                    30 | prt                                     |                                              84   |
+|                                  104 |                              2552 |                                    65 | prt                                     |                                              23.4 |
+|                                  264 |                              2355 |                                    69 | prt                                     |                                              22   |
+|                                  219 |                              1967 |                                    17 | prt                                     |                                              58.6 |
+|                                  224 |                              1299 |                                    26 | fra                                     |                                              63.3 |
+|                                  205 |                              1065 |                                    15 | prt                                     |                                              71.9 |
+|                                  320 |                              1061 |                                    46 | prt                                     |                                              69.1 |
+|                                  158 |                               884 |                                    39 | prt                                     |                                              43.6 |
+|                                  138 |                               753 |                                    11 | prt                                     |                                              72.6 |
+|                                  139 |                               740 |                                    28 | prt                                     |                                              88.5 |
+|                                  129 |                               596 |                                     6 | prt                                     |                                              94.6 |
+
+
+
+
+The overlap is real but incomplete. Some agents are heavily country-focused, especially around Portugal, while the largest agent serves many countries. So country does not fully explain agent behavior, and agent does not fully explain country behavior. We keep both signals, but encode them compactly later instead of one-hotting hundreds of levels.
 
 
 ## 3.5 Numeric features: summary, correlation, and suspects
@@ -691,7 +997,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_30_0.png>)
+![png](notebook_v3_files/notebook_v3_38_0.png)
     
 
 
@@ -729,7 +1035,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_33_0.png>)
+![png](notebook_v3_files/notebook_v3_41_0.png)
     
 
 
@@ -739,7 +1045,9 @@ plt.show()
 - **`Pre_Course_Supports_Tickets`**: more pre-course engagement is associated
   with _lower_ dropping — a group that is actively preparing is committed.
 
-**EDA takeaways carried forward:** time structure (headline), payment terms, registration timing, company/agent identity, client segment & channel, and support engagement are the strongest visible signals.
+### 3.7. **EDA takeaways carried forward:**
+
+time structure (headline), payment terms, registration timing, country/agent/company context, client segment & channel, and support engagement are the strongest visible signals.
 
 
 # 4. Missing-value handling & outlier analysis
@@ -754,7 +1062,7 @@ We look for values that are physically impossible or absurdly far from the bulk.
 
 
 ```python
-def suspect_report(df, cols, max_mult=10):
+def sus_report(df, cols, max_mult=10):
     out = []
     for c in cols:
         s = df[c].dropna()
@@ -778,9 +1086,9 @@ def suspect_report(df, cols, max_mult=10):
 
 
 print("Suspect columns — TRAIN")
-display(suspect_report(train_raw, num_cols))
+display(sus_report(train_raw, num_cols))
 print("Suspect columns — TEST")
-display(suspect_report(test_raw, num_cols))
+display(sus_report(test_raw, num_cols))
 ```
 
     Suspect columns — TRAIN
@@ -832,7 +1140,11 @@ print(f"rows where historical dropouts exceed historical attended: {len(impossib
 
 
 **Decisions and justification.**
-We **clip (winsorize) rather than drop rows** for fields with clear placeholder or physically impossible values: the _other_ fields in those rows are still valid and informative, and clipping keeps train and test aligned. The 4,985 rows where historical dropouts exceed historical attended are not treated as corruption: these appear to be independent historical counters, not two counts over the same registration set. Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap. The table quantifies the clipped rows; the figure shows the distribution before and after each cap.
+We **clip (winsorize) rather than drop rows** for fields with clear placeholder or physically impossible values: the _other_ fields in those rows are still valid and informative, and clipping keeps train and test aligned.
+
+The 4,985 rows where historical dropouts exceed historical attended require a different interpretation. Section 5 uses these columns to build `prev_drop_rate`, so this check means we should not present that engineered value as a literal probability. Instead, we treat it as a smoothed **dropout-intensity** signal: high values indicate heavier prior dropout history relative to prior attendance, but values above 1 can occur if the two counters describe different historical windows or independent aggregates.
+
+For that reason, we keep both raw counters and the ratio-like signal, but we do **not** force the ratio into `[0, 1]` and do **not** drop the affected rows. Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap. The table quantifies the clipped rows; the figure shows the distribution before and after each cap.
 
 
 
@@ -925,7 +1237,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_41_1.png>)
+![png](notebook_v3_files/notebook_v3_49_1.png)
     
 
 
@@ -956,16 +1268,16 @@ Every feature below is justified by the EDA or by domain logic. This notebook mi
 
 Each engineered feature either preserves useful raw information in a more model-friendly form, or compresses a noisy/high-cardinality signal without using the target label.
 
-| Raw signal                | Engineered feature(s)                                        | Why it helps                                                            |
-| ------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `Course_Start_Date`       | `start_month`, `start_dow`, `start_week`, `days_since_epoch` | Keeps seasonality and the time trend visible in the future test window. |
-| Participant counts        | `total_participants`, `prof_share`                           | Converts raw counts into comparable group composition.                  |
-| Practical/theory hours    | `total_hours`, `practical_share`                             | Represents course intensity and hands-on share directly.                |
-| Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Uses a smoothed history rate instead of two scale-dependent counts.     |
-| Tuition cost + hours      | `cost_x_days`                                                | Approximates the contract value at risk.                                |
-| Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the requested setup was honored.                       |
-| Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves missingness signals seen in Section 3.2.                      |
-| Agent/company/country IDs | frequency encodings + native categoricals                    | Keeps identity/frequency signal without one-hot explosion.              |
+| Raw signal                | Engineered feature(s)                                        | Why it helps                                                                                                                                 |
+| ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Course_Start_Date`       | `start_month`, `start_dow`, `start_week`, `days_since_epoch` | Keeps seasonality and the time trend visible in the future test window.                                                                      |
+| Participant counts        | `total_participants`, `prof_share`                           | Converts raw counts into comparable group composition.                                                                                       |
+| Practical/theory hours    | `total_hours`, `practical_share`                             | Represents course intensity and hands-on share directly.                                                                                     |
+| Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Adds a smoothed dropout-intensity signal; not treated as a bounded probability because the historical counters are not perfectly consistent. |
+| Tuition cost + hours      | `cost_x_days`                                                | Approximates the contract value at risk.                                                                                                     |
+| Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the requested setup was honored.                                                                                            |
+| Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves missingness signals seen in Section 3.2.                                                                                           |
+| Agent/company/country IDs | frequency encodings + native categoricals                    | Keeps identity/frequency signal without one-hot explosion.                                                                                   |
 
 
 ## 5.2 Dimensionality: taming high-cardinality IDs without one-hot
@@ -1603,7 +1915,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_57_1.png>)
+![png](notebook_v3_files/notebook_v3_65_1.png)
     
 
 
@@ -1819,7 +2131,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_67_0.png>)
+![png](notebook_v3_files/notebook_v3_75_0.png)
     
 
 
@@ -1860,7 +2172,7 @@ print(f"AUC of mean booster probability: {roc_auc_score(y_va, blend_prob):.4f}")
 
 
     
-![png](<notebook_v3_files/notebook_v3_70_0.png>)
+![png](notebook_v3_files/notebook_v3_78_0.png)
     
 
 
@@ -1911,7 +2223,7 @@ print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}
 
 
     
-![png](<notebook_v3_files/notebook_v3_73_0.png>)
+![png](notebook_v3_files/notebook_v3_81_0.png)
     
 
 
@@ -1993,13 +2305,13 @@ display(top)
 
 
     
-![png](<notebook_v3_files/notebook_v3_78_0.png>)
+![png](notebook_v3_files/notebook_v3_86_0.png)
     
 
 
 
     
-![png](<notebook_v3_files/notebook_v3_78_1.png>)
+![png](notebook_v3_files/notebook_v3_86_1.png)
     
 
 
@@ -2142,7 +2454,7 @@ except Exception as e:
 
 
     
-![png](<notebook_v3_files/notebook_v3_83_0.png>)
+![png](notebook_v3_files/notebook_v3_91_0.png)
     
 
 
@@ -2179,7 +2491,7 @@ plt.show()
 
 
     
-![png](<notebook_v3_files/notebook_v3_85_1.png>)
+![png](notebook_v3_files/notebook_v3_93_1.png)
     
 
 
