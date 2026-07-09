@@ -7,7 +7,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.4
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -80,7 +80,7 @@ except NameError:  # pragma: no cover
 TRAIN_PATH = "data/Train_Data.csv"
 TEST_PATH = "data/Test_Data_No_Target.csv"
 TARGET = "Dropped_Course"
-CHRONO_CUTOFF = "2017-01-01"  # validation window ~ 4 months, matching the test window
+CHRONO_CUTOFF = "2017-01-01"  # final ~4 train months, matching the hidden test horizon
 SEED = 42
 GITHUB_RAW_BASES = [
     "https://raw.githubusercontent.com/manemajef/ml-proj/main",
@@ -178,8 +178,6 @@ display(data_dictionary)
 
 # %%
 display(train_raw.describe())
-
-# %%
 
 # %% [markdown]
 # ## 2.1 Target balance
@@ -792,8 +790,10 @@ plt.show()
 # not less — the opposite of the naive "money is locked in" intuition. The most
 # plausible reading is selection: the company likely demands prepayment precisely from
 # deals it already judges risky, so the variable is a _symptom_ of risk rather than a
-# cause. We keep its strong predictive power but flag it for an explicit leakage
-# plausibility check (Section 9).
+# cause. We keep its strong predictive power, but only under the working assumption that
+# payment terms are recorded at registration time. Section 9 checks sensitivity without it;
+# a real deployment would first audit the timestamp/logging path to rule out post-cancel
+# updates.
 #
 # **3. Geography is a proxy, not a cause.** Portugal's 63.8% drop rate is real but
 # confounded — `Agent_ID` predicts country well above chance, so "risky country" and
@@ -854,22 +854,69 @@ print("Suspect columns — TEST")
 display(sus_report(test_raw, num_cols))
 
 # %% [markdown]
-# The test set introduces **no new kinds** of corruption, so caps learned from domain reasoning on train transfer safely. We also inspect the relationship between two historical counters:
+# The test set introduces **no new kinds** of corruption, so the same cleaning policy can transfer safely. The `q99` values above are a screening device: a large `max` relative to `q99` tells us where to inspect the tail before choosing a cleaning rule.
 #
 
 # %%
-impossible = train_raw[
-    train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]
-]
-print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
+TAIL_CHECK_COLS = ["Students_Count", "Practical_Hours", "Daily_Tuition_Cost"]
+
+tail_long = []
+for split, df in [("train", train_raw), ("test", test_raw)]:
+    for col in TAIL_CHECK_COLS:
+        s = df[col].dropna().rename("value").to_frame()
+        s["split"] = split
+        s["column"] = col
+        tail_long.append(s)
+
+tail_long = pd.concat(tail_long, ignore_index=True)
+fig, axes = plt.subplots(1, len(TAIL_CHECK_COLS), figsize=(15, 4), sharey=False)
+for ax, col in zip(axes, TAIL_CHECK_COLS):
+    sub = tail_long[tail_long["column"] == col]
+    sns.boxplot(
+        data=sub,
+        x="split",
+        y="value",
+        hue="split",
+        order=["train", "test"],
+        palette=["#4c72b0", "#dd8452"],
+        showfliers=True,
+        ax=ax,
+        legend=False,
+    )
+    for xpos, split in enumerate(["train", "test"]):
+        split_values = sub.loc[sub["split"] == split, "value"]
+        max_value = split_values.max()
+        n_at_max = int((split_values == max_value).sum())
+        ax.annotate(
+            f"max={max_value:g}\nn={n_at_max}",
+            xy=(xpos, max_value),
+            xytext=(0, 7),
+            textcoords="offset points",
+            fontsize=8,
+            ha="center",
+        )
+    positive = sub.loc[sub["value"] > 0, "value"]
+    if not positive.empty:
+        ax.set_yscale("log")
+        ax.set_ylim(bottom=max(positive.min() * 0.7, 0.1))
+    ax.set_title(col)
+    ax.set_xlabel("")
+    ax.set_ylabel("raw value (log scale)")
+fig.suptitle("Raw tail check for candidate capped columns")
+plt.tight_layout(rect=[0, 0, 1, 0.9])
+plt.show()
 
 # %% [markdown]
 # **Decisions and justification.**
 # We **clip (winsorize) rather than drop rows** for fields with clear placeholder or physically impossible values: the _other_ fields in those rows are still valid and informative, and clipping keeps train and test aligned.
 #
-# The 4,985 rows where historical dropouts exceed historical attended require a different interpretation. Section 5 uses these columns to build `prev_drop_rate`, so this check means we should not present that engineered value as a literal probability. Instead, we treat it as a smoothed **dropout-intensity** signal: high values indicate heavier prior dropout history relative to prior attendance, but values above 1 can occur if the two counters describe different historical windows or independent aggregates.
+# Based on the suspect-column screen and the boxplots, we apply three caps:
 #
-# For that reason, we keep both raw counters and the ratio-like signal, but we do **not** force the ratio into `[0, 1]` and do **not** drop the affected rows. Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap. The table quantifies the clipped rows; the figure shows the distribution before and after each cap.
+# - `Students_Count <= 10`: the only values above the normal tail are `9999` placeholder rows in both train and test. The cap keeps those rows as large groups without letting the placeholder behave like a real count.
+# - `Practical_Hours` in `[0, 12]`: negative values are impossible, and `5000`/`10000` are clear placeholders. A 12-hour upper bound still allows a long practical day and prevents invalid hour codes from dominating hour calculations.
+# - `Daily_Tuition_Cost <= 600`: train has a single `5400` value, while the test maximum is 510. A cap of 600 leaves the observed test range untouched and prevents one corrupted training value from dominating cost calculations.
+#
+# Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap.
 #
 
 # %%
@@ -878,19 +925,19 @@ CAP_RULES = {
         "lower": None,
         "upper": 10,
         "problem": "9999 placeholder",
-        "reason": "course groups are single-/low-double-digit",
+        "reason": "corporate classroom groups are single-/low-double-digit",
     },
     "Practical_Hours": {
         "lower": 0,
         "upper": 12,
         "problem": "negative values and 10000",
-        "reason": "course hours cannot be negative or five-digit",
+        "reason": "course hours cannot be negative; 12 covers a long practical day",
     },
     "Daily_Tuition_Cost": {
         "lower": None,
         "upper": 600,
         "problem": "5400 value",
-        "reason": "about 30x the typical daily rate",
+        "reason": "5400 is far beyond the valid fee range; 600 keeps the high-cost tail",
     },
 }
 
@@ -947,6 +994,28 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
+# The before/after distributions show that the caps remove isolated invalid tails while
+# preserving the bulk of each feature.
+#
+# One more data-quality issue appears in the historical counters. Some rows have more
+# recorded prior dropouts than prior attended courses, so those fields are not a clean
+# numerator/denominator pair.
+#
+
+# %%
+impossible = train_raw[
+    train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]
+]
+print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
+
+# %% [markdown]
+# We keep the raw historical counters because the values can still carry risk signal, but
+# any ratio derived from them should be interpreted as dropout **intensity**, not as a
+# literal bounded probability. We therefore do not cap these counters or force their ratio
+# into `[0, 1]`.
+#
+
+# %% [markdown]
 # ## 4.2 Missing-value policy
 #
 # Different column types get different treatment, each justified:
@@ -960,7 +1029,9 @@ plt.show()
 #   CatBoost) handle `NaN` natively by learning a default split direction, which
 #   is strictly more informative than median-filling. We therefore **pass numeric
 #   NaNs through** to the models rather than imputing them, and only compute
-#   fill-values inside engineered _ratios_ to avoid divide-by-zero.
+#   fill-values inside engineered _ratios_ to avoid divide-by-zero. This keeps
+#   the predictive missingness signals seen in EDA instead of erasing them with
+#   median values.
 #
 # This is a deliberate change from the first modeling attempt, which median-imputed everything for a one-hot + linear/tree pipeline. With native-NaN boosters, imputation throws away the "was it missing?" signal for no benefit.
 #
@@ -968,7 +1039,7 @@ plt.show()
 # %% [markdown]
 # # 5. Feature engineering & dimensionality
 #
-# Every feature below is justified by the EDA or by domain logic. We separate the shared engineered features from the model-specific encoding choices used later.
+# Every feature below is justified by the EDA or by domain logic. We separate the shared engineered features from the model-specific encoding choices used later. The notebook gives extra validation to the highest-impact design choices: time, frequency maps, `Payment_Terms`, and the final rank blend.
 #
 
 # %% [markdown]
@@ -985,7 +1056,7 @@ plt.show()
 # | Tuition cost + hours      | `cost_x_days`                                                | Approximates the contract value at risk.                                                                                                     |
 # | Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the requested setup was honored.                                                                                            |
 # | Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves missingness signals seen in Section 3.2.                                                                                           |
-# | Agent/company/country IDs | frequency encodings; native categoricals for tree boosters    | Keeps identity/frequency signal without one-hot explosion in the tree pipeline.                                                              |
+# | Agent/company/country IDs | frequency encodings; native categoricals for tree boosters   | Keeps identity/frequency signal without one-hot explosion; frequencies use only covariate counts, never labels.                              |
 #
 
 # %% [markdown]
@@ -1000,7 +1071,7 @@ plt.show()
 # - **Logistic Regression / MLP path.** These models need a fully numeric matrix. In Section 7.1 we therefore collapse rare category levels to `"other"`, one-hot encode the remaining levels, median-impute numeric missing values, and scale the matrix.
 # - **Tree-booster path.** Gradient-boosted trees can avoid most of that one-hot expansion. We keep categorical columns as native `category` values, add label-free frequency encodings for high-cardinality IDs, and drop raw `Company_ID` while keeping `has_company_id` and `Company_ID_freq`.
 #
-# Section 7 compares the models with the preprocessing each one can actually use. Since the tree model wins, the final pipeline uses the tree-compatible dimensionality strategy below.
+# Section 7 compares the models with the preprocessing each one can actually use. Since the tree model wins, the final pipeline uses the tree-compatible dimensionality strategy below. Frequency maps are **label-free**: they count how common each ID/country value is and never look at `Dropped_Course`. For chronological validation we fit those counts on the past training window only, so the validation window cannot leak future covariate frequencies. For final scoring we may use train+test covariate frequencies because the test feature values are already observed; this is transductive covariate use, not target leakage.
 #
 # **What "native categorical" means for the tree path.** We keep these columns in pandas' `category`
 # dtype: a list of levels plus one integer _code_ per row (`["blue","red","blue"]` →
@@ -1074,6 +1145,8 @@ def build_features(
         "total_hours"
     ].replace(0, np.nan)
     out["cost_x_days"] = df["Daily_Tuition_Cost"].clip(upper=600) * out["total_hours"]
+    # +1 is Laplace smoothing for new clients; because CRM dropouts can exceed
+    # attended counts, this is a dropout-intensity signal, not a probability.
     out["prev_drop_rate"] = df["Prev_Course_Dropouts"] / (
         df["Prev_Course_Attended"] + 1
     )
@@ -1274,6 +1347,7 @@ def get_lgbm(**kw):
     p = dict(
         n_estimators=700,
         learning_rate=0.03,
+        # 63 = 2^6 - 1, aligning LightGBM leaf capacity with depth-6 XGBoost/CatBoost.
         num_leaves=63,
         min_child_samples=40,
         subsample=0.9,
@@ -1311,6 +1385,7 @@ def get_cat(**kw):
     p = dict(
         iterations=1200,
         learning_rate=0.05,
+        # Depth 6 matches the selected XGBoost depth and the LightGBM leaf budget above.
         depth=6,
         l2_leaf_reg=3.0,
         random_seed=SEED,
@@ -1367,7 +1442,8 @@ def encode_for_continuous_models(X_tr: pd.DataFrame, X_va: pd.DataFrame, min_cou
     #     df.drop(columns=["days_since_epoch"], inplace=True)
     cat_cols = list(Xt.select_dtypes("category").columns)
 
-    # collapse rare levels to "other" so the linear/MLP feature space stays bounded
+    # Collapse rare levels to "other" so the one-hot matrix stays bounded and the
+    # linear/MLP baselines do not overfit categories with only a few examples.
     for c in cat_cols:
         train_s = Xt[c].astype("string").fillna("missing")
         keep = train_s.value_counts()[lambda s: s >= min_count].index
@@ -1807,7 +1883,7 @@ display(ablation)
 # %% [markdown]
 # # 8. Model evaluation
 #
-# AUC is the competition metric, but operations act on a **threshold**. We evaluate the chosen blend on the chronological holdout with ROC and precision–recall curves. For confusion-matrix diagnostics, we use the mean boosted-tree probability (`blend_prob`), because the submitted rank-average score (`blend_t`) is optimized for ranking and is not calibrated.
+# AUC is the competition metric, but operations act on a **threshold**. We evaluate the chosen blend on the chronological holdout with ROC and precision–recall curves. For confusion-matrix diagnostics, we use the mean boosted-tree probability (`blend_prob`), because the submitted rank-average score (`blend_t`) is optimized for ranking and is not calibrated. Rank-averaging is good for AUC because it ignores model-specific calibration scales, but after converting predictions to rank percentiles, a threshold like `0.5` no longer means `P(drop) >= 0.5`.
 #
 
 # %% [markdown]
@@ -1856,7 +1932,7 @@ plt.show()
 # %% [markdown]
 # ## 8.2 Confusion matrix & threshold metrics
 #
-# At the default 0.5 threshold we turn the mean boosted-tree probabilities into hard decisions and read off the operational metrics. This is a diagnostic threshold, not the submitted rank-average score.
+# At the default 0.5 threshold we turn the mean boosted-tree probabilities into hard decisions and read off the operational metrics. This is a diagnostic threshold, not the submitted rank-average score. Thresholding the rank-average at 0.5 would only flag roughly the riskier half of the rows; it would not be a probability cutoff.
 #
 
 # %%
@@ -1923,7 +1999,7 @@ print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}
 # %% [markdown]
 # # 9. Interpretation with SHAP
 #
-# For interpretation we analyse **one** representative model — **XGBoost+time** — as the assignment requires. XGBoost is the tree model introduced in Section 7, is one component of the selected blend, and is also the assignment-recommended boosted-tree family. This is not SHAP for the selected rank-average blend: it uses a fixed sample of up to 10,000 chronological-validation rows from one representative XGBoost model. SHAP (SHapley Additive exPlanations) attributes each prediction to its features via a game-theoretic allocation, giving both global importance and per-observation explanations.
+# For interpretation we analyse **one** representative model — **XGBoost+time** — as the assignment requires. XGBoost is the tree model introduced in Section 7, is one component of the selected blend, and is also the assignment-recommended boosted-tree family. This is not SHAP for the selected rank-average blend: TreeSHAP explains one fitted tree model, while our selected ensemble is a rank-average of three separately fitted boosters. We therefore use a fixed sample of up to 10,000 chronological-validation rows from representative XGBoost. The project Q&A explicitly permits sampling expensive steps such as SHAP so the notebook stays runnable. SHAP (SHapley Additive exPlanations) attributes each prediction to its features via a game-theoretic allocation, giving both global importance and per-observation explanations.
 #
 
 # %%
@@ -1976,7 +2052,7 @@ display(top)
 #
 # ### The `Payment_Terms` leakage plausibility assessment
 #
-# EDA flagged prepaid-non-refundable as suspiciously strong. SHAP confirms it is influential, but SHAP importance alone cannot prove absence of leakage. We therefore run one small sensitivity check: refit representative XGBoost without `Payment_Terms` and compare chronological AUC.
+# EDA flagged prepaid-non-refundable as suspiciously strong. SHAP confirms it is influential, but feature importance cannot answer the timing question by itself. We therefore run one small sensitivity check: refit representative XGBoost without `Payment_Terms` and compare chronological AUC. This measures how dependent the model is on the field; the operational logging timestamp remains a separate data-governance check.
 #
 
 # %%
@@ -1999,7 +2075,7 @@ payment_check["delta_vs_with_payment"] = (
 display(payment_check)
 
 # %% [markdown]
-# The feature remains useful in this representative check, but this still does not prove the timing of the column. Our working assumption is that payment terms are set _at registration_ (before cancellation), making them a plausible early risk signal rather than a post-hoc label leak. Before production use, the timing should be confirmed with the data owner.
+# The model remains strong without `Payment_Terms`, so the field is useful but not the sole source of performance. Our working assumption is that payment terms are set _at registration_ (before cancellation), making them a plausible early risk signal. Before production use, the data owner should audit the exact logging path and confirm that the field is not populated or overwritten after cancellation.
 #
 
 # %% [markdown]
@@ -2101,7 +2177,7 @@ plt.show()
 # %% [markdown]
 # # 10. Current submission model & CSV builder
 #
-# We refit all three boosters on **every** labelled row, build label-free frequency maps from train+test covariates for the submission scoring transform, rank-average their test predictions, and optionally write the submission CSV. This mirrors `pipelines/pipeline_v2.py`. The train+test frequency maps are a transductive shortcut: they use no target labels, but they do use test covariate frequencies.
+# We refit all three boosters on **every** labelled row, build label-free frequency maps from train+test covariates for the submission scoring transform, rank-average their test predictions, and optionally write the submission CSV. This mirrors `pipelines/pipeline_v2.py`. The train+test frequency maps are a transductive shortcut: they use no target labels, but they do use test covariate frequencies. Because histogram-based tree training can vary slightly across thread scheduling, CPU math, and library versions, the stored scored CSV remains the official leaderboard record unless this local rebuild matches it exactly.
 #
 
 
@@ -2169,7 +2245,7 @@ else:
     print(f"{scored_path} not found; skipped scored-file comparison.")
 
 # %% [markdown]
-# The output has the required schema (`Client_ID`, `Drop_Probability`), one row per test order, with rank-average risk scores spread across `[0, 1]`. When the local officially scored file is available, the comparison table above verifies whether this notebook's rebuilt current logic matches it exactly or only approximately. If the max difference is non-zero, the stored scored CSV remains the source of truth for the reported leaderboard result.
+# The output has the required schema (`Client_ID`, `Drop_Probability`), one row per test order, with rank-average risk scores spread across `[0, 1]`. When the local officially scored file is available, the comparison table above verifies whether this notebook's rebuilt current logic matches it exactly or only approximately. If the max difference is non-zero, the stored scored CSV remains the source of truth for the reported leaderboard result; small differences can come from multi-threaded tree construction and floating-point variation across environments even with fixed seeds.
 #
 
 # %% [markdown]
