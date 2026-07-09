@@ -21,11 +21,11 @@
 #
 # ---
 #
-# This is the **current integrated CRISP-DM-style analysis notebook** for the project. It tells the story end to end: business understanding → data exploration → cleaning → feature engineering → modelling → evaluation → interpretation → conclusions.
+# This is the **current integrated CRISP-DM-style analysis notebook** for the project: business understanding → data exploration → cleaning → feature engineering → modelling → evaluation → interpretation → conclusions.
 #
 # It combines two exploratory lines of work (`notebook_v1.py` and `Project_Ron_V3.ipynb`) around the selected chronological pipeline, whose clean runnable form lives in `pipelines/pipeline_v2.py`. Running this notebook top to bottom rebuilds the current submission logic.
 #
-# **The one idea that shaped the modelling choices:** the hidden test set is the **future** — it begins exactly where training ends and runs four months further. So the task is _forecasting_, not interpolating, and any validation that mixes past and future rows (a random split) is measuring the wrong thing. Respecting time in validation helped explain the improvement from the first submission's **0.886** leaderboard AUC to the current **0.889314 — 1st of 32 groups**.
+# **Main modelling issue we found:** the hidden test set is the **future** — it begins exactly where training ends and runs four months further. So the task is closer to forecasting than interpolation, and a random split is too optimistic. Respecting time in validation helped explain the improvement from the first submission's **0.886** leaderboard AUC to the current **0.889314 — 1st of 32 groups**.
 #
 
 # %%
@@ -247,7 +247,7 @@ plt.show()
 # %% [markdown]
 # **Reading the plot.** Training runs `2015-07 → 2017-04`; the test window starts exactly where training ends and continues to `2017-08`, with essentially **zero overlap in time**. The drop rate also **drifts year to year** — it is not a stationary process.
 #
-# **Consequence.** The real task is "train on the past, predict the future". A random train/validation split leaks future rows into training and produces an _optimistic_ score that does not transfer to the leaderboard. This time structure drives our validation strategy (Section 6) and motivates a feature choice (the time index, Section 5). It likely explains much of the gap between random-split validation and leaderboard behavior, while other feature and model changes also contributed.
+# **Consequence.** We treat the task as "train on the past, predict the future". A random train/validation split leaks future rows into training and produces an _optimistic_ score that does not transfer to the leaderboard. This time structure drives our validation strategy (Section 6) and motivates a feature choice (the time index, Section 5). It likely explains much of the gap between random-split validation and leaderboard behavior, while other feature and model changes also contributed.
 #
 
 # %% [markdown]
@@ -503,8 +503,8 @@ plt.show()
 # %% [markdown]
 # **Findings.**
 #
-# - **`Payment_Terms` is the single strongest categorical signal.** _Prepaid (non-refundable)_ orders drop far more often than _pay-on-start_ ones.
-#   - This is counter-intuitive (why cancel something you can't refund?) and strong enough that we flag it for a leakage plausibility assessment during interpretation (Section 9). We keep it, but watch it.
+# - **`Payment_Terms` is the strongest categorical signal in this view.** _Prepaid (non-refundable)_ orders drop far more often than _pay-on-start_ ones.
+#   - This is surprising (why cancel something you can't refund?) and strong enough that we flag it for a leakage plausibility assessment during interpretation (Section 9). We keep it, but watch it.
 # - **`Client_Category`**: big-tech / multinational segments drop above average; fintech/banking and industrial/IoT below.
 # - **`Submission_Source`**: direct-website and dedicated-sales orders are lower risk than B2B-platform / reseller traffic.
 # - **`Enrollment_Type`**: organisational / affiliated arrangements are lower risk than general or one-off contractual admissions.
@@ -785,7 +785,7 @@ plt.show()
 #   reseller/platform channels, and large multinational buyers whose bureaucracies
 #   reprioritise and cut training budgets more readily.
 #
-# This is exactly why _missingness itself_ is predictive — a missing `Company_ID` is a
+# This helps explain why _missingness itself_ is predictive — a missing `Company_ID` is a
 # commitment signal, not merely a gap to impute.
 #
 # **2. `Payment_Terms` looks endogenous.** Prepaid, non-refundable orders drop _more_,
@@ -968,7 +968,7 @@ plt.show()
 # %% [markdown]
 # # 5. Feature engineering & dimensionality
 #
-# Every feature below is justified by the EDA or by domain logic. This notebook mirrors the selected feature transform implemented in `pipelines/pipeline_v2.py`.
+# Every feature below is justified by the EDA or by domain logic. We separate the shared engineered features from the model-specific encoding choices used later.
 #
 
 # %% [markdown]
@@ -985,7 +985,7 @@ plt.show()
 # | Tuition cost + hours      | `cost_x_days`                                                | Approximates the contract value at risk.                                                                                                     |
 # | Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the requested setup was honored.                                                                                            |
 # | Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves missingness signals seen in Section 3.2.                                                                                           |
-# | Agent/company/country IDs | frequency encodings + native categoricals                    | Keeps identity/frequency signal without one-hot explosion.                                                                                   |
+# | Agent/company/country IDs | frequency encodings; native categoricals for tree boosters    | Keeps identity/frequency signal without one-hot explosion in the tree pipeline.                                                              |
 #
 
 # %% [markdown]
@@ -995,7 +995,14 @@ plt.show()
 # `Agent_ID` alone has 204 distinct levels and `Origin_Country` 154, so naive one-hot
 # encoding would turn each into hundreds of sparse binary columns.
 #
-# **What "native categorical" means.** We keep these columns in pandas' `category`
+# Because our candidate models handle categorical columns differently, we keep two practical preprocessing paths:
+#
+# - **Logistic Regression / MLP path.** These models need a fully numeric matrix. In Section 7.1 we therefore collapse rare category levels to `"other"`, one-hot encode the remaining levels, median-impute numeric missing values, and scale the matrix.
+# - **Tree-booster path.** Gradient-boosted trees can avoid most of that one-hot expansion. We keep categorical columns as native `category` values, add label-free frequency encodings for high-cardinality IDs, and drop raw `Company_ID` while keeping `has_company_id` and `Company_ID_freq`.
+#
+# Section 7 compares the models with the preprocessing each one can actually use. Since the tree model wins, the final pipeline uses the tree-compatible dimensionality strategy below.
+#
+# **What "native categorical" means for the tree path.** We keep these columns in pandas' `category`
 # dtype: a list of levels plus one integer _code_ per row (`["blue","red","blue"]` →
 # codes `[0,1,0]`), like an R `factor`. This is a storage format, not an encoding — the
 # leverage is in how the boosters read it. A gradient-boosted tree treats the codes as
@@ -1132,23 +1139,17 @@ print("\ncategory cardinalities:")
 display(X_all[cat_cols].nunique(dropna=False).sort_values(ascending=False))
 
 # %% [markdown]
-# **Our dimensionality strategy** combines three levers, each doing a different job:
+# **The tree-compatible dimensionality strategy** combines three levers, each doing a different job:
 #
 # 1. **Native `category` dtype** — the boosters split on level subsets directly, so the
 #    feature matrix stays at 42 columns instead of ~435 (**393 dummy columns avoided**,
 #    almost all from `Agent_ID` and `Origin_Country`).
 # 2. **Frequency encoding** per ID (how common each value is) — one numeric column
-#    that, unlike the dtype trick, works for _every_ model family.
+#    that, unlike the dtype trick, can also be included in the continuous baselines.
 # 3. **Dropping raw `Company_ID`** (highest cardinality) — keeping only its frequency
 #    and presence flag.
 #
-# **An honest caveat.** Lever 1 is _tree-specific_: linear and MLP models cannot consume
-# an unordered category, so the baseline path (`encode_for_continuous_models`, Section
-# 7.1) still one-hots them behind a `min_count` collapse. And a low column count is not
-# the whole battle — 204 sparse agent levels can still overfit — which is why levers 2–3
-# and the boosters' regularisation matter alongside it. Together they answer the curse of
-# dimensionality without discarding rare-ID identity the way the first attempt's hard
-# top-$k$ collapse did.
+# **Caveat.** This low-column representation is _tree-specific_. The continuous baselines still use one-hot columns, but the `min_count` rare-level collapse keeps that matrix bounded. And a low column count is not the whole battle — 204 sparse agent levels can still overfit — which is why levers 2–3 and the boosters' regularisation matter alongside native categorical splits.
 #
 
 # %% [markdown]
@@ -1209,7 +1210,7 @@ def adversarial_validation():
 adversarial_validation()
 
 # %% [markdown]
-# The classifier separates test from train **comfortably above chance**, driven by the ID / frequency-style columns — the client population shifts over time. Confirmed: **do not trust a random split.**
+# The classifier separates test from train **well above chance**, driven by the ID / frequency-style columns — the client population shifts over time. This is another reason not to trust a random split.
 #
 # ## 6.2 The chronological holdout
 #
@@ -1250,6 +1251,8 @@ align_categories(Xtr_n, Xva_n)
 # The assignment asks for at least three models from different families. We take one from
 # each natural tier of capacity, tune each (7.2), and compare them head-to-head (7.3);
 # only after a winner emerges do we try to improve it (7.4).
+#
+# For a fair comparison, each family gets the preprocessing it can actually use: bounded one-hot + scaling for the continuous models, native categorical handling for the tree.
 #
 # - **Logistic Regression** — the linear baseline. Fast and interpretable, but limited
 #   to linear boundaries in the encoded space, so it is expected to lag on this
@@ -1400,7 +1403,7 @@ def encode_for_continuous_models(X_tr: pd.DataFrame, X_va: pd.DataFrame, min_cou
 # **log-loss**, not AUC — the bias–variance decomposition is defined for a pointwise
 # loss, whereas AUC is a rank statistic that can stay flat while the probabilities
 # overfit. We then **select** on validation **AUC**, the project metric (the star marks
-# each final operating point).
+# each final setting).
 #
 # For the tree model we tune **XGBoost** (the assignment-recommended booster) on its
 # `max_depth` axis, at a fixed budget with no early stopping so deep trees are free to
@@ -1481,7 +1484,7 @@ for depth in (2, 3, 4, 5, 6, 8, 10):
 
 tuning = pd.DataFrame(tuning_rows)
 
-# star = the operating point we carry into the final models: near-top validation AUC
+# star = the setting we carry into the final models: near-top validation AUC
 # with controlled variance (the best bias-variance compromise, not blind argmax).
 selected_x = {
     "Logistic Regression": 1.0,  # C = 1.0
@@ -1514,7 +1517,7 @@ for ax, family in zip(axes, selected_x):
         ax.set_xscale("log")
     ax.legend(fontsize=8)
 fig.suptitle(
-    "Bias–variance: training vs validation log-loss  (star = selected operating point)"
+    "Bias–variance: training vs validation log-loss  (star = selected setting)"
 )
 plt.tight_layout()
 plt.show()
@@ -1539,13 +1542,13 @@ display(
 # log-loss falls monotonically with depth while validation log-loss bottoms out at depth
 # 5–6 and then rises as the train–validation gap widens, the **variance** regime. Depth 6
 # gives the best validation AUC in the sweep, so we select it. The stars mark the
-# operating points the final models use.
+# settings the final models use.
 #
 
 # %% [markdown]
 # ### Fitting the tuned basic models
 #
-# With each family's operating point chosen, we fit the three basic models once on the
+# With each family's setting chosen, we fit the three basic models once on the
 # chronological training window and score the 2017 holdout.
 #
 
@@ -1594,20 +1597,13 @@ family_scores = (
 display(family_scores)
 
 # %% [markdown]
-# **The gradient-boosted tree wins decisively** (~0.04 AUC over both baselines),
-# confirming the EDA's read that the signal is non-linear, interaction-driven, and
-# categorical. Logistic Regression is a useful reference floor; the MLP shows that raw
-# flexibility is not enough when the signal lives in categorical splits, missingness
-# flags, and threshold effects — what trees model natively but a dense network must
-# reconstruct from one-hot inputs. **We choose the tree model** and spend the rest of the
-# section improving it.
+# The gradient-boosted tree performs clearly better on the chronological holdout (~0.04 AUC over both baselines), which matches the EDA: much of the signal is non-linear, categorical, and interaction-driven. Logistic Regression is a useful reference floor; the MLP adds flexibility, but it still has to reconstruct categorical splits, missingness flags, and thresholds from a one-hot matrix. From here we use the tree model as the main direction and try to improve it.
 #
 
 # %% [markdown]
 # ## 7.4 Improving the gradient model
 #
-# Having chosen trees, we squeeze more out of them in two ways: **(a)** tune the boosting
-# budget more carefully, then **(b)** blend in two more tree implementations.
+# After choosing trees, we try to improve them in two ways: **(a)** tune the boosting budget more carefully, then **(b)** blend in two more tree implementations.
 #
 # ### (a) Boosting budget: number of trees × learning rate
 #
@@ -1735,13 +1731,7 @@ blend_check["delta_vs_XGBoost"] = (blend_check["chrono_AUC"] - xgb_auc).round(4)
 display(blend_check)
 
 # %% [markdown]
-# The three boosters land within ~0.001 AUC of each other — effectively one model — yet
-# the blend sits **above the best single booster**, a small but consistent gain and
-# exactly the decorrelated-variance-reduction effect predicted above (it is also the
-# configuration that reached 1st place on the leaderboard). The lift is modest because the
-# boosters are highly correlated; it is real because they are not _perfectly_ so. **This
-# rank-average blend is our final model**, carried forward to evaluation, interpretation,
-# and the submission; the single boosters are reported only as its components.
+# The three boosters are very close to each other, but the rank-average blend is still slightly above the best single booster. The gain is modest because the boosters are highly correlated, but this is the same setup that reached the 1st-place leaderboard score. We therefore use the rank-average blend for evaluation and the submission; the single boosters are reported as its components.
 #
 
 # %% [markdown]
@@ -1805,19 +1795,13 @@ display(ablation)
 # %% [markdown]
 # **What the table shows.**
 #
-# - Adding the **time index improves LightGBM on the future holdout** — the
-#   counter-intuitive win. It only shows up _because_ we validate on the future; a
-#   random split would have hidden (or reversed) it.
+# - Adding the **time index improves LightGBM on the future holdout** — a surprising result. It only shows up _because_ we validate on the future; a random split would have hidden (or reversed) it.
 # - **This recency weighting setting is rejected**: a 1-year half-life on
 #   LightGBM did not help beyond the time index. Other decay rates were not
 #   explored in this compact notebook.
-# - The **random split scores far higher (~0.96)** than any honest chronological number
-#   — the leakage trap a random split invites (inflated validation, weaker real score).
-#   We ignore it.
+# - The **random split scores far higher (~0.96)** than any chronological number. This is the trap we wanted to avoid: inflated validation, weaker real score. We ignore it.
 #
-# As a protocol sanity check, the selected pipeline's ~0.916 chronological score maps to
-# roughly **0.89 on the leaderboard** — consistent with the scored file's **0.889314** —
-# confirming the chronological holdout tracks the real future window.
+# As a sanity check, the selected pipeline's ~0.916 chronological score maps to roughly **0.89 on the leaderboard**, close to the scored file's **0.889314**. That makes the chronological holdout a useful proxy for the real future window.
 #
 
 # %% [markdown]
@@ -1939,31 +1923,17 @@ print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}
 # %% [markdown]
 # # 9. Interpretation with SHAP
 #
-# For interpretation we analyse **one** representative model — **LightGBM+time** — as the assignment requires. This is not SHAP for the selected rank-average blend: it uses a fixed sample of up to 2,000 chronological-validation rows from one representative LightGBM model. SHAP (SHapley Additive exPlanations) attributes each prediction to its features via a game-theoretic allocation, giving both global importance and per-observation explanations.
+# For interpretation we analyse **one** representative model — **XGBoost+time** — as the assignment requires. XGBoost is the tree model introduced in Section 7, is one component of the selected blend, and is also the assignment-recommended boosted-tree family. This is not SHAP for the selected rank-average blend: it uses a fixed sample of up to 10,000 chronological-validation rows from one representative XGBoost model. SHAP (SHapley Additive exPlanations) attributes each prediction to its features via a game-theoretic allocation, giving both global importance and per-observation explanations.
 #
 
 # %%
-shap_model = LGBMClassifier(
-    n_estimators=700,
-    learning_rate=0.03,
-    num_leaves=63,
-    min_child_samples=40,
-    subsample=0.9,
-    subsample_freq=1,
-    colsample_bytree=0.8,
-    reg_lambda=1.0,
-    random_state=SEED,
-    n_jobs=-1,
-    verbosity=-1,
-)
-shap_model.fit(
-    Xtr_t, y_tr, categorical_feature=Xtr_t.select_dtypes("category").columns.tolist()
-)
+shap_model = get_xgb()
+shap_model.fit(Xtr_t, y_tr)
 print(
-    f"LightGBM+time chrono AUC: {roc_auc_score(y_va, shap_model.predict_proba(Xva_t)[:, 1]):.4f}"
+    f"XGBoost+time chrono AUC: {roc_auc_score(y_va, shap_model.predict_proba(Xva_t)[:, 1]):.4f}"
 )
 
-X_shap = Xva_t.sample(min(2000, len(Xva_t)), random_state=SEED)
+X_shap = Xva_t.sample(min(10000, len(Xva_t)), random_state=SEED)
 explainer = shap.TreeExplainer(shap_model)
 shap_values = explainer.shap_values(X_shap)
 if isinstance(shap_values, list):
@@ -1978,7 +1948,7 @@ if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
 
 # %%
 shap.summary_plot(shap_values, X_shap, show=False, max_display=20)
-plt.title("SHAP summary (beeswarm) — LightGBM+time")
+plt.title("SHAP summary (beeswarm) — XGBoost+time")
 plt.tight_layout()
 plt.show()
 
@@ -2002,25 +1972,25 @@ plt.show()
 display(top)
 
 # %% [markdown]
-# **Reading the SHAP importance.** The drivers line up with the EDA: `Payment_Terms`, the **time index** (`days_since_epoch`) and seasonality, the **frequency-encoded IDs** (`Agent_ID_freq`, `Company_ID_freq`), registration timing, and the engineered **history/ratio** features. The prominence of the time index is consistent with the representative LightGBM ablation in Section 7.5: this representative model uses _when_ an order occurs to score the future window.
+# **Reading the SHAP importance.** The drivers line up with the EDA: `Payment_Terms`, the **time index** (`days_since_epoch`) and seasonality, the **frequency-encoded IDs** (`Agent_ID_freq`, `Company_ID_freq`), registration timing, and the engineered **history/ratio** features. The prominence of the time index is consistent with the boosted-tree ablation in Section 7.5: this representative model uses _when_ an order occurs to score the future window.
 #
 # ### The `Payment_Terms` leakage plausibility assessment
 #
-# EDA flagged prepaid-non-refundable as suspiciously strong. SHAP confirms it is influential, but SHAP importance alone cannot prove absence of leakage. We therefore run one small sensitivity check: refit representative LightGBM without `Payment_Terms` and compare chronological AUC.
+# EDA flagged prepaid-non-refundable as suspiciously strong. SHAP confirms it is influential, but SHAP importance alone cannot prove absence of leakage. We therefore run one small sensitivity check: refit representative XGBoost without `Payment_Terms` and compare chronological AUC.
 #
 
 # %%
-pred_lgbm_no_payment = fit_predict(
-    "lgbm",
+pred_xgb_no_payment = fit_predict(
+    "xgb",
     Xtr_t.drop(columns=["Payment_Terms"]),
     y_tr,
     Xva_t.drop(columns=["Payment_Terms"]),
 )
 payment_check = pd.DataFrame({
-    "model": ["LightGBM + time", "LightGBM + time, no Payment_Terms"],
+    "model": ["XGBoost + time", "XGBoost + time, no Payment_Terms"],
     "chrono_AUC": [
-        roc_auc_score(y_va, pred_t["lgbm"]),
-        roc_auc_score(y_va, pred_lgbm_no_payment),
+        roc_auc_score(y_va, pred_t["xgb"]),
+        roc_auc_score(y_va, pred_xgb_no_payment),
     ],
 })
 payment_check["delta_vs_with_payment"] = (
@@ -2029,7 +1999,7 @@ payment_check["delta_vs_with_payment"] = (
 display(payment_check)
 
 # %% [markdown]
-# The feature remains useful in this representative check, but that is still not a data-lineage proof. The working assumption is that payment terms are set _at registration_ (before cancellation), making them a plausible early risk signal rather than a post-hoc label leak. Before production use, the timing should be confirmed with the data owner.
+# The feature remains useful in this representative check, but this still does not prove the timing of the column. Our working assumption is that payment terms are set _at registration_ (before cancellation), making them a plausible early risk signal rather than a post-hoc label leak. Before production use, the timing should be confirmed with the data owner.
 #
 
 # %% [markdown]
@@ -2100,7 +2070,7 @@ except Exception as e:
 # %% [markdown]
 # ## 9.3 Explaining a single low-confidence order
 #
-# To answer "_how_ does the model handle uncertain observations?", we pick one illustrative LightGBM sample case near P(drop) ≈ 0.5 and decompose its prediction. The waterfall shows which features pushed the score up vs down.
+# To answer "_how_ does the model handle uncertain observations?", we pick one illustrative XGBoost sample case near P(drop) ≈ 0.5 and decompose its prediction. The waterfall shows which features pushed the score up vs down.
 #
 
 # %%
@@ -2125,7 +2095,7 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# For this illustrative borderline order, the positive and negative contributions nearly balance in the representative LightGBM model. Operationally, cases like this are natural candidates for human follow-up because the model score is near the decision boundary.
+# For this illustrative borderline order, the positive and negative contributions nearly balance in the representative XGBoost model. In practice, cases like this are good candidates for human follow-up because the model score is near the decision boundary.
 #
 
 # %% [markdown]
@@ -2209,9 +2179,7 @@ else:
 #
 # **The process.** A CRISP-DM-style pass: EDA → cleaning → feature engineering → chronologically-validated modelling → evaluation → SHAP interpretation.
 #
-# **The central discovery.** _The test set is the future._ Train ends where test begins, and the drop rate drifts over time (confirmed by adversarial validation, AUC ≫ 0.5). This reframed the task as forecasting and made a
-#
-# **chronological holdout** — not a random split — the yardstick used for model decisions. It helped reveal why changes that look small in random CV matter for the future-window test.
+# **Main thing we learned.** _The test set is the future._ Train ends where test begins, and the drop rate drifts over time (also shown by adversarial validation, AUC ≫ 0.5). This made us treat the task as forecasting and use a **chronological holdout**, not a random split, for model decisions.
 #
 # **What worked.**
 #
@@ -2226,11 +2194,9 @@ else:
 #    implementations of one gradient-boosted tree family, which had the best
 #    holdout AUC in this comparison.
 #
-# **Key findings for the business.** The strongest, actionable drivers are payment
-# terms (prepaid-non-refundable is high-risk — worth a process review), the registration channel and enrolment type, agent/company identity and the presence of a company id, how early the group registered, and pre-course engagement (support tickets ⇒ commitment).
+# **Key findings for the business.** The most useful signals are payment terms (prepaid-non-refundable is high-risk — worth a process review), the registration channel and enrolment type, agent/company identity and the presence of a company id, how early the group registered, and pre-course engagement (support tickets ⇒ commitment).
 #
-# **Current scored result.** The locally available scored CSV is associated with
-# leaderboard **AUC 0.889314 — 1st of 32 groups**, far above the 0.70 bar.
+# **Current scored result.** The locally available scored CSV is the file reported with leaderboard **AUC 0.889314 — 1st of 32 groups**, well above the 0.70 bar.
 #
 # **Ways to push further (not yet implemented).**
 #
