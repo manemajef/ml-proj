@@ -178,6 +178,8 @@ display(data_dictionary)
 # %%
 display(train_raw.describe())
 
+# %%
+
 # %% [markdown]
 # ## 2.1 Target balance
 #
@@ -305,11 +307,39 @@ display(pd.DataFrame(rows))
 # %% [markdown]
 # ## 3.3 Categorical data quality (and why cleaning is mandatory)
 #
-# Previous exploration showed that the categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` -> `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
+# By its business meaning, every text column here should hold a handful of levels (a catering package, a lanyard colour, a payment term). So before changing anything, we scan the raw vocabulary of each text column: its distinct-string count and its six most frequent values, printed through `repr` so that padded whitespace stays visible inside the quotes. A column whose meaning allows only a few levels but shows hundreds of raw strings is corrupted.
 #
 
 # %%
-# The data contains many variations of <na>s,
+TEXT_COLS = list(train_raw.select_dtypes(include=["object"]).columns)
+
+
+def raw_vocabulary_scan(df, cols, n_top=10):
+    """Per column: raw cardinality + the n_top most frequent raw strings."""
+    rows = []
+    for col in cols:
+        shares = df[col].value_counts(normalize=True).mul(100)
+        rows.append({
+            "column": col,
+            "raw_unique": df[col].nunique(),
+            f"top_{n_top}_raw_values": ", ".join(
+                f"{value!r} {share:.1f}%" for value, share in shares.head(n_top).items()
+            ),
+        })
+    return pd.DataFrame(rows).sort_values("raw_unique", ascending=False)
+
+
+with pd.option_context("display.max_colwidth", None):
+    display(raw_vocabulary_scan(train_raw, TEXT_COLS))
+
+# %%
+
+# %% [markdown]
+# Two regimes appear. `Welcome_Gift_Type`, `Requested_Lab_Config` and `Assigned_Lab_Config` look clean — a handful of levels, as their meaning implies. The other seven columns carry **hundreds** of raw uniques, and the top values already hint why: `'BLUE'`, `'blue'` and `'  Blue  '` are one colour typed three ways. To prove these are variants of a few real categories rather than genuinely distinct values, we build the canonical form each raw string _should_ collapse to, then group the raw strings by it.
+#
+
+# %%
+# Placeholder strings that mean "missing", in any casing/padding after canonicalisation.
 COMMON_NANS = {
     "",
     "-",
@@ -324,62 +354,98 @@ COMMON_NANS = {
     "unknown",
     "unknonwn",
 }
+# Both codes denote China (found in EDA); fold the rarer one into the common one.
+COUNTRY_ALIASES = {"cn": "chn"}
 
-COUNTRY_ALIASES = {
-    "cn": "chn"
-}  # both codes mean China (found in EDA), fount in previous exploration
-CAT_COLS = [
-    "Origin_Country",
-    "Catering_Package",
-    "Welcome_Gift_Type",
-    "Requested_Lab_Config",
-    "Assigned_Lab_Config",
-    "Enrollment_Type",
-    "Lanyard_Color",
-    "Client_Category",
-    "Submission_Source",
-    "Payment_Terms",
-    "Agent_ID",
-    "Company_ID",
-]
+
+def canonicalize(s: pd.Series) -> pd.Series:
+    """Map dirty categorical text to its canonical form: lowercase, injected
+    punctuation stripped, single-spaced. No NaN masking — that is normalize_cats' job."""
+    s = s.astype("string").str.strip().str.lower()
+    return (
+        s.str
+        .replace(r"\band\b", "&", regex=True)
+        .str.replace(r"[^a-z0-9&() .+-]+", "", regex=True)  # strip # ! * ? etc.
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+    )
+
+
+def variant_collapse(df, cols):
+    """For each column: the single real category that the most raw spellings collapse into,
+    plus how many raw strings are pure junk (mapped to missing, not to a category)."""
+    rows = []
+    for col in cols:
+        raw = df[col]
+        key = canonicalize(raw)
+        real_key = key.mask(
+            key.isin(COMMON_NANS)
+        )  # ignore junk when grouping categories
+        variants = (
+            pd
+            .DataFrame({"raw": raw, "key": real_key})
+            .dropna(subset=["key"])
+            .groupby("key")["raw"]
+            .nunique()
+            .sort_values(ascending=False)
+        )
+        top = variants.index[0]
+        sample = raw[real_key == top].value_counts().index[:8].tolist()
+        rows.append({
+            "column": col,
+            "true_category": top,
+            "raw_spellings_of_it": int(variants.iloc[0]),
+            "junk_strings": int(raw[key.isin(COMMON_NANS)].nunique()),
+            "sample_raw_spellings": ", ".join(map(repr, sample)),
+        })
+    return pd.DataFrame(rows)
+
+
+inflated_cols = [c for c in TEXT_COLS if train_raw[c].nunique() > 20]
+with pd.option_context("display.max_colwidth", None):
+    display(variant_collapse(train_raw, inflated_cols))
+
+# %% [markdown]
+# This is the proof. In every inflated column a single real category absorbs dozens to ~200 distinct raw spellings (`pay upon start` alone appears as 133 strings), and the samples show the mechanism: mixed case, padded whitespace, and injected punctuation. `Origin_Country` collapses least because most of its values are genuinely distinct country codes — its inflation is only the case/punctuation variants on top.
+#
+# A second, rarer corruption is placeholder junk (`'Unknown'`, `'?'`). It is concentrated in `Submission_Source` and `Payment_Terms` (`junk_strings`) and, unlike the spelling variants, must become **missing** rather than a real level. So cleaning has two jobs — canonicalise variants together, and null out junk — and `normalize_cats` does exactly that, reusing the same `canonicalize` we just used to _find_ the groups. It is pure and applied verbatim to the test set, so the two vocabularies line up. (`Agent_ID` and `Company_ID` are text labels too and get the same treatment; their high cardinality is real and is handled in Section 5.2.)
+#
+
+# %%
+CAT_COLS = TEXT_COLS + ["Agent_ID", "Company_ID"]
 
 
 def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
-    """Canonicalise dirty categorical text and map junk placeholders to NaN."""
+    """Canonicalise every categorical, then map junk placeholders to NaN."""
     df = df.copy()
     for col in CAT_COLS:
-        s = df[col].astype("string").str.strip().str.lower()
-        s = (
-            s.str
-            .replace(r"\band\b", "&", regex=True)
-            .str.replace(r"[^a-z0-9&() .+-]+", "", regex=True)  # strip # ! * ? etc.
-            .str.replace(r"\s+", " ", regex=True)
-            .str.strip()
-        )
+        s = canonicalize(df[col])
         df[col] = s.mask(s.isin(COMMON_NANS))
     df["Origin_Country"] = df["Origin_Country"].replace(COUNTRY_ALIASES)
     return df
 
 
-def cat_cardinality(df, cols):
-    return (
-        pd
-        .DataFrame({
-            "raw_unique": {c: df[c].nunique(dropna=True) for c in cols},
-            "clean_unique": {
-                c: normalize_cats(df)[c].nunique(dropna=True) for c in cols
-            },
-        })
-        .assign(collapsed=lambda t: t["raw_unique"] - t["clean_unique"])
-        .sort_values("collapsed", ascending=False)
-    )
+# %% [markdown]
+# Applying it, we log the effect: raw vs. cleaned cardinality per column. The three
+# clean columns act as a control — normalisation must leave them untouched.
+#
 
+# %%
+clean_train = normalize_cats(train_raw)
 
-low_card = [c for c in CAT_COLS if c not in ("Agent_ID", "Company_ID")]
-display(cat_cardinality(train_raw, low_card))
+cardinality_change = (
+    pd
+    .DataFrame({
+        "raw_unique": {c: train_raw[c].nunique() for c in TEXT_COLS},
+        "clean_unique": {c: clean_train[c].nunique() for c in TEXT_COLS},
+    })
+    .assign(collapsed=lambda t: t["raw_unique"] - t["clean_unique"])
+    .sort_values("collapsed", ascending=False)
+)
+display(cardinality_change)
 
 # %% [markdown]
-# **Before/after normalisation**, dozens of spurious variants collapse into their true categories (the `collapsed` column). This is data cleaning, not feature engineering, and the _exact same_ function is reused for the test set so the category vocabularies line up.
+# The inflated columns collapse to their true level counts (e.g. `Payment_Terms` 236 → 3, `Client_Category` 505 → 7), while the three clean columns are unchanged (`collapsed` = 0), confirming the cleaning is conservative. This is data cleaning, not feature engineering.
 #
 
 # %% [markdown]
@@ -389,9 +455,6 @@ display(cat_cardinality(train_raw, low_card))
 #
 
 # %%
-clean_train = normalize_cats(train_raw)
-
-
 def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
     stats = df.groupby(col, dropna=False)[TARGET].agg(drop_rate="mean", count="size")
     stats = (
@@ -525,7 +588,7 @@ display(
 )
 
 # %% [markdown]
-# `Origin_Country` is a major categorical signal, and Portugal is the clearest example because it is both very common and far above the overall dropout rate. This is not a rare-country artefact: the large-country plot and the extreme-country plot tell the same story.
+# `Origin_Country` is a major categorical signal. Portugal is the clearest example because it is both very common and far above the overall dropout rate; this is not a rare-country artefact because it appears in both the large-country plot and the extreme-country plot.
 #
 # Still, country alone is not the full explanation. A high-risk country can also concentrate particular payment terms, submission sources, client segments, or agents. We therefore treat country as a useful context signal, not as a causal explanation by itself.
 #
@@ -542,46 +605,10 @@ portugal_summary = (
     .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)
 )
 
-dropper_country_mix = (
-    pd
-    .crosstab(
-        clean_train[TARGET].map({0: "completed", 1: "dropped"}),
-        country_group,
-        normalize="index",
-    )
-    .mul(100)
-    .round(1)
-)
-
-display(portugal_summary.round(3))
-display(dropper_country_mix)
-
-# %%
-portugal_slices = []
-for col in ["Payment_Terms", "Submission_Source", "Client_Category"]:
-    top_levels = (
-        clean_train[is_portugal]
-        .groupby(col, dropna=False)[TARGET]
-        .agg(count="size", drop_rate="mean")
-        .sort_values("count", ascending=False)
-        .head(5)
-        .reset_index()
-        .rename(columns={col: "level"})
-    )
-    top_levels.insert(0, "field", col)
-    portugal_slices.append(top_levels)
-
-display(
-    pd
-    .concat(portugal_slices, ignore_index=True)
-    .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)[
-        ["field", "level", "count", "drop_rate_pct"]
-    ]
-    .round(2)
-)
+display(portugal_summary[["count", "drop_rate_pct"]].round(1))
 
 # %% [markdown]
-# The Portugal slice shows why the country effect should not be read too literally. Portugal is high-risk overall, but the risk is concentrated in specific acquisition patterns, especially payment terms and B2B/reseller traffic. Some Portugal subgroups are much closer to ordinary dropout rates.
+# The compact Portugal-vs-other check confirms that the country pattern is not only a visual artifact. The next step is to check related identifiers and acquisition fields, because a high-risk country can also concentrate particular agents, companies, channels, or payment terms.
 #
 # The identifier columns carry signal too. `Agent_ID` and `Company_ID` are labels, not numbers. Frequent agents have very different drop rates, and _having_ a company id lowers risk, so identity is predictive and we must keep it without exploding the feature space (Section 5.2).
 #
@@ -611,13 +638,6 @@ display(company_presence)
 # %%
 agent_country_pairs = clean_train[["Agent_ID", "Origin_Country"]].dropna()
 
-agent_country = agent_country_pairs.groupby("Agent_ID")["Origin_Country"].agg(
-    count="size",
-    countries="nunique",
-    top_country=lambda s: s.value_counts().idxmax(),
-    top_country_share=lambda s: s.value_counts(normalize=True).iloc[0],
-)
-
 country_tr, country_va = train_test_split(
     agent_country_pairs, test_size=0.25, random_state=SEED
 )
@@ -639,18 +659,8 @@ display(
     }).round(3)
 )
 
-display(
-    agent_country
-    .sort_values("count", ascending=False)
-    .head(12)
-    .assign(top_country_share_pct=lambda d: d["top_country_share"] * 100)[
-        ["count", "countries", "top_country", "top_country_share_pct"]
-    ]
-    .round(1)
-)
-
 # %% [markdown]
-# The overlap is real but incomplete. Some agents are heavily country-focused, especially around Portugal, while the largest agent serves many countries. So country does not fully explain agent behavior, and agent does not fully explain country behavior. We keep both signals, but encode them compactly later instead of one-hotting hundreds of levels.
+# The modal-country check performs much better than the majority-country baseline, so agent and country contain overlapping information. The match is still not perfect, so neither field fully explains the other. We keep both signals, but encode them compactly later instead of one-hotting hundreds of levels.
 #
 
 # %% [markdown]
@@ -1342,6 +1352,84 @@ for alpha in (0.1, 0.01, 0.001, 0.0001):
         "chrono_AUC": roc_auc_score(y_va, m.predict_proba(Xva_scaled)[:, 1]),
     })
 
+
+# Boosted-tree tuning:
+# 1. Ensemble size: number of boosting rounds / trees
+# 2. Tree capacity: complexity and regularization of individual trees
+
+tree_count_profiles = [
+    (
+        "100 trees",
+        {
+            "lgbm": dict(n_estimators=100),
+            "xgb": dict(n_estimators=100),
+            "cat": dict(iterations=100),
+        },
+    ),
+    (
+        "300 trees",
+        {
+            "lgbm": dict(n_estimators=300),
+            "xgb": dict(n_estimators=300),
+            "cat": dict(iterations=300),
+        },
+    ),
+    (
+        "500 trees",
+        {
+            "lgbm": dict(n_estimators=500),
+            "xgb": dict(n_estimators=500),
+            "cat": dict(iterations=500),
+        },
+    ),
+]
+
+selected_capacity = {
+    "lgbm": dict(num_leaves=63, min_child_samples=40, reg_lambda=1.0),
+    "xgb": dict(max_depth=6, min_child_weight=5, reg_lambda=1.0),
+    "cat": dict(depth=6, l2_leaf_reg=3.0),
+}
+
+for profile_name, tree_budget in tree_count_profiles:
+    train_preds, val_preds = [], []
+    n_trees = int(profile_name.split()[0])
+
+    for model_name, budget_params in tree_budget.items():
+        fit_params = {**selected_capacity[model_name], **budget_params}
+
+        pred_train, pred_val = fit_predict_pair(
+            model_name, Xtr_t, y_tr, Xva_t, **fit_params
+        )
+
+        tuning_rows.append({
+            "family": {
+                "lgbm": "LightGBM trees",
+                "xgb": "XGBoost trees",
+                "cat": "CatBoost trees",
+            }[model_name],
+            "setting": profile_name,
+            "capacity": n_trees,
+            "x_label": "number of trees",
+            "train_AUC": roc_auc_score(y_tr, pred_train),
+            "chrono_AUC": roc_auc_score(y_va, pred_val),
+        })
+
+        train_preds.append(pred_train)
+        val_preds.append(pred_val)
+
+    pred_train_blend = rank_avg(train_preds)
+    pred_val_blend = rank_avg(val_preds)
+
+    tuning_rows.append({
+        "family": "Boosted-tree ensemble size",
+        "setting": profile_name,
+        "capacity": n_trees,
+        "x_label": "number of trees",
+        "train_AUC": roc_auc_score(y_tr, pred_train_blend),
+        "chrono_AUC": roc_auc_score(y_va, pred_val_blend),
+    })
+
+
 fast_boosting_budget = {
     "lgbm": dict(n_estimators=300),
     "xgb": dict(n_estimators=300),
@@ -1379,16 +1467,19 @@ for profile_idx, (profile_name, params_by_model) in enumerate(
     booster_profiles, start=1
 ):
     train_preds, val_preds = [], []
+
     for model_name, params in params_by_model.items():
         fit_params = {**fast_boosting_budget[model_name], **params}
+
         pred_train, pred_val = fit_predict_pair(
             model_name, Xtr_t, y_tr, Xva_t, **fit_params
         )
+
         tuning_rows.append({
             "family": {
-                "lgbm": "LightGBM profile",
-                "xgb": "XGBoost profile",
-                "cat": "CatBoost profile",
+                "lgbm": "LightGBM capacity",
+                "xgb": "XGBoost capacity",
+                "cat": "CatBoost capacity",
             }[model_name],
             "setting": profile_name,
             "capacity": profile_idx,
@@ -1396,12 +1487,15 @@ for profile_idx, (profile_name, params_by_model) in enumerate(
             "train_AUC": roc_auc_score(y_tr, pred_train),
             "chrono_AUC": roc_auc_score(y_va, pred_val),
         })
+
         train_preds.append(pred_train)
         val_preds.append(pred_val)
+
     pred_train_blend = rank_avg(train_preds)
     pred_val_blend = rank_avg(val_preds)
+
     tuning_rows.append({
-        "family": "Boosted-tree blend",
+        "family": "Boosted-tree capacity",
         "setting": profile_name,
         "capacity": profile_idx,
         "x_label": "capacity profile",
@@ -1409,11 +1503,13 @@ for profile_idx, (profile_name, params_by_model) in enumerate(
         "chrono_AUC": roc_auc_score(y_va, pred_val_blend),
     })
 
+
 tuning = pd.DataFrame(tuning_rows)
 tuning["gap"] = tuning["train_AUC"] - tuning["chrono_AUC"]
 tuning["best_chrono"] = (
     tuning.groupby("family")["chrono_AUC"].transform("max").eq(tuning["chrono_AUC"])
 )
+
 display(
     tuning.assign(
         train_AUC=lambda d: d["train_AUC"].round(4),
@@ -1424,22 +1520,31 @@ display(
     ]
 )
 
-plot_tuning = tuning[
-    tuning["family"].isin(["Logistic Regression", "MLP", "Boosted-tree blend"])
-].melt(
+
+plot_families = [
+    "Logistic Regression",
+    "MLP",
+    "Boosted-tree ensemble size",
+    "Boosted-tree capacity",
+]
+
+plot_tuning = tuning[tuning["family"].isin(plot_families)].melt(
     id_vars=["family", "setting", "capacity", "x_label"],
     value_vars=["train_AUC", "chrono_AUC"],
     var_name="split",
     value_name="AUC",
 )
+
 plot_tuning["split"] = plot_tuning["split"].map({
     "train_AUC": "Train",
     "chrono_AUC": "Chronological validation",
 })
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 4.5), sharey=True)
-for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]):
+fig, axes = plt.subplots(1, 4, figsize=(20, 4.5), sharey=True)
+
+for ax, family in zip(axes, plot_families):
     data = plot_tuning[plot_tuning["family"] == family]
+
     sns.lineplot(
         data=data,
         x="capacity",
@@ -1449,7 +1554,9 @@ for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]
         linewidth=2,
         ax=ax,
     )
+
     best = tuning[(tuning["family"] == family) & tuning["best_chrono"]].iloc[0]
+
     ax.scatter(
         best["capacity"],
         best["chrono_AUC"],
@@ -1458,13 +1565,17 @@ for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]
         color="black",
         zorder=5,
     )
+
     ax.set_title(family)
     ax.set_xlabel(data["x_label"].iloc[0])
+
     if ax is not axes[0]:
         ax.set_ylabel("")
+
     if family in ["Logistic Regression", "MLP"]:
         ax.set_xscale("log")
-    if family == "Boosted-tree blend":
+
+    if family == "Boosted-tree capacity":
         profile_labels = (
             tuning[tuning["family"] == family]
             .sort_values("capacity")["setting"]
@@ -1472,14 +1583,21 @@ for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]
         )
         ax.set_xticks([1, 2, 3])
         ax.set_xticklabels(profile_labels)
+
+    if family == "Boosted-tree ensemble size":
+        ax.set_xticks([100, 300, 500])
+
     if ax.legend_ is not None:
         ax.legend_.remove()
 
 handles, labels = axes[0].get_legend_handles_labels()
+
 fig.suptitle(
-    "Hyperparameter tuning: train vs chronological validation AUC (star = best validation)",
+    "Hyperparameter tuning: train vs chronological validation AUC "
+    "(star = best validation)",
     y=0.99,
 )
+
 fig.legend(
     handles,
     labels,
@@ -1488,6 +1606,7 @@ fig.legend(
     ncol=2,
     frameon=False,
 )
+
 plt.tight_layout(rect=(0, 0, 1, 0.86))
 plt.show()
 

@@ -103,10 +103,6 @@ def load_raw(path: str) -> pd.DataFrame:
     return df
 ```
 
-    /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-      from .autonotebook import tqdm as notebook_tqdm
-
-
 # 1. Business understanding
 
 Nova Academy runs paid, in-person B2B technical trainings. Preparing a course is expensive and largely **sunk before it starts** — cloud environments, catering, physical equipment kits, room capacity. When a registered group cancels (`Dropped_Course = 1`), the company loses that spend _and_ the empty seats block other groups from being scheduled.
@@ -226,6 +222,11 @@ display(train_raw.describe())
 
 
 
+
+```python
+
+```
+
 ## 2.1 Target balance
 
 Before anything else: how (im)balanced is the target? A heavily skewed target would change how we read metrics.
@@ -263,7 +264,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_8_1.png)
+![png](notebook_v3_files/notebook_v3_9_1.png)
     
 
 
@@ -312,7 +313,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_12_1.png)
+![png](notebook_v3_files/notebook_v3_13_1.png)
     
 
 
@@ -421,12 +422,63 @@ display(pd.DataFrame(rows))
 
 ## 3.3 Categorical data quality (and why cleaning is mandatory)
 
-Previous exploration showed that the categorical columns are deliberately corrupted: mixed case, injected punctuation (`blu#e` -> `blue`), padded whitespace, and placeholder junk (`unknown`, `?`, `-`, `n/a`). Left raw, the same real category splits into many fake ones, inflating cardinality and diluting signal. We normalise to a canonical lowercase form and map junk to missing.
+By its business meaning, every text column here should hold a handful of levels (a catering package, a lanyard colour, a payment term). So before changing anything, we scan the raw vocabulary of each text column: its distinct-string count and its six most frequent values, printed through `repr` so that padded whitespace stays visible inside the quotes. A column whose meaning allows only a few levels but shows hundreds of raw strings is corrupted.
 
 
 
 ```python
-# The data contains many variations of <na>s,
+TEXT_COLS = list(train_raw.select_dtypes(include=["object"]).columns)
+
+
+def raw_vocabulary_scan(df, cols, n_top=10):
+    """Per column: raw cardinality + the n_top most frequent raw strings."""
+    rows = []
+    for col in cols:
+        shares = df[col].value_counts(normalize=True).mul(100)
+        rows.append({
+            "column": col,
+            "raw_unique": df[col].nunique(),
+            f"top_{n_top}_raw_values": ", ".join(
+                f"{value!r} {share:.1f}%" for value, share in shares.head(n_top).items()
+            ),
+        })
+    return pd.DataFrame(rows).sort_values("raw_unique", ascending=False)
+
+
+with pd.option_context("display.max_colwidth", None):
+    display(raw_vocabulary_scan(train_raw, TEXT_COLS))
+```
+
+
+
+
+|   Unnamed: 0 | column               |   raw_unique | top_10_raw_values                                                                                                                                                                                                                                                                                                                      |
+|-------------:|:---------------------|-------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|            0 | Origin_Country       |          721 | 'PRT' 38.6%, 'FRA' 10.2%, 'DEU' 6.4%, 'ESP' 5.7%, 'GBR' 5.2%, 'ITA' 4.0%, 'BRA' 2.0%, 'BEL' 2.0%, 'NLD' 1.8%, 'USA' 1.6%                                                                                                                                                                                                               |
+|            7 | Client_Category      |          505 | 'SaaS & Software Houses' 41.4%, 'Traditional IT & Telecomm' 20.4%, 'Big Tech & Multinationals' 16.8%, 'FinTech & Banking' 6.6%, 'Industrial Tech & IoT' 3.7%, 'saas & software houses' 1.1%, 'SAAS & SOFTWARE HOUSES' 1.0%, 'Non-Profit & EduTech' 0.7%, 'TRADITIONAL IT & TELECOMM' 0.5%, 'traditional it & telecomm' 0.5%            |
+|            8 | Submission_Source    |          328 | 'B2B Platforms & Resellers' 77.4%, 'Direct Website Registration' 7.4%, 'Dedicated Sales Team' 4.1%, 'B2B PLATFORMS & RESELLERS' 2.0%, 'b2b platforms & resellers' 1.9%, ' B2B Platforms & Resellers ' 0.9%, ' B2B Platforms & Resellers ' 0.9%, ' B2B Platforms & Resellers ' 0.8%, ' B2B Platforms & Resellers ' 0.8%, 'Unknown' 0.4% |
+|            1 | Catering_Package     |          321 | 'Standard (Coffee Only)' 71.9%, 'No Food Plan' 10.5%, 'Lunch Included' 7.5%, 'standard (coffee only)' 1.8%, 'STANDARD (COFFEE ONLY)' 1.7%, ' Standard (Coffee Only) ' 0.8%, ' Standard (Coffee Only) ' 0.8%, ' Standard (Coffee Only) ' 0.8%, ' Standard (Coffee Only) ' 0.8%, 'no food plan' 0.3%                                     |
+|            5 | Enrollment_Type      |          298 | 'General Admission' 64.6%, 'Affiliated Admission' 21.6%, 'Contractual Agreement' 3.2%, 'general admission' 1.6%, 'GENERAL ADMISSION' 1.6%, ' General Admission ' 0.8%, ' General Admission ' 0.7%, ' General Admission ' 0.7%, ' General Admission ' 0.7%, 'AFFILIATED ADMISSION' 0.6%                                                 |
+|            6 | Lanyard_Color        |          240 | 'Blue' 49.6%, 'Black' 21.0%, 'Red' 10.1%, 'Orange' 5.2%, 'Green' 3.9%, 'BLUE' 1.2%, 'blue' 1.2%, ' Blue ' 0.6%, ' Blue ' 0.6%, ' Blue ' 0.6%                                                                                                                                                                                           |
+|            9 | Payment_Terms        |          236 | 'Pay Upon Start' 73.8%, 'Prepaid (Non-Refundable)' 15.3%, 'PAY UPON START' 1.9%, 'pay upon start' 1.8%, ' Pay Upon Start ' 0.9%, ' Pay Upon Start ' 0.8%, ' Pay Upon Start ' 0.8%, ' Pay Upon Start ' 0.8%, 'prepaid (non-refundable)' 0.4%, 'PREPAID (NON-REFUNDABLE)' 0.4%                                                           |
+|            4 | Assigned_Lab_Config  |            9 | 'Standard PC (Windows)' 72.4%, 'Linux Workstation' 18.4%, 'Laptop Docking Station' 2.9%, 'MacOS Station' 2.5%, 'Dual Monitor Setup' 2.5%, 'High-GPU Unit' 0.8%, 'Server Access Terminal' 0.4%, 'Touch Screen Interface' 0.2%, 'VR/AR Station' 0.0%                                                                                     |
+|            3 | Requested_Lab_Config |            8 | 'Standard PC (Windows)' 80.5%, 'Linux Workstation' 13.6%, 'Dual Monitor Setup' 2.1%, 'MacOS Station' 1.6%, 'Laptop Docking Station' 1.6%, 'High-GPU Unit' 0.5%, 'Touch Screen Interface' 0.0%, 'VR/AR Station' 0.0%                                                                                                                    |
+|            2 | Welcome_Gift_Type    |            4 | 'Branded Notebook' 50.8%, 'Water Bottle' 29.0%, 'USB Drive' 16.0%, 'Portable Charger' 4.2%                                                                                                                                                                                                                                             |
+
+
+
+
+
+```python
+
+```
+
+Two regimes appear. `Welcome_Gift_Type`, `Requested_Lab_Config` and `Assigned_Lab_Config` look clean — a handful of levels, as their meaning implies. The other seven columns carry **hundreds** of raw uniques, and the top values already hint why: `'BLUE'`, `'blue'` and `'  Blue  '` are one colour typed three ways. To prove these are variants of a few real categories rather than genuinely distinct values, we build the canonical form each raw string _should_ collapse to, then group the raw strings by it.
+
+
+
+```python
+# Placeholder strings that mean "missing", in any casing/padding after canonicalisation.
 COMMON_NANS = {
     "",
     "-",
@@ -441,59 +493,112 @@ COMMON_NANS = {
     "unknown",
     "unknonwn",
 }
-
-COUNTRY_ALIASES = {
-    "cn": "chn"
-}  # both codes mean China (found in EDA), fount in previous exploration
-CAT_COLS = [
-    "Origin_Country",
-    "Catering_Package",
-    "Welcome_Gift_Type",
-    "Requested_Lab_Config",
-    "Assigned_Lab_Config",
-    "Enrollment_Type",
-    "Lanyard_Color",
-    "Client_Category",
-    "Submission_Source",
-    "Payment_Terms",
-    "Agent_ID",
-    "Company_ID",
-]
+# Both codes denote China (found in EDA); fold the rarer one into the common one.
+COUNTRY_ALIASES = {"cn": "chn"}
 
 
-def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
-    """Canonicalise dirty categorical text and map junk placeholders to NaN."""
-    df = df.copy()
-    for col in CAT_COLS:
-        s = df[col].astype("string").str.strip().str.lower()
-        s = (
-            s.str
-            .replace(r"\band\b", "&", regex=True)
-            .str.replace(r"[^a-z0-9&() .+-]+", "", regex=True)  # strip # ! * ? etc.
-            .str.replace(r"\s+", " ", regex=True)
-            .str.strip()
-        )
-        df[col] = s.mask(s.isin(COMMON_NANS))
-    df["Origin_Country"] = df["Origin_Country"].replace(COUNTRY_ALIASES)
-    return df
-
-
-def cat_cardinality(df, cols):
+def canonicalize(s: pd.Series) -> pd.Series:
+    """Map dirty categorical text to its canonical form: lowercase, injected
+    punctuation stripped, single-spaced. No NaN masking — that is normalize_cats' job."""
+    s = s.astype("string").str.strip().str.lower()
     return (
-        pd
-        .DataFrame({
-            "raw_unique": {c: df[c].nunique(dropna=True) for c in cols},
-            "clean_unique": {
-                c: normalize_cats(df)[c].nunique(dropna=True) for c in cols
-            },
-        })
-        .assign(collapsed=lambda t: t["raw_unique"] - t["clean_unique"])
-        .sort_values("collapsed", ascending=False)
+        s.str
+        .replace(r"\band\b", "&", regex=True)
+        .str.replace(r"[^a-z0-9&() .+-]+", "", regex=True)  # strip # ! * ? etc.
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
     )
 
 
-low_card = [c for c in CAT_COLS if c not in ("Agent_ID", "Company_ID")]
-display(cat_cardinality(train_raw, low_card))
+def variant_collapse(df, cols):
+    """For each column: the single real category that the most raw spellings collapse into,
+    plus how many raw strings are pure junk (mapped to missing, not to a category)."""
+    rows = []
+    for col in cols:
+        raw = df[col]
+        key = canonicalize(raw)
+        real_key = key.mask(
+            key.isin(COMMON_NANS)
+        )  # ignore junk when grouping categories
+        variants = (
+            pd
+            .DataFrame({"raw": raw, "key": real_key})
+            .dropna(subset=["key"])
+            .groupby("key")["raw"]
+            .nunique()
+            .sort_values(ascending=False)
+        )
+        top = variants.index[0]
+        sample = raw[real_key == top].value_counts().index[:8].tolist()
+        rows.append({
+            "column": col,
+            "true_category": top,
+            "raw_spellings_of_it": int(variants.iloc[0]),
+            "junk_strings": int(raw[key.isin(COMMON_NANS)].nunique()),
+            "sample_raw_spellings": ", ".join(map(repr, sample)),
+        })
+    return pd.DataFrame(rows)
+
+
+inflated_cols = [c for c in TEXT_COLS if train_raw[c].nunique() > 20]
+with pd.option_context("display.max_colwidth", None):
+    display(variant_collapse(train_raw, inflated_cols))
+```
+
+
+
+
+|   Unnamed: 0 | column            | true_category             |   raw_spellings_of_it |   junk_strings | sample_raw_spellings                                                                                                                                                                                                                             |
+|-------------:|:------------------|:--------------------------|----------------------:|---------------:|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|            0 | Origin_Country    | prt                       |                    42 |              0 | 'PRT', 'prt', ' PRT ', ' PRT ', ' PRT ', ' PRT ', 'PRT#', '#PRT'                                                                                                                                                                                 |
+|            1 | Catering_Package  | standard (coffee only)    |                   182 |              0 | 'Standard (Coffee Only)', 'standard (coffee only)', 'STANDARD (COFFEE ONLY)', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' STANDARD (COFFEE ONLY) '                         |
+|            2 | Enrollment_Type   | general admission         |                   141 |              0 | 'General Admission', 'general admission', 'GENERAL ADMISSION', ' General Admission ', ' General Admission ', ' General Admission ', ' General Admission ', ' general admission '                                                                 |
+|            3 | Lanyard_Color     | blue                      |                    76 |              0 | 'Blue', 'BLUE', 'blue', ' Blue ', ' Blue ', ' Blue ', ' Blue ', 'Blu#e'                                                                                                                                                                          |
+|            4 | Client_Category   | saas & software houses    |                   141 |              1 | 'SaaS & Software Houses', 'saas & software houses', 'SAAS & SOFTWARE HOUSES', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', 'Saa*S & Software Houses'                          |
+|            5 | Submission_Source | b2b platforms & resellers |                   196 |              2 | 'B2B Platforms & Resellers', 'B2B PLATFORMS & RESELLERS', 'b2b platforms & resellers', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B PLATFORMS & RESELLERS ' |
+|            6 | Payment_Terms     | pay upon start            |                   133 |              2 | 'Pay Upon Start', 'PAY UPON START', 'pay upon start', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', 'Pay Upon# Start'                                                                                          |
+
+
+
+
+This is the proof. In every inflated column a single real category absorbs dozens to ~200 distinct raw spellings (`pay upon start` alone appears as 133 strings), and the samples show the mechanism: mixed case, padded whitespace, and injected punctuation. `Origin_Country` collapses least because most of its values are genuinely distinct country codes — its inflation is only the case/punctuation variants on top.
+
+A second, rarer corruption is placeholder junk (`'Unknown'`, `'?'`). It is concentrated in `Submission_Source` and `Payment_Terms` (`junk_strings`) and, unlike the spelling variants, must become **missing** rather than a real level. So cleaning has two jobs — canonicalise variants together, and null out junk — and `normalize_cats` does exactly that, reusing the same `canonicalize` we just used to _find_ the groups. It is pure and applied verbatim to the test set, so the two vocabularies line up. (`Agent_ID` and `Company_ID` are text labels too and get the same treatment; their high cardinality is real and is handled in Section 5.2.)
+
+
+
+```python
+CAT_COLS = TEXT_COLS + ["Agent_ID", "Company_ID"]
+
+
+def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonicalise every categorical, then map junk placeholders to NaN."""
+    df = df.copy()
+    for col in CAT_COLS:
+        s = canonicalize(df[col])
+        df[col] = s.mask(s.isin(COMMON_NANS))
+    df["Origin_Country"] = df["Origin_Country"].replace(COUNTRY_ALIASES)
+    return df
+```
+
+Applying it, we log the effect: raw vs. cleaned cardinality per column. The three
+clean columns act as a control — normalisation must leave them untouched.
+
+
+
+```python
+clean_train = normalize_cats(train_raw)
+
+cardinality_change = (
+    pd
+    .DataFrame({
+        "raw_unique": {c: train_raw[c].nunique() for c in TEXT_COLS},
+        "clean_unique": {c: clean_train[c].nunique() for c in TEXT_COLS},
+    })
+    .assign(collapsed=lambda t: t["raw_unique"] - t["clean_unique"])
+    .sort_values("collapsed", ascending=False)
+)
+display(cardinality_change)
 ```
 
 
@@ -515,7 +620,7 @@ display(cat_cardinality(train_raw, low_card))
 
 
 
-**Before/after normalisation**, dozens of spurious variants collapse into their true categories (the `collapsed` column). This is data cleaning, not feature engineering, and the _exact same_ function is reused for the test set so the category vocabularies line up.
+The inflated columns collapse to their true level counts (e.g. `Payment_Terms` 236 → 3, `Client_Category` 505 → 7), while the three clean columns are unchanged (`collapsed` = 0), confirming the cleaning is conservative. This is data cleaning, not feature engineering.
 
 
 ## 3.4 Which categories actually relate to dropping?
@@ -525,9 +630,6 @@ For the cleaned categoricals we plot the drop rate of the most frequent levels a
 
 
 ```python
-clean_train = normalize_cats(train_raw)
-
-
 def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
     stats = df.groupby(col, dropna=False)[TARGET].agg(drop_rate="mean", count="size")
     stats = (
@@ -567,7 +669,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_23_0.png)
+![png](notebook_v3_files/notebook_v3_31_0.png)
     
 
 
@@ -669,7 +771,7 @@ display(
 
 
     
-![png](notebook_v3_files/notebook_v3_26_0.png)
+![png](notebook_v3_files/notebook_v3_34_0.png)
     
 
 
@@ -694,7 +796,7 @@ display(
 
 
 
-`Origin_Country` is a major categorical signal, and Portugal is the clearest example because it is both very common and far above the overall dropout rate. This is not a rare-country artefact: the large-country plot and the extreme-country plot tell the same story.
+`Origin_Country` is a major categorical signal. Portugal is the clearest example because it is both very common and far above the overall dropout rate; this is not a rare-country artefact because it appears in both the large-country plot and the extreme-country plot.
 
 Still, country alone is not the full explanation. A high-risk country can also concentrate particular payment terms, submission sources, client segments, or agents. We therefore treat country as a useful context signal, not as a causal explanation by itself.
 
@@ -712,93 +814,21 @@ portugal_summary = (
     .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)
 )
 
-dropper_country_mix = (
-    pd
-    .crosstab(
-        clean_train[TARGET].map({0: "completed", 1: "dropped"}),
-        country_group,
-        normalize="index",
-    )
-    .mul(100)
-    .round(1)
-)
-
-display(portugal_summary.round(3))
-display(dropper_country_mix)
+display(portugal_summary[["count", "drop_rate_pct"]].round(1))
 ```
 
 
 
 
-| ('Unnamed: 0_level_0', 'country_group')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate', 'Unnamed: 2_level_1') |   ('drop_rate_pct', 'Unnamed: 3_level_1') |
-|:------------------------------------------|----------------------------------:|--------------------------------------:|------------------------------------------:|
-| Other countries                           |                             37035 |                                 0.255 |                                    25.498 |
-| Portugal                                  |                             26429 |                                 0.638 |                                    63.778 |
+| ('Unnamed: 0_level_0', 'country_group')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate_pct', 'Unnamed: 2_level_1') |
+|:------------------------------------------|----------------------------------:|------------------------------------------:|
+| Other countries                           |                             37035 |                                      25.5 |
+| Portugal                                  |                             26429 |                                      63.8 |
 
 
 
 
-
-
-
-| ('col_0', 'Dropped_Course')   |   ('Other countries', 'Unnamed: 1_level_1') |   ('Portugal', 'Unnamed: 2_level_1') |
-|:------------------------------|--------------------------------------------:|-------------------------------------:|
-| completed                     |                                        74.2 |                                 25.8 |
-| dropped                       |                                        35.9 |                                 64.1 |
-
-
-
-
-
-```python
-portugal_slices = []
-for col in ["Payment_Terms", "Submission_Source", "Client_Category"]:
-    top_levels = (
-        clean_train[is_portugal]
-        .groupby(col, dropna=False)[TARGET]
-        .agg(count="size", drop_rate="mean")
-        .sort_values("count", ascending=False)
-        .head(5)
-        .reset_index()
-        .rename(columns={col: "level"})
-    )
-    top_levels.insert(0, "field", col)
-    portugal_slices.append(top_levels)
-
-display(
-    pd
-    .concat(portugal_slices, ignore_index=True)
-    .assign(drop_rate_pct=lambda d: d["drop_rate"] * 100)[
-        ["field", "level", "count", "drop_rate_pct"]
-    ]
-    .round(2)
-)
-```
-
-
-
-
-|   Unnamed: 0 | field             | level                         |   count |   drop_rate_pct |
-|-------------:|:------------------|:------------------------------|--------:|----------------:|
-|            0 | Payment_Terms     | pay upon start                |   15554 |           39.58 |
-|            1 | Payment_Terms     | prepaid (non-refundable)      |   10482 |           99.85 |
-|            2 | Payment_Terms     | nan                           |     392 |           59.18 |
-|            3 | Payment_Terms     | refundable deposit            |       1 |          100    |
-|            4 | Submission_Source | b2b platforms & resellers     |   21790 |           70.52 |
-|            5 | Submission_Source | direct website registration   |    2197 |           25.72 |
-|            6 | Submission_Source | dedicated sales team          |    1993 |           31.71 |
-|            7 | Submission_Source | nan                           |     431 |           67.29 |
-|            8 | Submission_Source | government procurement system |      18 |           16.67 |
-|            9 | Client_Category   | big tech & multinationals     |    9284 |           85.65 |
-|           10 | Client_Category   | traditional it & telecomm     |    8231 |           72.4  |
-|           11 | Client_Category   | saas & software houses        |    4692 |           40.03 |
-|           12 | Client_Category   | industrial tech & iot         |    1958 |           27.48 |
-|           13 | Client_Category   | fintech & banking             |    1761 |           25.72 |
-
-
-
-
-The Portugal slice shows why the country effect should not be read too literally. Portugal is high-risk overall, but the risk is concentrated in specific acquisition patterns, especially payment terms and B2B/reseller traffic. Some Portugal subgroups are much closer to ordinary dropout rates.
+The compact Portugal-vs-other check confirms that the country pattern is not only a visual artifact. The next step is to check related identifiers and acquisition fields, because a high-risk country can also concentrate particular agents, companies, channels, or payment terms.
 
 The identifier columns carry signal too. `Agent_ID` and `Company_ID` are labels, not numbers. Frequent agents have very different drop rates, and _having_ a company id lowers risk, so identity is predictive and we must keep it without exploding the feature space (Section 5.2).
 
@@ -825,7 +855,7 @@ display(company_presence)
 
 
     
-![png](notebook_v3_files/notebook_v3_31_0.png)
+![png](notebook_v3_files/notebook_v3_38_0.png)
     
 
 
@@ -847,13 +877,6 @@ The agent plot is useful, but it raises a fair concern: risky agents may simply 
 ```python
 agent_country_pairs = clean_train[["Agent_ID", "Origin_Country"]].dropna()
 
-agent_country = agent_country_pairs.groupby("Agent_ID")["Origin_Country"].agg(
-    count="size",
-    countries="nunique",
-    top_country=lambda s: s.value_counts().idxmax(),
-    top_country_share=lambda s: s.value_counts(normalize=True).iloc[0],
-)
-
 country_tr, country_va = train_test_split(
     agent_country_pairs, test_size=0.25, random_state=SEED
 )
@@ -874,16 +897,6 @@ display(
         ],
     }).round(3)
 )
-
-display(
-    agent_country
-    .sort_values("count", ascending=False)
-    .head(12)
-    .assign(top_country_share_pct=lambda d: d["top_country_share"] * 100)[
-        ["count", "countries", "top_country", "top_country_share_pct"]
-    ]
-    .round(1)
-)
 ```
 
 
@@ -897,28 +910,7 @@ display(
 
 
 
-
-
-
-|   ('Unnamed: 0_level_0', 'Agent_ID') |   ('count', 'Unnamed: 1_level_1') |   ('countries', 'Unnamed: 2_level_1') | ('top_country', 'Unnamed: 3_level_1')   |   ('top_country_share_pct', 'Unnamed: 4_level_1') |
-|-------------------------------------:|----------------------------------:|--------------------------------------:|:----------------------------------------|--------------------------------------------------:|
-|                                  184 |                             21923 |                                   135 | fra                                     |                                              14.8 |
-|                                  218 |                              6488 |                                    30 | prt                                     |                                              84   |
-|                                  104 |                              2552 |                                    65 | prt                                     |                                              23.4 |
-|                                  264 |                              2355 |                                    69 | prt                                     |                                              22   |
-|                                  219 |                              1967 |                                    17 | prt                                     |                                              58.6 |
-|                                  224 |                              1299 |                                    26 | fra                                     |                                              63.3 |
-|                                  205 |                              1065 |                                    15 | prt                                     |                                              71.9 |
-|                                  320 |                              1061 |                                    46 | prt                                     |                                              69.1 |
-|                                  158 |                               884 |                                    39 | prt                                     |                                              43.6 |
-|                                  138 |                               753 |                                    11 | prt                                     |                                              72.6 |
-|                                  139 |                               740 |                                    28 | prt                                     |                                              88.5 |
-|                                  129 |                               596 |                                     6 | prt                                     |                                              94.6 |
-
-
-
-
-The overlap is real but incomplete. Some agents are heavily country-focused, especially around Portugal, while the largest agent serves many countries. So country does not fully explain agent behavior, and agent does not fully explain country behavior. We keep both signals, but encode them compactly later instead of one-hotting hundreds of levels.
+The modal-country check performs much better than the majority-country baseline, so agent and country contain overlapping information. The match is still not perfect, so neither field fully explains the other. We keep both signals, but encode them compactly later instead of one-hotting hundreds of levels.
 
 
 ## 3.5 Numeric features: summary, correlation, and suspects
@@ -997,7 +989,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_38_0.png)
+![png](notebook_v3_files/notebook_v3_45_0.png)
     
 
 
@@ -1035,7 +1027,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_41_0.png)
+![png](notebook_v3_files/notebook_v3_48_0.png)
     
 
 
@@ -1237,7 +1229,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_49_1.png)
+![png](notebook_v3_files/notebook_v3_56_1.png)
     
 
 
@@ -1733,6 +1725,84 @@ for alpha in (0.1, 0.01, 0.001, 0.0001):
         "chrono_AUC": roc_auc_score(y_va, m.predict_proba(Xva_scaled)[:, 1]),
     })
 
+
+# Boosted-tree tuning:
+# 1. Ensemble size: number of boosting rounds / trees
+# 2. Tree capacity: complexity and regularization of individual trees
+
+tree_count_profiles = [
+    (
+        "100 trees",
+        {
+            "lgbm": dict(n_estimators=100),
+            "xgb": dict(n_estimators=100),
+            "cat": dict(iterations=100),
+        },
+    ),
+    (
+        "300 trees",
+        {
+            "lgbm": dict(n_estimators=300),
+            "xgb": dict(n_estimators=300),
+            "cat": dict(iterations=300),
+        },
+    ),
+    (
+        "500 trees",
+        {
+            "lgbm": dict(n_estimators=500),
+            "xgb": dict(n_estimators=500),
+            "cat": dict(iterations=500),
+        },
+    ),
+]
+
+selected_capacity = {
+    "lgbm": dict(num_leaves=63, min_child_samples=40, reg_lambda=1.0),
+    "xgb": dict(max_depth=6, min_child_weight=5, reg_lambda=1.0),
+    "cat": dict(depth=6, l2_leaf_reg=3.0),
+}
+
+for profile_name, tree_budget in tree_count_profiles:
+    train_preds, val_preds = [], []
+    n_trees = int(profile_name.split()[0])
+
+    for model_name, budget_params in tree_budget.items():
+        fit_params = {**selected_capacity[model_name], **budget_params}
+
+        pred_train, pred_val = fit_predict_pair(
+            model_name, Xtr_t, y_tr, Xva_t, **fit_params
+        )
+
+        tuning_rows.append({
+            "family": {
+                "lgbm": "LightGBM trees",
+                "xgb": "XGBoost trees",
+                "cat": "CatBoost trees",
+            }[model_name],
+            "setting": profile_name,
+            "capacity": n_trees,
+            "x_label": "number of trees",
+            "train_AUC": roc_auc_score(y_tr, pred_train),
+            "chrono_AUC": roc_auc_score(y_va, pred_val),
+        })
+
+        train_preds.append(pred_train)
+        val_preds.append(pred_val)
+
+    pred_train_blend = rank_avg(train_preds)
+    pred_val_blend = rank_avg(val_preds)
+
+    tuning_rows.append({
+        "family": "Boosted-tree ensemble size",
+        "setting": profile_name,
+        "capacity": n_trees,
+        "x_label": "number of trees",
+        "train_AUC": roc_auc_score(y_tr, pred_train_blend),
+        "chrono_AUC": roc_auc_score(y_va, pred_val_blend),
+    })
+
+
 fast_boosting_budget = {
     "lgbm": dict(n_estimators=300),
     "xgb": dict(n_estimators=300),
@@ -1770,16 +1840,19 @@ for profile_idx, (profile_name, params_by_model) in enumerate(
     booster_profiles, start=1
 ):
     train_preds, val_preds = [], []
+
     for model_name, params in params_by_model.items():
         fit_params = {**fast_boosting_budget[model_name], **params}
+
         pred_train, pred_val = fit_predict_pair(
             model_name, Xtr_t, y_tr, Xva_t, **fit_params
         )
+
         tuning_rows.append({
             "family": {
-                "lgbm": "LightGBM profile",
-                "xgb": "XGBoost profile",
-                "cat": "CatBoost profile",
+                "lgbm": "LightGBM capacity",
+                "xgb": "XGBoost capacity",
+                "cat": "CatBoost capacity",
             }[model_name],
             "setting": profile_name,
             "capacity": profile_idx,
@@ -1787,12 +1860,15 @@ for profile_idx, (profile_name, params_by_model) in enumerate(
             "train_AUC": roc_auc_score(y_tr, pred_train),
             "chrono_AUC": roc_auc_score(y_va, pred_val),
         })
+
         train_preds.append(pred_train)
         val_preds.append(pred_val)
+
     pred_train_blend = rank_avg(train_preds)
     pred_val_blend = rank_avg(val_preds)
+
     tuning_rows.append({
-        "family": "Boosted-tree blend",
+        "family": "Boosted-tree capacity",
         "setting": profile_name,
         "capacity": profile_idx,
         "x_label": "capacity profile",
@@ -1800,11 +1876,13 @@ for profile_idx, (profile_name, params_by_model) in enumerate(
         "chrono_AUC": roc_auc_score(y_va, pred_val_blend),
     })
 
+
 tuning = pd.DataFrame(tuning_rows)
 tuning["gap"] = tuning["train_AUC"] - tuning["chrono_AUC"]
 tuning["best_chrono"] = (
     tuning.groupby("family")["chrono_AUC"].transform("max").eq(tuning["chrono_AUC"])
 )
+
 display(
     tuning.assign(
         train_AUC=lambda d: d["train_AUC"].round(4),
@@ -1815,22 +1893,31 @@ display(
     ]
 )
 
-plot_tuning = tuning[
-    tuning["family"].isin(["Logistic Regression", "MLP", "Boosted-tree blend"])
-].melt(
+
+plot_families = [
+    "Logistic Regression",
+    "MLP",
+    "Boosted-tree ensemble size",
+    "Boosted-tree capacity",
+]
+
+plot_tuning = tuning[tuning["family"].isin(plot_families)].melt(
     id_vars=["family", "setting", "capacity", "x_label"],
     value_vars=["train_AUC", "chrono_AUC"],
     var_name="split",
     value_name="AUC",
 )
+
 plot_tuning["split"] = plot_tuning["split"].map({
     "train_AUC": "Train",
     "chrono_AUC": "Chronological validation",
 })
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 4.5), sharey=True)
-for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]):
+fig, axes = plt.subplots(1, 4, figsize=(20, 4.5), sharey=True)
+
+for ax, family in zip(axes, plot_families):
     data = plot_tuning[plot_tuning["family"] == family]
+
     sns.lineplot(
         data=data,
         x="capacity",
@@ -1840,7 +1927,9 @@ for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]
         linewidth=2,
         ax=ax,
     )
+
     best = tuning[(tuning["family"] == family) & tuning["best_chrono"]].iloc[0]
+
     ax.scatter(
         best["capacity"],
         best["chrono_AUC"],
@@ -1849,13 +1938,17 @@ for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]
         color="black",
         zorder=5,
     )
+
     ax.set_title(family)
     ax.set_xlabel(data["x_label"].iloc[0])
+
     if ax is not axes[0]:
         ax.set_ylabel("")
+
     if family in ["Logistic Regression", "MLP"]:
         ax.set_xscale("log")
-    if family == "Boosted-tree blend":
+
+    if family == "Boosted-tree capacity":
         profile_labels = (
             tuning[tuning["family"] == family]
             .sort_values("capacity")["setting"]
@@ -1863,14 +1956,21 @@ for ax, family in zip(axes, ["Logistic Regression", "MLP", "Boosted-tree blend"]
         )
         ax.set_xticks([1, 2, 3])
         ax.set_xticklabels(profile_labels)
+
+    if family == "Boosted-tree ensemble size":
+        ax.set_xticks([100, 300, 500])
+
     if ax.legend_ is not None:
         ax.legend_.remove()
 
 handles, labels = axes[0].get_legend_handles_labels()
+
 fig.suptitle(
-    "Hyperparameter tuning: train vs chronological validation AUC (star = best validation)",
+    "Hyperparameter tuning: train vs chronological validation AUC "
+    "(star = best validation)",
     y=0.99,
 )
+
 fig.legend(
     handles,
     labels,
@@ -1879,6 +1979,7 @@ fig.legend(
     ncol=2,
     frameon=False,
 )
+
 plt.tight_layout(rect=(0, 0, 1, 0.86))
 plt.show()
 ```
@@ -1886,36 +1987,48 @@ plt.show()
 
 
 
-|   Unnamed: 0 | family              | setting                       |   train_AUC |   chrono_AUC |    gap | best_chrono   |
-|-------------:|:--------------------|:------------------------------|------------:|-------------:|-------:|:--------------|
-|           12 | Boosted-tree blend  | conservative                  |      0.9612 |       0.9131 | 0.0481 | False         |
-|           16 | Boosted-tree blend  | selected                      |      0.971  |       0.9148 | 0.0562 | False         |
-|           20 | Boosted-tree blend  | aggressive                    |      0.9793 |       0.9155 | 0.0638 | True          |
-|           11 | CatBoost profile    | conservative                  |      0.9585 |       0.9107 | 0.0479 | False         |
-|           15 | CatBoost profile    | selected                      |      0.9671 |       0.9127 | 0.0544 | False         |
-|           19 | CatBoost profile    | aggressive                    |      0.9727 |       0.9131 | 0.0597 | True          |
-|            9 | LightGBM profile    | conservative                  |      0.9687 |       0.9135 | 0.0552 | False         |
-|           13 | LightGBM profile    | selected                      |      0.9788 |       0.9143 | 0.0645 | False         |
-|           17 | LightGBM profile    | aggressive                    |      0.9897 |       0.9144 | 0.0754 | True          |
-|            0 | Logistic Regression | C=0.01                        |      0.9239 |       0.879  | 0.0448 | True          |
-|            1 | Logistic Regression | C=0.1                         |      0.924  |       0.8776 | 0.0464 | False         |
-|            2 | Logistic Regression | C=1                           |      0.9241 |       0.8773 | 0.0467 | False         |
-|            3 | Logistic Regression | C=10                          |      0.9241 |       0.8772 | 0.0468 | False         |
-|            4 | Logistic Regression | C=100                         |      0.9241 |       0.8773 | 0.0468 | False         |
-|            5 | MLP                 | hidden=(64, 32), alpha=0.1    |      0.9645 |       0.8762 | 0.0883 | True          |
-|            6 | MLP                 | hidden=(64, 32), alpha=0.01   |      0.9746 |       0.8668 | 0.1078 | False         |
-|            7 | MLP                 | hidden=(64, 32), alpha=0.001  |      0.9734 |       0.8702 | 0.1032 | False         |
-|            8 | MLP                 | hidden=(64, 32), alpha=0.0001 |      0.9732 |       0.8696 | 0.1036 | False         |
-|           10 | XGBoost profile     | conservative                  |      0.9497 |       0.9081 | 0.0416 | False         |
-|           14 | XGBoost profile     | selected                      |      0.9621 |       0.9119 | 0.0503 | False         |
-|           18 | XGBoost profile     | aggressive                    |      0.9699 |       0.9126 | 0.0573 | True          |
+|   Unnamed: 0 | family                     | setting                       |   train_AUC |   chrono_AUC |    gap | best_chrono   |
+|-------------:|:---------------------------|:------------------------------|------------:|-------------:|-------:|:--------------|
+|           24 | Boosted-tree capacity      | conservative                  |      0.9612 |       0.9131 | 0.0481 | False         |
+|           28 | Boosted-tree capacity      | selected                      |      0.971  |       0.9148 | 0.0562 | False         |
+|           32 | Boosted-tree capacity      | aggressive                    |      0.9793 |       0.9155 | 0.0638 | True          |
+|           12 | Boosted-tree ensemble size | 100 trees                     |      0.9567 |       0.9092 | 0.0475 | False         |
+|           16 | Boosted-tree ensemble size | 300 trees                     |      0.9696 |       0.9147 | 0.0549 | False         |
+|           20 | Boosted-tree ensemble size | 500 trees                     |      0.9765 |       0.9149 | 0.0616 | True          |
+|           23 | CatBoost capacity          | conservative                  |      0.9585 |       0.9107 | 0.0479 | False         |
+|           27 | CatBoost capacity          | selected                      |      0.9671 |       0.9127 | 0.0544 | False         |
+|           31 | CatBoost capacity          | aggressive                    |      0.9727 |       0.9131 | 0.0597 | True          |
+|           11 | CatBoost trees             | 100 trees                     |      0.949  |       0.9014 | 0.0476 | False         |
+|           15 | CatBoost trees             | 300 trees                     |      0.9624 |       0.9124 | 0.05   | False         |
+|           19 | CatBoost trees             | 500 trees                     |      0.9671 |       0.9127 | 0.0544 | True          |
+|           21 | LightGBM capacity          | conservative                  |      0.9687 |       0.9135 | 0.0552 | False         |
+|           25 | LightGBM capacity          | selected                      |      0.9788 |       0.9143 | 0.0645 | False         |
+|           29 | LightGBM capacity          | aggressive                    |      0.9897 |       0.9144 | 0.0754 | True          |
+|            9 | LightGBM trees             | 100 trees                     |      0.9645 |       0.9111 | 0.0534 | False         |
+|           13 | LightGBM trees             | 300 trees                     |      0.9788 |       0.9143 | 0.0645 | True          |
+|           17 | LightGBM trees             | 500 trees                     |      0.9861 |       0.9137 | 0.0724 | False         |
+|            0 | Logistic Regression        | C=0.01                        |      0.9239 |       0.879  | 0.0448 | True          |
+|            1 | Logistic Regression        | C=0.1                         |      0.924  |       0.8776 | 0.0464 | False         |
+|            2 | Logistic Regression        | C=1                           |      0.9241 |       0.8773 | 0.0467 | False         |
+|            3 | Logistic Regression        | C=10                          |      0.9241 |       0.8772 | 0.0468 | False         |
+|            4 | Logistic Regression        | C=100                         |      0.9241 |       0.8773 | 0.0468 | False         |
+|            5 | MLP                        | hidden=(64, 32), alpha=0.1    |      0.9645 |       0.8762 | 0.0883 | True          |
+|            6 | MLP                        | hidden=(64, 32), alpha=0.01   |      0.9746 |       0.8668 | 0.1078 | False         |
+|            7 | MLP                        | hidden=(64, 32), alpha=0.001  |      0.9734 |       0.8702 | 0.1032 | False         |
+|            8 | MLP                        | hidden=(64, 32), alpha=0.0001 |      0.9732 |       0.8696 | 0.1036 | False         |
+|           22 | XGBoost capacity           | conservative                  |      0.9497 |       0.9081 | 0.0416 | False         |
+|           26 | XGBoost capacity           | selected                      |      0.9621 |       0.9119 | 0.0503 | False         |
+|           30 | XGBoost capacity           | aggressive                    |      0.9699 |       0.9126 | 0.0573 | True          |
+|           10 | XGBoost trees              | 100 trees                     |      0.9482 |       0.9062 | 0.0421 | False         |
+|           14 | XGBoost trees              | 300 trees                     |      0.9621 |       0.9119 | 0.0503 | False         |
+|           18 | XGBoost trees              | 500 trees                     |      0.9713 |       0.9128 | 0.0585 | True          |
 
 
 
 
 
     
-![png](notebook_v3_files/notebook_v3_65_1.png)
+![png](notebook_v3_files/notebook_v3_72_1.png)
     
 
 
@@ -2131,7 +2244,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_75_0.png)
+![png](notebook_v3_files/notebook_v3_82_0.png)
     
 
 
@@ -2172,7 +2285,7 @@ print(f"AUC of mean booster probability: {roc_auc_score(y_va, blend_prob):.4f}")
 
 
     
-![png](notebook_v3_files/notebook_v3_78_0.png)
+![png](notebook_v3_files/notebook_v3_85_0.png)
     
 
 
@@ -2223,7 +2336,7 @@ print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}
 
 
     
-![png](notebook_v3_files/notebook_v3_81_0.png)
+![png](notebook_v3_files/notebook_v3_88_0.png)
     
 
 
@@ -2273,6 +2386,106 @@ if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
     LightGBM+time chrono AUC: 0.9135
 
 
+
+    ---------------------------------------------------------------------------
+
+    KeyboardInterrupt                         Traceback (most recent call last)
+
+    Cell In[45], line 23
+         21 X_shap = Xva_t.sample(min(2000, len(Xva_t)), random_state=SEED)
+         22 explainer = shap.TreeExplainer(shap_model)
+    ---> 23 shap_values = explainer.shap_values(X_shap)
+         24 if isinstance(shap_values, list):
+         25     shap_values = shap_values[1]
+
+
+    File /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/shap/explainers/_tree.py:625, in TreeExplainer.shap_values(self, X, y, tree_limit, approximate, check_additivity, from_call)
+        623 elif self.model.model_type == "lightgbm":
+        624     assert not approximate, "approximate=True is not supported for LightGBM models!"
+    --> 625     phi = self.model.original_model.predict(X, num_iteration=tree_limit, pred_contrib=True)
+        626     # Note: the data must be joined on the last axis
+        627     if (
+        628         "objective" in self.model.original_model.params
+        629         and self.model.original_model.params["objective"] == "binary"
+        630     ):
+
+
+    File /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/lightgbm/basic.py:4767, in Booster.predict(self, data, start_iteration, num_iteration, raw_score, pred_leaf, pred_contrib, data_has_header, validate_features, **kwargs)
+       4765     else:
+       4766         num_iteration = -1
+    -> 4767 return predictor.predict(
+       4768     data=data,
+       4769     start_iteration=start_iteration,
+       4770     num_iteration=num_iteration,
+       4771     raw_score=raw_score,
+       4772     pred_leaf=pred_leaf,
+       4773     pred_contrib=pred_contrib,
+       4774     data_has_header=data_has_header,
+       4775     validate_features=validate_features,
+       4776 )
+
+
+    File /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/lightgbm/basic.py:1204, in _InnerPredictor.predict(self, data, start_iteration, num_iteration, raw_score, pred_leaf, pred_contrib, data_has_header, validate_features)
+       1197     preds, nrow = self.__pred_for_csc(
+       1198         csc=data,
+       1199         start_iteration=start_iteration,
+       1200         num_iteration=num_iteration,
+       1201         predict_type=predict_type,
+       1202     )
+       1203 elif isinstance(data, np.ndarray):
+    -> 1204     preds, nrow = self.__pred_for_np2d(
+       1205         mat=data,
+       1206         start_iteration=start_iteration,
+       1207         num_iteration=num_iteration,
+       1208         predict_type=predict_type,
+       1209     )
+       1210 elif _is_pyarrow_table(data):
+       1211     preds, nrow = self.__pred_for_pyarrow_table(
+       1212         table=data,
+       1213         start_iteration=start_iteration,
+       1214         num_iteration=num_iteration,
+       1215         predict_type=predict_type,
+       1216     )
+
+
+    File /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/lightgbm/basic.py:1361, in _InnerPredictor.__pred_for_np2d(self, mat, start_iteration, num_iteration, predict_type)
+       1359     return preds, nrow
+       1360 else:
+    -> 1361     return self.__inner_predict_np2d(
+       1362         mat=mat,
+       1363         start_iteration=start_iteration,
+       1364         num_iteration=num_iteration,
+       1365         predict_type=predict_type,
+       1366         preds=None,
+       1367     )
+
+
+    File /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/lightgbm/basic.py:1308, in _InnerPredictor.__inner_predict_np2d(self, mat, start_iteration, num_iteration, predict_type, preds)
+       1305     raise ValueError("Wrong length of pre-allocated predict array")
+       1306 out_num_preds = ctypes.c_int64(0)
+       1307 _safe_call(
+    -> 1308     _LIB.LGBM_BoosterPredictForMat(
+       1309         self._handle,
+       1310         ptr_data,
+       1311         ctypes.c_int(type_ptr_data),
+       1312         ctypes.c_int32(mat.shape[0]),
+       1313         ctypes.c_int32(mat.shape[1]),
+       1314         ctypes.c_int(layout),
+       1315         ctypes.c_int(predict_type),
+       1316         ctypes.c_int(start_iteration),
+       1317         ctypes.c_int(num_iteration),
+       1318         _c_str(self.pred_parameter),
+       1319         ctypes.byref(out_num_preds),
+       1320         preds.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+       1321     )
+       1322 )
+       1323 if n_preds != out_num_preds.value:
+       1324     raise ValueError("Wrong length for predict results")
+
+
+    KeyboardInterrupt: 
+
+
 ## 9.1 Global importance (beeswarm + bar)
 
 
@@ -2305,13 +2518,13 @@ display(top)
 
 
     
-![png](notebook_v3_files/notebook_v3_86_0.png)
+![png](notebook_v3_files/notebook_v3_93_0.png)
     
 
 
 
     
-![png](notebook_v3_files/notebook_v3_86_1.png)
+![png](notebook_v3_files/notebook_v3_93_1.png)
     
 
 
@@ -2454,7 +2667,7 @@ except Exception as e:
 
 
     
-![png](notebook_v3_files/notebook_v3_91_0.png)
+![png](notebook_v3_files/notebook_v3_98_0.png)
     
 
 
@@ -2491,7 +2704,7 @@ plt.show()
 
 
     
-![png](notebook_v3_files/notebook_v3_93_1.png)
+![png](notebook_v3_files/notebook_v3_100_1.png)
     
 
 
