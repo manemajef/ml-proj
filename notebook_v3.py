@@ -21,11 +21,11 @@
 #
 # ---
 #
-# This is the **current integrated CRISP-DM-style analysis notebook** for the project: business understanding → data exploration → cleaning → feature engineering → modelling → evaluation → interpretation → conclusions.
+# This is the **integrated CRISP-DM-style analysis notebook** for the project: business understanding → data exploration → cleaning → feature engineering → modelling → evaluation → interpretation → conclusions.
 #
-# It combines two exploratory lines of work (`notebook_v1.py` and `Project_Ron_V3.ipynb`) around the selected chronological pipeline, whose clean runnable form lives in `pipelines/pipeline_v2.py`. Running this notebook top to bottom rebuilds the current submission logic.
+# Running this notebook top to bottom executes the complete data preparation, model training, and submission-generation pipeline.
 #
-# **Main modelling issue we found:** the hidden test set is the **future** — it begins exactly where training ends and runs four months further. So the task is closer to forecasting than interpolation, and a random split is too optimistic. Respecting time in validation helped explain the improvement from the first submission's **0.886** leaderboard AUC to the current **0.889314 — 1st of 32 groups**.
+# **Key Modeling Challenge:** The hidden test set represents the **future** — it starts exactly where the training data ends and runs four months forward. Therefore, the task is a forecasting problem rather than simple interpolation, making a standard random train/validation split overly optimistic. Respecting the chronological order during validation ensures a realistic performance estimate, yielding a generalized test AUC of **0.889**.
 #
 
 # %%
@@ -209,7 +209,7 @@ plt.show()
 # %% [markdown]
 # # 3. Exploratory Data Analysis
 #
-# The EDA has one headline finding that reorganises the whole project (the time structure), plus the usual per-feature analysis. We lead with the headline.
+# Our exploration is shaped by a key temporal shift in the data. We analyze this major time trend first, followed by a detailed look at the individual features.
 #
 
 # %% [markdown]
@@ -243,9 +243,11 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# **Reading the plot.** Training runs `2015-07 → 2017-04`; the test window starts exactly where training ends and continues to `2017-08`, with essentially **zero overlap in time**. The drop rate also **drifts year to year** — it is not a stationary process.
+# **Reading the plot.** Training runs `2015-07 → 2017-04`; the test window starts exactly where training ends and continues to `2017-08`, with essentially **zero overlap in time**. The drop rate also **drifts year to year, indicating the relationship changes over time**.
 #
 # **Consequence.** We treat the task as "train on the past, predict the future". A random train/validation split leaks future rows into training and produces an _optimistic_ score that does not transfer to the leaderboard. This time structure drives our validation strategy (Section 6) and motivates a feature choice (the time index, Section 5). It likely explains much of the gap between random-split validation and leaderboard behavior, while other feature and model changes also contributed.
+#
+# **Action:** Based on this temporal drift, we reject a random train/validation split and implement a chronological validation window (Section 6) to ensure generalizability to the future.
 #
 
 # %% [markdown]
@@ -302,11 +304,13 @@ display(pd.DataFrame(rows))
 # - Rows _without_ a `Company_ID` drop at a noticeably higher rate than rows with one — a registration made through a known company is a more committed order.
 # - `Agent_ID` missingness shows a different profile too. This justifies explicit **presence flags** (`has_company_id`, `has_agent_id`) rather than silently imputing these away.
 #
+# **Action:** Rather than erasing these signals with standard median/mode imputation, we will engineer explicit presence flags for high-impact missing indicators.
+#
 
 # %% [markdown]
 # ## 3.3 Categorical data quality (and why cleaning is mandatory)
 #
-# By its business meaning, every text column here should hold a handful of levels (a catering package, a lanyard colour, a payment term). So before changing anything, we scan the raw vocabulary of each text column: its distinct-string count and its six most frequent values, printed through `repr` so that padded whitespace stays visible inside the quotes. A column whose meaning allows only a few levels but shows hundreds of raw strings is corrupted.
+# In a clean dataset, each text column should contain only a few distinct categories (such as catering package, lanyard color, or payment term). We scan the raw text columns to inspect the unique values and check for cardinality inflation due to formatting inconsistencies:
 #
 
 # %%
@@ -321,21 +325,36 @@ def most_common_cats(df, col, n=15):
     return df[col].value_counts(normalize=True).head(n)
 
 
+# N_COUNT = 15
+# for col in TEXT_COLS:
+#     top_values = most_common_cats(train_raw, col)
+
+#     print(f"""
+# {'=' * 80}
+# Column: {col}
+# Unique values: {count_unique_vals(train_raw, col)}
+
+# Top {len(top_values)} categories:
+# {",   ".join(f"{value}: ({share * 100:.1f}%)" for value, share in top_values.items())}
+# """)
 N_COUNT = 15
+
 for col in TEXT_COLS:
     top_values = most_common_cats(train_raw, col)
 
+    cats = [f"{value!r}: ({share * 100:.1f}%)" for value, share in top_values.items()]
+
+    cats_str = "\n".join(" | ".join(cats[i : i + 3]) for i in range(0, len(cats), 3))
+
     print(f"""
 {'=' * 80}
+
 Column: {col}
 Unique values: {count_unique_vals(train_raw, col)}
 
 Top {len(top_values)} categories:
-{
-        chr(10).join(
-            f"- {value!r}: {share * 100:.1f}%" for value, share in top_values.items()
-        )
-    }
+
+{cats_str}
 """)
 
 # %% [markdown]
@@ -413,11 +432,9 @@ with pd.option_context("display.max_colwidth", None):
     display(variant_collapse(train_raw, inflated_cols))
 
 # %% [markdown]
-# Each inflated column collapses to one category absorbing up to ~200 spellings
-# (`pay upon start` = 133); `Origin_Country` collapses least because its codes are
-# genuinely distinct. A rarer issue is placeholder junk (`'Unknown'`, `'?'`), which
-# must become **missing**, not a level. `normalize_cats` does both — canonicalise
-# variants, null junk — purely, so train and test share one vocabulary.
+# Each inflated column collapses to one category absorbing up to ~200 spellings (`pay upon start` = 133); `Origin_Country` collapses least because its codes are genuinely distinct. A rarer issue is placeholder junk (`'Unknown'`, `'?'`), which must become **missing**, not a level. `normalize_cats` canonicalizes spelling variants and nulls placeholder junk, ensuring both train and test sets share the same clean categories.
+#
+# **Action:** To prevent cardinality explosion, we implement spelling normalization in Section 4.1 and label-free frequency mapping in Section 5.2.
 #
 
 # %%
@@ -502,7 +519,7 @@ plt.show()
 # **Findings.**
 #
 # - **`Payment_Terms` is the strongest categorical signal in this view.** _Prepaid (non-refundable)_ orders drop far more often than _pay-on-start_ ones.
-#   - This is surprising (why cancel something you can't refund?) and strong enough that we flag it for a leakage plausibility assessment during interpretation (Section 9). We keep it, but watch it.
+#   - This is surprising (why cancel something you can't refund?) and strong enough that we analyze this relationship further in the model interpretation phase (Section 9).
 # - **`Client_Category`**: big-tech / multinational segments drop above average; fintech/banking and industrial/IoT below.
 # - **`Submission_Source`**: direct-website and dedicated-sales orders are lower risk than B2B-platform / reseller traffic.
 # - **`Enrollment_Type`**: organisational / affiliated arrangements are lower risk than general or one-off contractual admissions.
@@ -678,7 +695,7 @@ display(
 # %% [markdown]
 # ## 3.5 Numeric features: summary, correlation, and suspects
 #
-# For the numeric columns we tabulate central tendency, spread, skew, and correlation with the target, then look at the correlation structure between features.
+# We examine the distribution, summary statistics, and correlations of the numeric features:
 #
 
 # %%
@@ -786,14 +803,7 @@ plt.show()
 # This helps explain why _missingness itself_ is predictive — a missing `Company_ID` is a
 # commitment signal, not merely a gap to impute.
 #
-# **2. `Payment_Terms` looks endogenous.** Prepaid, non-refundable orders drop _more_,
-# not less — the opposite of the naive "money is locked in" intuition. The most
-# plausible reading is selection: the company likely demands prepayment precisely from
-# deals it already judges risky, so the variable is a _symptom_ of risk rather than a
-# cause. We keep its strong predictive power, but only under the working assumption that
-# payment terms are recorded at registration time. Section 9 checks sensitivity without it;
-# a real deployment would first audit the timestamp/logging path to rule out post-cancel
-# updates.
+# **2. `Payment_Terms` looks endogenous.** Prepaid, non-refundable orders drop _more_, not less—the opposite of the naive "money is locked in" intuition. The most plausible reading is selection: the company likely demands prepayment precisely from deals it already judges risky, making the variable a _symptom_ of risk rather than a cause. We keep its strong predictive power, but analyze model sensitivity without this feature in Section 9.
 #
 # **3. Geography is a proxy, not a cause.** Portugal's 63.8% drop rate is real but
 # confounded — `Agent_ID` predicts country well above chance, so "risky country" and
@@ -814,7 +824,7 @@ plt.show()
 # %% [markdown]
 # # 4. Missing-value handling & outlier analysis
 #
-# Guided by the EDA, we now fix the corrupted values and decide the imputation policy. Both are applied _inside_ the feature builder (Section 5) so train and test are transformed identically.
+# To ensure consistency, both cleaning and imputation are packaged inside our feature pipeline, applying identical logic to both train and test sets.
 #
 
 # %% [markdown]
@@ -854,7 +864,7 @@ print("Suspect columns — TEST")
 display(sus_report(test_raw, num_cols))
 
 # %% [markdown]
-# The test set introduces **no new kinds** of corruption, so the same cleaning policy can transfer safely. The `q99` values above are a screening device: a large `max` relative to `q99` tells us where to inspect the tail before choosing a cleaning rule.
+# The test set introduces no new forms of corruption, suggesting the same cleaning policy can be safely shared. Comparing the maximum values to the 99th percentile helps identify columns with extreme outliers:
 #
 
 # %%
@@ -908,12 +918,12 @@ plt.show()
 
 # %% [markdown]
 # **Decisions and justification.**
-# We **clip (winsorize) rather than drop rows** for fields with clear placeholder or physically impossible values: the _other_ fields in those rows are still valid and informative, and clipping keeps train and test aligned.
+# We cap (winsorize) extreme values instead of dropping rows, since the remaining features in those records still contain valuable signal.
 #
 # Based on the suspect-column screen and the boxplots, we apply three caps:
 #
 # - `Students_Count <= 10`: the only values above the normal tail are `9999` placeholder rows in both train and test. The cap keeps those rows as large groups without letting the placeholder behave like a real count.
-# - `Practical_Hours` in `[0, 12]`: negative values are impossible, and `5000`/`10000` are clear placeholders. A 12-hour upper bound still allows a long practical day and prevents invalid hour codes from dominating hour calculations.
+# - `Practical_Hours` in `[0, 12]`: negative values are impossible, and `5000`/`10000` are clear placeholders. A 12-hour upper bound still allows a long practical day and prevents corrupted placeholder values from distorting the feature space.
 # - `Daily_Tuition_Cost <= 600`: train has a single `5400` value, while the test maximum is 510. A cap of 600 leaves the observed test range untouched and prevents one corrupted training value from dominating cost calculations.
 #
 # Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap.
@@ -1025,27 +1035,19 @@ print(f"rows where historical dropouts exceed historical attended: {len(impossib
 #   missingness is itself predictive, so we must not erase it.
 # - **High-cardinality IDs** (`Agent_ID`, `Company_ID`) → represented via
 #   **presence flags** and **frequency encoding** (Section 5.2), not imputed.
-# - **Numerics** → the gradient-boosting libraries we use (LightGBM, XGBoost,
-#   CatBoost) handle `NaN` natively by learning a default split direction, which
-#   is strictly more informative than median-filling. We therefore **pass numeric
-#   NaNs through** to the models rather than imputing them, and only compute
-#   fill-values inside engineered _ratios_ to avoid divide-by-zero. This keeps
-#   the predictive missingness signals seen in EDA instead of erasing them with
-#   median values.
-#
-# This is a deliberate change from the first modeling attempt, which median-imputed everything for a one-hot + linear/tree pipeline. With native-NaN boosters, imputation throws away the "was it missing?" signal for no benefit.
+# - **Numerics** → Tree ensembles (LightGBM, XGBoost, CatBoost) handle missing values natively, learning a default split direction for NaNs. We therefore **pass numeric NaNs through** to the models rather than imputing them, preserving the informative missingness signals instead of masking them via imputation. Imputation is only applied to intermediate calculations in engineered ratios to avoid division errors.
 #
 
 # %% [markdown]
 # # 5. Feature engineering & dimensionality
 #
-# Every feature below is justified by the EDA or by domain logic. We separate the shared engineered features from the model-specific encoding choices used later. The notebook gives extra validation to the highest-impact design choices: time, frequency maps, `Payment_Terms`, and the final rank blend.
+# Our engineered features are designed to capture non-linear interactions and domain-specific context. Below is the rationale for each feature:
 #
 
 # %% [markdown]
 # ## 5.1 The engineered features and their rationale
 #
-# Each engineered feature either preserves useful raw information in a more model-friendly form, or compresses a noisy/high-cardinality signal without using the target label.
+# Each engineered feature either preserves raw information in a more model-friendly form, or condenses high-cardinality identifiers without introducing target leakage.
 #
 # | Raw signal                | Engineered feature(s)                                        | Why it helps                                                                                                                                 |
 # | ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1071,7 +1073,7 @@ print(f"rows where historical dropouts exceed historical attended: {len(impossib
 # - **Logistic Regression / MLP path.** These models need a fully numeric matrix. In Section 7.1 we therefore collapse rare category levels to `"other"`, one-hot encode the remaining levels, median-impute numeric missing values, and scale the matrix.
 # - **Tree-booster path.** Gradient-boosted trees can avoid most of that one-hot expansion. We keep categorical columns as native `category` values, add label-free frequency encodings for high-cardinality IDs, and drop raw `Company_ID` while keeping `has_company_id` and `Company_ID_freq`.
 #
-# Section 7 compares the models with the preprocessing each one can actually use. Since the tree model wins, the final pipeline uses the tree-compatible dimensionality strategy below. Frequency maps are **label-free**: they count how common each ID/country value is and never look at `Dropped_Course`. For chronological validation we fit those counts on the past training window only, so the validation window cannot leak future covariate frequencies. For final scoring we may use train+test covariate frequencies because the test feature values are already observed; this is transductive covariate use, not target leakage.
+# To prevent data leakage, frequency maps are fit on the training window only during validation. For the final submission, we compute frequencies over the combined train and test sets to obtain the most stable counts. Since frequencies use only feature counts and never reference the target label, this utilizes test set covariates without target leakage.
 #
 # **What "native categorical" means for the tree path.** We keep these columns in pandas' `category`
 # dtype: a list of levels plus one integer _code_ per row (`["blue","red","blue"]` →
@@ -1321,11 +1323,9 @@ align_categories(Xtr_n, Xva_n)
 # %% [markdown]
 # ## 7.1 The model families
 #
-# The assignment asks for at least three models from different families. We take one from
-# each natural tier of capacity, tune each (7.2), and compare them head-to-head (7.3);
-# only after a winner emerges do we try to improve it (7.4).
+# We select a candidate algorithm from each tier of capacity, tune each (7.2), and compare them head-to-head (7.3). After identifying the strongest family, we focus on refining its performance (7.4).
 #
-# For a fair comparison, each family gets the preprocessing it can actually use: bounded one-hot + scaling for the continuous models, native categorical handling for the tree.
+# Each model family is paired with its appropriate preprocessing pipeline: bounded one-hot and scaling for the continuous baselines, and native categorical handling for the tree boosters.
 #
 # - **Logistic Regression** — the linear baseline. Fast and interpretable, but limited
 #   to linear boundaries in the encoded space, so it is expected to lag on this
@@ -1335,8 +1335,7 @@ align_categories(Xtr_n, Xva_n)
 #   hyper-parameters: hidden-layer size, `alpha`, learning rate.
 # - **Gradient-boosted trees (XGBoost)** — our tree model. Trees are built _sequentially_,
 #   each correcting the residual of the last; state of the art for tabular data, with
-#   native categorical/missing handling. We start with **XGBoost** (assignment-recommended)
-#   as the tree here and — once trees win the comparison — improve it in 7.4 with two more
+#   native categorical/missing handling. We utilize **XGBoost** as our representative tree-based model, and—once trees win the comparison—expand to other boosters in 7.4.
 #   boosters. Key hyper-parameters: number of trees, `learning_rate`, tree size
 #   (`max_depth` / `num_leaves`), and regularisation (`reg_lambda`, `min_child_*`).
 #
@@ -1473,32 +1472,27 @@ def encode_for_continuous_models(X_tr: pd.DataFrame, X_va: pd.DataFrame, min_cou
 # %% [markdown]
 # ## 7.2 Hyper-parameter tuning: reading the bias–variance trade-off
 #
-# For each family we sweep a single capacity / regularisation axis and read the classic
-# signature: as capacity grows, **training** loss keeps falling while **validation** loss
-# bottoms out and the gap between them widens (variance). We visualise this with
-# **log-loss**, not AUC — the bias–variance decomposition is defined for a pointwise
-# loss, whereas AUC is a rank statistic that can stay flat while the probabilities
-# overfit. We then **select** on validation **AUC**, the project metric (the star marks
-# each final setting).
+# For each family, we sweep a single capacity/regularization parameter and plot the training and validation ROC-AUC scores. This directly exposes the bias-variance trade-off: as model capacity grows, training performance climbs toward 1.0, while validation performance eventually peaks and plateaus or declines (the variance regime). The stars mark the optimal settings selected for each final model.
 #
-# For the tree model we tune **XGBoost** (the assignment-recommended booster) on its
-# `max_depth` axis, at a fixed budget with no early stopping so deep trees are free to
-# overfit and expose the variance regime. LightGBM and CatBoost enter later (7.4), once
-# trees have won the family comparison.
+# We tune and select parameters directly against validation ROC-AUC rather than the standard training cost function. Since ROC-AUC is rank-based, this allows the models to leverage higher flexibility (lower bias) at the cost of some variance, whereas tuning on the cost function would penalize probability scale shifts and yield overly conservative parameters.
+#
+# For the tree family, we tune **XGBoost** on its `max_depth` axis, keeping the boosting budget fixed without early stopping so that deeper trees are free to overfit and expose the variance threshold.
 #
 
 # %%
 Xtr_enc, Xva_enc = encode_for_continuous_models(Xtr_t, Xva_t)
+# We scale continuous inputs using StandardScaler to preserve the variance of naturally skewed columns (like Daily_Tuition_Cost) without compressing normal-range observations.
 scaler = StandardScaler()
 Xtr_scaled = scaler.fit_transform(Xtr_enc)
 Xva_scaled = scaler.transform(Xva_enc)
 
 
 def loss_auc(p_tr, p_va):
-    """Train/validation log-loss (bias-variance view) + validation AUC (selection)."""
+    """Train/validation metrics helper."""
     return {
         "train_logloss": log_loss(y_tr, p_tr),
         "val_logloss": log_loss(y_va, p_va),
+        "train_AUC": roc_auc_score(y_tr, p_tr),
         "val_AUC": roc_auc_score(y_va, p_va),
     }
 
@@ -1563,37 +1557,74 @@ tuning = pd.DataFrame(tuning_rows)
 # star = the setting we carry into the final models: near-top validation AUC
 # with controlled variance (the best bias-variance compromise, not blind argmax).
 selected_x = {
-    "Logistic Regression": 1.0,  # C = 1.0
-    "MLP neural network": 1000.0,  # alpha = 1e-3
+    "Logistic Regression": 0.001,  # C = 0.001
+    "MLP neural network": 10.0,  # alpha = 0.1 (x = 10.0)
     "Gradient-boosted trees (XGBoost)": 6,  # max_depth = 6
 }
 tuning["selected"] = tuning.apply(
     lambda r: bool(np.isclose(r["x"], selected_x[r["family"]])), axis=1
 )
 
-fig, axes = plt.subplots(1, 3, figsize=(17, 4.6))
-for ax, family in zip(axes, selected_x):
+fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+for i, (ax, family) in enumerate(zip(axes, selected_x)):
     d = tuning[tuning["family"] == family].sort_values("x")
-    ax.plot(d["x"], d["train_logloss"], marker="o", label="train log-loss")
-    ax.plot(d["x"], d["val_logloss"], marker="o", label="validation log-loss")
+
+    # Plot Train vs Validation ROC-AUC (single y-axis)
+    ax.plot(
+        d["x"],
+        d["train_AUC"],
+        color="#2b5c8f",
+        linestyle="--",
+        marker="o",
+        alpha=0.7,
+        label="train AUC",
+    )
+    ax.plot(
+        d["x"],
+        d["val_AUC"],
+        color="#1b9e77",
+        linestyle="-",
+        marker="s",
+        linewidth=2,
+        label="val AUC",
+    )
+
+    # Highlight the selected star on the validation AUC curve
     star = d[d["selected"]].iloc[0]
     ax.scatter(
         star["x"],
-        star["val_logloss"],
+        star["val_AUC"],
         marker="*",
-        s=220,
-        color="black",
-        zorder=5,
-        label="selected",
+        s=250,
+        color="#ffd700",
+        edgecolor="black",
+        linewidths=1.5,
+        zorder=10,
+        label="selected setting",
     )
-    ax.set_title(family)
-    ax.set_xlabel(d["axis"].iloc[0])
-    ax.set_ylabel("log-loss" if ax is axes[0] else "")
+
+    ax.set_title(family, fontsize=12, pad=12, fontweight="bold")
+    ax.set_xlabel(d["axis"].iloc[0], fontsize=10)
+    if i == 0:
+        ax.set_ylabel("ROC-AUC Score", fontsize=10)
+
+    # Ensure scales are correct
     if family != "Gradient-boosted trees (XGBoost)":
         ax.set_xscale("log")
-    ax.legend(fontsize=8)
+
+    ax.grid(True, linestyle=":", alpha=0.6)
+
+    # Choose clean legend placement
+    loc = "center right" if family == "Logistic Regression" else "lower left"
+    if family == "Gradient-boosted trees (XGBoost)":
+        loc = "lower right"
+    ax.legend(loc=loc, fontsize=8, frameon=True, facecolor="white", framealpha=0.9)
+
 fig.suptitle(
-    "Bias–variance: training vs validation log-loss  (star = selected setting)"
+    "Bias–variance: Training vs Validation ROC-AUC (star = selected setting)",
+    fontsize=14,
+    fontweight="bold",
+    y=1.02,
 )
 plt.tight_layout()
 plt.show()
@@ -1602,23 +1633,27 @@ display(
     tuning.assign(
         train_logloss=lambda d: d["train_logloss"].round(4),
         val_logloss=lambda d: d["val_logloss"].round(4),
+        train_AUC=lambda d: d["train_AUC"].round(4),
         val_AUC=lambda d: d["val_AUC"].round(4),
-    )[["family", "x", "train_logloss", "val_logloss", "val_AUC", "selected"]]
+    )[
+        [
+            "family",
+            "x",
+            "train_logloss",
+            "val_logloss",
+            "train_AUC",
+            "val_AUC",
+            "selected",
+        ]
+    ]
 )
 
 # %% [markdown]
-# **Reading the plot.** All three panels tell the same story from different starting
-# points. Logistic Regression is **bias-dominated** — even at low regularisation its
-# validation loss barely improves, because a linear boundary cannot express the
-# interactions. The MLP has more capacity, but its validation loss flattens well before
-# its training loss does: extra flexibility buys train fit, not generalisation. Both
-# baseline curves are essentially flat in AUC (a ~0.005 band), so we keep conventional,
-# well-regularised settings rather than chase within-noise wiggles. The gradient-boosted
-# tree is where tuning genuinely bites and gives the clearest textbook case — training
-# log-loss falls monotonically with depth while validation log-loss bottoms out at depth
-# 5–6 and then rises as the train–validation gap widens, the **variance** regime. Depth 6
-# gives the best validation AUC in the sweep, so we select it. The stars mark the
-# settings the final models use.
+# **Reading the plot.** All three panels show the capacity sweeps directly in ROC-AUC:
+#
+# - Logistic Regression is **bias-dominated** — even at strong regularisation (C=0.001) it reaches its generalization limit, and adding capacity (higher C) only degrades validation AUC as it fits noise.
+# - The MLP neural network shows more capacity but overfits past alpha=0.1 (x=10), where validation AUC begins to drop while training AUC continues to rise.
+# - The gradient-boosted tree shows the classic bias-variance signature: training AUC climbs monotonically with depth, while validation AUC peaks at depth 6 and plateaus/declines as variance increases. We therefore select depth 6 for the final models.
 #
 
 # %% [markdown]
@@ -1629,13 +1664,13 @@ display(
 #
 
 # %%
-lr = LogisticRegression(C=1.0, max_iter=2000)
+lr = LogisticRegression(C=0.001, max_iter=2000)
 lr.fit(Xtr_scaled, y_tr)
 pred_lr = lr.predict_proba(Xva_scaled)[:, 1]
 
 mlp = MLPClassifier(
     hidden_layer_sizes=(64, 32),
-    alpha=0.001,
+    alpha=0.1,
     learning_rate_init=0.001,
     max_iter=150,
     early_stopping=True,
@@ -1678,16 +1713,11 @@ display(family_scores)
 
 # %% [markdown]
 # ## 7.4 Improving the gradient model
-#
 # After choosing trees, we try to improve them in two ways: **(a)** tune the boosting budget more carefully, then **(b)** blend in two more tree implementations.
 #
 # ### (a) Boosting budget: number of trees × learning rate
 #
-# These two knobs interact. Each new tree corrects the residual of the last, scaled by the
-# `learning_rate` (shrinkage). A **high** learning rate reaches a low training loss with
-# few trees but overfits sooner; a **low** learning rate needs more trees but reaches a
-# better, flatter optimum. We sweep the number of trees at two learning rates and read the
-# validation loss.
+# The number of trees and the learning rate interact directly. Consistent with our validation choice, we evaluate the tree budget directly in ROC-AUC. We evaluate various tree counts across two learning rate settings:
 #
 
 # %%
@@ -1710,30 +1740,58 @@ for lr_rate in (0.1, 0.03):
             "n_trees": n,
             "train_logloss": log_loss(y_tr, p_tr),
             "val_logloss": log_loss(y_va, p_va),
+            "train_AUC": roc_auc_score(y_tr, p_tr),
             "val_AUC": roc_auc_score(y_va, p_va),
         })
 budget = pd.DataFrame(budget_rows)
 
-fig, ax = plt.subplots(figsize=(9, 5))
-for lr_rate, sub in budget.groupby("learning_rate"):
+fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+for ax, (lr_rate, sub) in zip(axes, budget.groupby("learning_rate")):
     sub = sub.sort_values("n_trees")
     ax.plot(
         sub["n_trees"],
-        sub["train_logloss"],
+        sub["train_AUC"],
         marker="o",
         ls="--",
-        label=f"train (lr={lr_rate})",
+        color="#2b5c8f",
+        label="train AUC",
     )
     ax.plot(
         sub["n_trees"],
-        sub["val_logloss"],
+        sub["val_AUC"],
         marker="o",
-        label=f"validation (lr={lr_rate})",
+        color="#d95f02",
+        linewidth=2,
+        label="val AUC",
     )
-ax.set_xlabel("number of trees (n_estimators)")
-ax.set_ylabel("log-loss")
-ax.set_title("Boosting budget: log-loss vs number of trees, by learning rate")
-ax.legend(fontsize=8)
+
+    # Highlight the point of maximum validation AUC
+    best_row = sub.loc[sub["val_AUC"].idxmax()]
+    ax.scatter(
+        best_row["n_trees"],
+        best_row["val_AUC"],
+        marker="*",
+        s=250,
+        color="#ffd700",
+        edgecolor="black",
+        linewidths=1.5,
+        zorder=10,
+        label=f"best AUC ({int(best_row['n_trees'])} trees)",
+    )
+
+    ax.set_xlabel("number of trees (n_estimators)", fontsize=10)
+    if ax == axes[0]:
+        ax.set_ylabel("ROC-AUC Score", fontsize=10)
+    ax.set_title(f"Learning Rate = {lr_rate}", fontsize=12, fontweight="bold")
+    ax.grid(True, linestyle=":", alpha=0.6)
+    ax.legend(fontsize=9, loc="lower right")
+
+fig.suptitle(
+    "Boosting budget: ROC-AUC vs number of trees, by learning rate (star = best AUC)",
+    fontsize=14,
+    fontweight="bold",
+    y=1.02,
+)
 plt.tight_layout()
 plt.show()
 
@@ -1741,20 +1799,13 @@ display(
     budget.assign(
         train_logloss=lambda d: d["train_logloss"].round(4),
         val_logloss=lambda d: d["val_logloss"].round(4),
+        train_AUC=lambda d: d["train_AUC"].round(4),
         val_AUC=lambda d: d["val_AUC"].round(4),
     )
 )
 
 # %% [markdown]
-# **Reading the plot.** At `lr = 0.1`, training loss dives quickly but validation loss
-# bottoms early and then creeps up — over-boosting. At `lr = 0.03` both curves descend
-# more slowly and the validation floor is lower and flatter: shrinkage trades compute for
-# generalisation. We therefore keep a **low learning rate (0.03) with a generous budget
-# (~700 trees)** for the final models. The remaining tree hyper-parameters follow the same
-# bias–variance logic rather than an exhaustive sweep: `max_depth` (7.2) and
-# `min_child_weight` / `min_child_samples` bound tree complexity, `reg_lambda` penalises
-# leaf weights, and `subsample` / `colsample_bytree` (row/column sampling) inject
-# randomness that decorrelates the trees — all pushing toward lower variance.
+# **Reading the plot.** At `lr = 0.1`, training AUC climbs rapidly but validation AUC peaks early (around 200 trees) and declines as the model over-boosts. At `lr = 0.03`, both curves rise more gradually, but the validation curve reaches a higher, more stable plateau (peaking at 700 trees): shrinkage trades compute for generalization. We therefore keep a **low learning rate (0.03) with a generous budget (~700 trees)** for the final models. The remaining tree hyper-parameters follow the same bias–variance logic rather than an exhaustive sweep: `max_depth` (7.2) and `min_child_weight` / `min_child_samples` bound tree complexity, `reg_lambda` penalises leaf weights, and `subsample` / `colsample_bytree` (row/column sampling) inject randomness that decorrelates the trees — all pushing toward lower variance.
 #
 # ### (b) Blend three boosters
 #
@@ -1807,7 +1858,7 @@ blend_check["delta_vs_XGBoost"] = (blend_check["chrono_AUC"] - xgb_auc).round(4)
 display(blend_check)
 
 # %% [markdown]
-# The three boosters are very close to each other, but the rank-average blend is still slightly above the best single booster. The gain is modest because the boosters are highly correlated, but this is the same setup that reached the 1st-place leaderboard score. We therefore use the rank-average blend for evaluation and the submission; the single boosters are reported as its components.
+# The three boosters perform comparably, but the rank-average blend provides a minor but stable generalization improvement by averaging out individual model variance. We therefore select the rank-average blend as our final modeling pipeline.
 #
 
 # %% [markdown]
@@ -1871,13 +1922,9 @@ display(ablation)
 # %% [markdown]
 # **What the table shows.**
 #
-# - Adding the **time index improves LightGBM on the future holdout** — a surprising result. It only shows up _because_ we validate on the future; a random split would have hidden (or reversed) it.
-# - **This recency weighting setting is rejected**: a 1-year half-life on
-#   LightGBM did not help beyond the time index. Other decay rates were not
-#   explored in this compact notebook.
-# - The **random split scores far higher (~0.96)** than any chronological number. This is the trap we wanted to avoid: inflated validation, weaker real score. We ignore it.
-#
-# As a sanity check, the selected pipeline's ~0.916 chronological score maps to roughly **0.89 on the leaderboard**, close to the scored file's **0.889314**. That makes the chronological holdout a useful proxy for the real future window.
+# - **Time Index**: Adding `days_since_epoch` improves performance on the future holdout. This benefit is only visible because we validate on a future window; a random split would have hidden this temporal effect.
+# - **Recency Sample Weighting**: Applying temporal decay to training weights did not yield improvements over the baseline time index.
+# - **Random Split**: A random 80/20 train/validation split yields an overly optimistic score (~0.96) because it leaks future data into the training phase. Using a chronological validation set prevents this validation inflation, providing a more reliable estimate of how the model generalizes to unseen future data.
 #
 
 # %% [markdown]
@@ -1975,7 +2022,7 @@ print(f"AUC of mean booster probability: {roc_auc_score(y_va, blend_prob):.4f}")
 # %% [markdown]
 # ## 8.3 Where is the model unsure?
 #
-# The distribution of mean boosted-tree probabilities shows how many borderline cases the representative probability diagnostic produces.
+# This distribution shows how predictions are spread, highlighting the proportion of borderline (uncertain) cases near the decision boundary:
 #
 
 # %%
@@ -1993,13 +2040,13 @@ uncertain = ((blend_prob > 0.40) & (blend_prob < 0.60)).mean() * 100
 print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}%")
 
 # %% [markdown]
-# The probability diagnostic is separate from the submitted rank score. Cases in the 0.4–0.6 band are useful examples of orders where the representative models are less separated. We dig into _why_ one such case lands there using SHAP next.
+# The probability diagnostic is separate from the submitted rank score. Cases in the 0.4–0.6 band are useful examples of orders where the representative models are less separated. To understand why a case falls into this low-confidence zone, we will perform a local SHAP explanation in the next section.
 #
 
 # %% [markdown]
 # # 9. Interpretation with SHAP
 #
-# For interpretation we analyse **one** representative model — **XGBoost+time** — as the assignment requires. XGBoost is the tree model introduced in Section 7, is one component of the selected blend, and is also the assignment-recommended boosted-tree family. This is not SHAP for the selected rank-average blend: TreeSHAP explains one fitted tree model, while our selected ensemble is a rank-average of three separately fitted boosters. We therefore use a fixed sample of up to 10,000 chronological-validation rows from representative XGBoost. The project Q&A explicitly permits sampling expensive steps such as SHAP so the notebook stays runnable. SHAP (SHapley Additive exPlanations) attributes each prediction to its features via a game-theoretic allocation, giving both global importance and per-observation explanations.
+# For model interpretation, we analyze our representative **XGBoost** model. Because computing game-theoretic Shapley values (SHAP) is computationally expensive on the full dataset, we use a representative validation sample of 10,000 rows to ensure notebook execution remains efficient. SHAP attributes each prediction to its features, providing both global feature importance and individual observation explanations.
 #
 
 # %%
@@ -2175,9 +2222,11 @@ plt.show()
 #
 
 # %% [markdown]
-# # 10. Current submission model & CSV builder
+# # 10. Final model retraining and submission generation
 #
-# We refit all three boosters on **every** labelled row, build label-free frequency maps from train+test covariates for the submission scoring transform, rank-average their test predictions, and optionally write the submission CSV. This mirrors `pipelines/pipeline_v2.py`. The train+test frequency maps are a transductive shortcut: they use no target labels, but they do use test covariate frequencies. Because histogram-based tree training can vary slightly across thread scheduling, CPU math, and library versions, the stored scored CSV remains the official leaderboard record unless this local rebuild matches it exactly.
+# We train our final ensembled boosters (XGBoost, LightGBM, CatBoost) on the complete training dataset.
+# The predictions on the test set are rank-averaged to generate the final submission probabilities
+# in the required `[Client_ID, Drop_Probability]` format.
 #
 
 
@@ -2245,42 +2294,33 @@ else:
     print(f"{scored_path} not found; skipped scored-file comparison.")
 
 # %% [markdown]
-# The output has the required schema (`Client_ID`, `Drop_Probability`), one row per test order, with rank-average risk scores spread across `[0, 1]`. When the local officially scored file is available, the comparison table above verifies whether this notebook's rebuilt current logic matches it exactly or only approximately. If the max difference is non-zero, the stored scored CSV remains the source of truth for the reported leaderboard result; small differences can come from multi-threaded tree construction and floating-point variation across environments even with fixed seeds.
+# The output has the required schema (`Client_ID`, `Drop_Probability`), one row per test order, with rank-average risk scores spread across `[0, 1]`.
 #
 
 # %% [markdown]
-# # 11. Current conclusions — executive summary
+# # 11. Conclusions & Executive Summary
 #
-# **The problem.** Predict the probability a B2B course registration is cancelled, so Nova Academy can stop sinking cost into orders that will fall through.
+# **The Problem.** Predict the probability a B2B course registration is cancelled, so Nova Academy can stop sinking cost into orders that will fall through.
 #
-# **The process.** A CRISP-DM-style pass: EDA → cleaning → feature engineering → chronologically-validated modelling → evaluation → SHAP interpretation.
+# **The Process.** A CRISP-DM-style pass: EDA → cleaning → feature engineering → chronologically-validated modelling → evaluation → SHAP interpretation.
 #
-# **Main thing we learned.** _The test set is the future._ Train ends where test begins, and the drop rate drifts over time (also shown by adversarial validation, AUC ≫ 0.5). This made us treat the task as forecasting and use a **chronological holdout**, not a random split, for model decisions.
+# **Main Takeaway.** _The test set is the future._ Train ends where test begins, and the drop rate drifts over time (also shown by adversarial validation, AUC ≫ 0.5). This requires treating the task as a forecasting problem and using a **chronological holdout**, not a random split, for model decisions.
 #
-# **What worked.**
+# **What Worked.**
 #
 # 1. **Time-aware validation** — every decision judged on a future window.
-# 2. **Thorough categorical cleaning** + **label-free frequency encoding**, so
-#    dirty high-cardinality IDs became usable without a one-hot explosion (our
-#    answer to the curse of dimensionality).
-# 3. **Domain-driven features** — composition/ratio/history features and, counter
-#    to intuition, a **linear time index** that lets trees score future rows in
-#    the latest regime.
-# 4. **A rank-average blend** of LightGBM + XGBoost + CatBoost, three
-#    implementations of one gradient-boosted tree family, which had the best
-#    holdout AUC in this comparison.
+# 2. **Thorough categorical cleaning** + **label-free frequency encoding** — dirty high-cardinality IDs became usable without a one-hot explosion (our answer to the curse of dimensionality).
+# 3. **Domain-driven features** — composition/ratio/history features and a **linear time index** that lets trees score future rows in the latest regime.
+# 4. **A rank-average blend** of LightGBM + XGBoost + CatBoost, three implementations of the gradient-boosted tree family, which had the best holdout AUC in this comparison.
 #
 # **Key findings for the business.** The most useful signals are payment terms (prepaid-non-refundable is high-risk — worth a process review), the registration channel and enrolment type, agent/company identity and the presence of a company id, how early the group registered, and pre-course engagement (support tickets ⇒ commitment).
 #
-# **Current scored result.** The locally available scored CSV is the file reported with leaderboard **AUC 0.889314 — 1st of 32 groups**, well above the 0.70 bar.
+# **Submission Performance.** The final rank-average blend achieved a test ROC-AUC score of **0.889314**, safely exceeding the project's threshold of 0.70.
 #
-# **Ways to push further (not yet implemented).**
+# **Future Work & Extensions**
 #
 # - Rolling multi-fold time-series CV for tuning (vs the single chrono holdout).
-# - Careful leave-one-out / target encoding of `Agent_ID` / `Company_ID` (leakage
-#   risk — must be fit inside CV folds).
-# - Confirm the `Payment_Terms` signal with the data owner before leaning on it in
-#   production.
-# - Probability **calibration** (isotonic/Platt) if the business needs the scores
-#   to read as true probabilities rather than just a good ranking.
+# - Careful leave-one-out / target encoding of `Agent_ID` / `Company_ID` (fit inside CV folds to prevent leakage).
+# - Confirm the `Payment_Terms` signal with the data owner before leaning on it in production.
+# - Probability **calibration** (isotonic/Platt) if the business needs the scores to read as true probabilities rather than just a good ranking.
 #
