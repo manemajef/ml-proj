@@ -7,13 +7,13 @@ predict the probability that a B2B course registration will be cancelled
 (`Dropped_Course`).
 
 - **Deadline:** 17.7.26 at 23:59.
-- **Assignment source of truth:** `[References/instructions.md](References/instructions.md)`.
-- **Best scored submission:** `[data/Group_27_Submission.csv](data/Group_27_Submission.csv)`,
-  produced by `[pipeline.py](pipeline.py)`, with documented
+- **Assignment source of truth:** [References/instructions.md](References/instructions.md)`.
+- **Best scored submission:** [data/Group_27_Submission.csv](data/Group_27_Submission.csv),
+  produced by [pipeline.py](pipeline.py), with documented
   leaderboard AUC `0.889314` (1st of 32).
 
-The current notebook work is in `[notebook.ipynb](notebook.ipynb)` and
-`[notebook.py](notebook.py)`. It is the integrated CRISP-DM draft, but it
+The current notebook work is in [notebook.ipynb](notebook.ipynb) and
+[notebook.py](notebook.py). It is the integrated CRISP-DM draft, but it
 should still be reviewed before being renamed for submission.
 
 ## Current Status
@@ -29,12 +29,12 @@ should still be reviewed before being renamed for submission.
 
 ## עברית
 
-- קובץ ההגשה המנוקד כבר קיים: `[data/Group_27_Submission.csv](data/Group_27_Submission.csv)`.
-- הלוגיקה שהביאה את הציון נמצאת ב-`[pipeline.py](pipeline.py)`.
-- המחברת המרכזית לעבודה היא `[notebook.ipynb](notebook.ipynb)`.
-- לקריאה מהירה של המחברת עם פלטים, לפתוח את `[docs/notebook.md](docs/notebook.md)`,
+- קובץ ההגשה המנוקד כבר קיים: [data/Group_27_Submission.csv](data/Group_27_Submission.csv).
+- הלוגיקה שהביאה את הציון נמצאת ב-[pipeline.py](pipeline.py).
+- המחברת המרכזית לעבודה היא [notebook.ipynb](notebook.ipynb).
+- לקריאה מהירה של המחברת עם פלטים, לפתוח את [docs/notebook.md](docs/notebook.md)`,
 - מה שנשאר הוא בעיקר חיזוק המחברת: להסביר החלטות, לוודא שאין ניסוחים חזקים מדי,
-  ולסגור התאמה לדרישות ב-`[References/instructions.md](References/instructions.md)`.
+  ולסגור התאמה לדרישות ב-[References/instructions.md](References/instructions.md).
 
 ### שינויים מהעדכון האחרון (הנחיות לעדכון הדוח)
 
@@ -55,7 +55,7 @@ should still be reviewed before being renamed for submission.
 
 ## Notebook Summary
 
-Open `[docs/notebook.md](docs/notebook.md)` for a rendered review path,
+Open [docs/notebook.md](docs/notebook.md) for a rendered review path,
 but refresh it before treating it as current if the notebook changed.
 
 The notebook currently follows this flow:
@@ -113,19 +113,19 @@ The notebook currently follows this flow:
 - Keep the final submission wording conservative: the stored scored CSV is the
   leaderboard record unless an exact-match rebuild is verified.
 - Sync or re-export the notebook output before using
-  `[docs/notebook.md](docs/notebook.md)` for final review.
+  [docs/notebook.md](docs/notebook.md) for final review.
 
 ## Files
 
-| Path                                                           | Role                                                                  |
-| -------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `[References/instructions.md](References/instructions.md)`     | Assignment requirements and grading source of truth.                  |
-| `[notebook.ipynb](notebook.ipynb)`                             | Current integrated notebook draft.                                    |
-| `[notebook.py](notebook.py)`                                   | Jupytext source for the current notebook draft.                       |
-| `[docs/notebook.md](docs/notebook.md)`                         | Rendered notebook review artifact; may be stale after notebook edits. |
-| `[pipeline.py](pipeline.py)`                                   | Clean scored pipeline used for the best CSV.                          |
-| `[data/Group_27_Submission.csv](data/Group_27_Submission.csv)` | Best scored submission; do not overwrite casually.                    |
-| `[_agent/README.md](_agent/README.md)`                         | Rules for local planning and audit notes.                             |
+| Path                                                         | Role                                                                  |
+| ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| [References/instructions.md](References/instructions.md)     | Assignment requirements and grading source of truth.                  |
+| [notebook.ipynb](notebook.ipynb)                             | Current integrated notebook draft.                                    |
+| [notebook.py](notebook.py)                                   | Jupytext source for the current notebook draft.                       |
+| [docs/notebook.md](docs/notebook.md)                         | Rendered notebook review artifact; may be stale after notebook edits. |
+| [pipeline.py](pipeline.py)                                   | Clean scored pipeline used for the best CSV.                          |
+| [data/Group_27_Submission.csv](data/Group_27_Submission.csv) | Best scored submission; do not overwrite casually.                    |
+| [\_agent/README.md](_agent/README.md)                        | Rules for local planning and audit notes.                             |
 
 Older notebooks and pipelines are kept for history, but `notebook` and
 `pipeline.py` are the active paths.
@@ -174,11 +174,11 @@ MPLBACKEND=Agg uv run python notebook.py
 
 ## If You Are An Agent
 
-- Read `[_agent/README.md](_agent/README.md)` before creating reusable local notes.
-- Read `[References/instructions.md](References/instructions.md)` before making
+- Read [\_agent/README.md](_agent/README.md) before creating reusable local notes.
+- Read [References/instructions.md](References/instructions.md) before making
   grading, sufficiency, or quality judgments.
 - Keep notebook work separate from scored-pipeline work unless explicitly asked.
-- Do not overwrite `[data/Group_27_Submission.csv](data/Group_27_Submission.csv)`
+- Do not overwrite [data/Group_27_Submission.csv](data/Group_27_Submission.csv)
   casually.
 - Prefer small, cited decision-defense fixes over broad rewrites.
 - Do not call `notebook` final or submission-ready until the review against the
