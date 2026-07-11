@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.14"
 app = marimo.App()
 
 
@@ -32,7 +32,6 @@ def _(mo):
 @app.cell
 def _():
     import warnings
-    from IPython.display import display 
     from pathlib import Path
     import numpy as np
     import pandas as pd
@@ -58,31 +57,19 @@ def _():
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
     from xgboost import XGBClassifier
 
+    from IPython.display import display
+
     warnings.filterwarnings('ignore')
     sns.set_theme(style='whitegrid')
     plt.rcParams['figure.dpi'] = 120
     plt.rcParams['savefig.dpi'] = 220
     plt.rcParams['svg.fonttype'] = 'path'
-    # try:
-    #     get_ipython().run_line_magic('config', "InlineBackend.figure_format = 'retina'")
-    # except Exception:
-    #     pass
-    # try:
-    #     display
-    # except NameError:
-
-    #     def display(*objs, **_):
-    #         for o in objs:
-    #             print(o)
-
 
     TRAIN_PATH = 'data/Train_Data.csv'
     TEST_PATH = 'data/Test_Data_No_Target.csv'
     TARGET = 'Dropped_Course'
     CHRONO_CUTOFF = '2017-01-01'
     SEED = 42
-    # `display` is injected by Jupyter. Define a fallback so the notebook also runs
-    # as a plain script (e.g. for CI / reproducibility checks).
     GITHUB_RAW_BASES = ['https://raw.githubusercontent.com/manemajef/ml-proj/main']
     pd.set_option('display.max_columns', None)  # noqa: B018
 
