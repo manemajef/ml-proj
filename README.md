@@ -1,5 +1,7 @@
 # Group 27 - Course-Drop Prediction
 
+💻 **Interactive HTML Report:** [https://manemajef.github.io/ml-proj/](https://manemajef.github.io/ml-proj/)
+
 TAU Intro to Machine Learning final project for Nova Academy. The task is to
 predict the probability that a B2B course registration will be cancelled
 (`Dropped_Course`).
@@ -30,7 +32,7 @@ should still be reviewed before being renamed for submission.
 - קובץ ההגשה המנוקד כבר קיים: [`data/Group_27_Submission.csv`](data/Group_27_Submission.csv).
 - הלוגיקה שהביאה את הציון נמצאת ב-[`pipeline.py`](pipeline.py).
 - המחברת המרכזית לעבודה היא [`notebook.ipynb`](notebook.ipynb).
-- לקריאה מהירה של המחברת עם פלטים, לפתוח את [`notebook.md`](notebook.md),
+- לקריאה מהירה של המחברת עם פלטים, לפתוח את [`docs/notebook.md`](docs/notebook.md),
 - מה שנשאר הוא בעיקר חיזוק המחברת: להסביר החלטות, לוודא שאין ניסוחים חזקים מדי,
   ולסגור התאמה לדרישות ב-[`References/instructions.md`](References/instructions.md).
 
@@ -58,7 +60,7 @@ should still be reviewed before being renamed for submission.
 
 ## Notebook Summary
 
-Open [`notebook.md`](notebook.md) for a rendered review path,
+Open [`docs/notebook.md`](docs/notebook.md) for a rendered review path,
 but refresh it before treating it as current if the notebook changed.
 
 The notebook currently follows this flow:
@@ -116,7 +118,7 @@ The notebook currently follows this flow:
 - Keep the final submission wording conservative: the stored scored CSV is the
   leaderboard record unless an exact-match rebuild is verified.
 - Sync or re-export the notebook output before using
-  [`notebook.md`](notebook.md) for final review.
+  [`docs/notebook.md`](docs/notebook.md) for final review.
 
 ## Files
 
@@ -125,7 +127,7 @@ The notebook currently follows this flow:
 | [`References/instructions.md`](References/instructions.md) | Assignment requirements and grading source of truth. |
 | [`notebook.ipynb`](notebook.ipynb) | Current integrated notebook draft. |
 | [`notebook.py`](notebook.py) | Jupytext source for the current notebook draft. |
-| [`notebook.md`](notebook.md) | Rendered notebook review artifact; may be stale after notebook edits. |
+| [`docs/notebook.md`](docs/notebook.md) | Rendered notebook review artifact; may be stale after notebook edits. |
 | [`pipeline.py`](pipeline.py) | Clean scored pipeline used for the best CSV. |
 | [`data/Group_27_Submission.csv`](data/Group_27_Submission.csv) | Best scored submission; do not overwrite casually. |
 | [`_agent/README.md`](_agent/README.md) | Rules for local planning and audit notes. |
