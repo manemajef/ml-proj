@@ -19,3 +19,6 @@ dependencies = [
     "shap>=0.52.0",
     "xgboost>=3.3.0",
 ]
+
+[tool.jupytext]
+formats = "ipynb,py:marimo"
