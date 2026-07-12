@@ -2,56 +2,27 @@
 
 I**nteractive HTML Report:** [https://manemajef.github.io/ml-proj/](https://manemajef.github.io/ml-proj/)
 
-TAU Intro to Machine Learning final project for Nova Academy. The task is to
-predict the probability that a B2B course registration will be cancelled
-(`Dropped_Course`).
+TAU Intro to Machine Learning final project for Nova Academy. The task is to predict the probability that a B2B course registration will be cancelled (`Dropped_Course`).
 
 - **Deadline:** 17.7.26 at 23:59.
 - **Assignment source of truth:** [References/instructions.md](References/instructions.md)`.
 - **Best scored submission:** [data/Group_27_Submission.csv](data/Group_27_Submission.csv),
-  produced by [pipeline.py](pipeline.py), with documented
-  leaderboard AUC `0.889314` (1st of 32).
+  produced by [pipeline.py](pipeline.py), with documented leaderboard AUC `0.889314` (1st of 32).
 
-The current notebook work is in [notebook.ipynb](notebook.ipynb) and
-[notebook.py](notebook.py). It is the integrated CRISP-DM draft, but it
-should still be reviewed before being renamed for submission.
+The current notebook work is in [notebook.py](notebook.py) (`.py` marimo notebook) and a [synced jupyter notebook](notebook.ipynb)
 
-## Current Status
+## Road Map
 
-- The scored CSV and clean production-style pipeline exist.
-- The main modeling lesson is stable: the hidden test set is a future time window,
-  so model decisions are evaluated with a chronological holdout rather than a
-  random split.
-- The remaining work is mostly notebook quality: make every important decision
-  look intentional, justified, and aligned with the assignment.
-- The final report PDF is a separate deliverable and is not maintained in this
-  repository yet.
+- [ ] **Refine the model's pipeline** - Goal: `AUC > 0.9`, (cant be verified before submission), risks the safe but not impressive `0.8893` current AUC score.
+- [ ] Refine ugly plots and graph
+- [ ] align [notebook](notebook.py) with the [submission-report](submission-report.md)
 
 ## עברית
 
-- קובץ ההגשה המנוקד כבר קיים: [data/Group_27_Submission.csv](data/Group_27_Submission.csv).
-- הלוגיקה שהביאה את הציון נמצאת ב-[pipeline.py](pipeline.py).
+- קובץ ההסתברויות שקיבל AUC של `88.889` נמצא כאן: [data/Group_27_Submission.csv](data/Group_27_Submission.csv). (הלוגיקה שהביאה את הציון נמצאת ב-[pipeline.py](pipeline.py))
 - המחברת המרכזית לעבודה היא [notebook.ipynb](notebook.ipynb).
-- לקריאה מהירה של המחברת עם פלטים, לפתוח את [docs/notebook.md](docs/notebook.md)`,
-- מה שנשאר הוא בעיקר חיזוק המחברת: להסביר החלטות, לוודא שאין ניסוחים חזקים מדי,
-  ולסגור התאמה לדרישות ב-[References/instructions.md](References/instructions.md).
-
-### שינויים מהעדכון האחרון (הנחיות לעדכון הדוח)
-
-- **ניתוח (Outliers)**: נוספו גרפי קופסה (Boxplots) המשווים את התפלגות המשתנים `Students_Count`, `Practical_Hours` ו-`Daily_Tuition_Cost` בין ה-Train ל-Test.
-  - _הנחיה לדוח:_ יש להציג את התרשימים הללו כנימוק ויזואלי לגבולות הקיטום (Capping) שנבחרו (לעומת הניתוח הקודם שלא כלל תמיכה ויזואלית). כמו כן, לגבי מונים היסטוריים שאינם תואמים (Dropouts > Attended), יש לוודא שהדוח מתייחס אליהם כאל מדד עצימות ביטולים (Intensity) ולא כהסתברות הסתברותית חסומה.
-- **תובנות EDA וסיפור עסקי (סעיף 3.7 החדש)**: נוסף סיכום מובנה המקשר את המשתנים ל-4 תימות עסקיות (מחויבות הקונה, אנדוגניות של תנאי התשלום, גיאוגרפיה כמתווך, ואי-סטציונריות).
-  - _הנחיה לדוח:_ מומלץ מאוד שהסיפור בדוח יתייחס אל 4 התימות הללו (במקום ניתוח מנותק של כל משתנה בנפרד) כדי להעניק היגיון עסקי חזק למחקר.
-- **קללת המימדיות**: הובהר השימוש בקידוד קטגורי מובנה (Native Categorical) וקידוד תדרים (Frequency Encoding) ללא זליגת מידע.
-  - _הנחיה לדוח:_ קודם לכן המחברת טענה שקידוד קטגורי מובנה מטפל בקללה עבור כל המודלים, בפועל זה עובד רק עבוד רק עבור מודלי עץ, והמודל של גיגרסיה לוגיסטית ורשת ולמידה עמוקה עדיין עשו one hot encoding ויצרו מאות משתני dummies, עכשיו זה טופל.
-- **גרפי כוונון היפר-פרמטרים (Hyperparameter Tuning)**: הגרפים עודכנו ומציגים כעת עקומות Bias-Variance (ביצועי Train מול Validation) עבור רגרסיה לוגיסטית (`C`), רשת עצבית MLP (`alpha`), ו-XGBoost (עומק עץ `max_depth` - נבחר עומק 6).
-  - _הנחיה לדוח:_ לוודא שהדוח משתמש בplots החדשים.
-- **כוונון תקציב הבוסטינג**: נוסף ניתוח וכוונון של מספר העצים (`n_estimators` מ-50 עד 1000) מול קצב הלמידה (`learning_rate`) עבור מודל העצים.
-  - _הנחיה לדוח:_ יש לוודא שהדוח מתייחס לטרייד-אוף שבין קצב למידה נמוך (0.03) למספר עצים גבוה (700) לקבלת הכללה מיטבית (Generalization).
-- **שילוב מודלים (Ensemble)**: מודל ההגשה הסופי מבוסס כעת על ממוצע דירוגים (Rank-Average Blend) של LightGBM, XGBoost ו-CatBoost.
-  - _הנחיה לדוח:_ יש להקפיד בדוח על שימוש במונח 'ממוצע דירוגים' (Rank-Average) לעומת ממוצע הסתברויות רגיל שהיה קודם, שכן הוא מתעלם מסקאלת הכיול וממקסם ישירות את ה-AUC.
-- **שינוי מודל ה-SHAP והערכת רגישות**: כל ניתוח ה-SHAP (חשיבות משתנים גלובלית והסבר תצפית בודדת) הועבר למודל ה-**XGBoost** (במקום LightGBM שהיה מקודם), בהתאם להמלצות ההגשה, והורחב למדגם מייצג של 10,000 שורות. בנוסף, בוצע מבחן רגישות ללא `Payment_Terms`.
-  - _הנחיה לדוח:_ יש להחליף את כל תרשימי ה-SHAP (beeswarm ומפל המים של תצפית בודדת) לאלו של XGBoost. כמו כן, יש לשלב בדוח את תובנות ניתוח הרגישות המוכיחות שהמודל יציב ושומר על ביצועים גבוהים גם ללא תנאי התשלום.
+- לקריאה מהירה של המחברת עם פלטים, לפתוח את [האתר הזה](https://manemajef.github.io/ml-proj/) או את [docs/notebook.md](docs/notebook.md),
+- ה-plots יעברו רענון ויהיו ״יפים״ יותר טרם ההגשה.
 
 ## Notebook Summary
 
@@ -60,8 +31,7 @@ but refresh it before treating it as current if the notebook changed.
 
 The notebook currently follows this flow:
 
-1. **Business understanding** - frames cancellations as an operational risk problem
-   and explains why the submitted output is a continuous risk score evaluated by AUC.
+1. **Intro & Business understanding**
 2. **Data loading and first look** - loads train/test data, documents data types,
    missingness, cardinality, target balance, and obvious corrupted values.
 3. **EDA: time structure** - shows that test dates start where training dates end,
@@ -103,18 +73,6 @@ The notebook currently follows this flow:
 15. **Executive summary** - summarizes the process, main findings, selected model,
     score, and future work.
 
-## What Still Needs Review
-
-- Ensure each non-obvious notebook decision has a short reason and, where useful,
-  a supporting check.
-- Verify the XGBoost SHAP change after the notebook is synced/re-executed.
-- Keep the tuning narrative honest: focused sweeps and selected operating region,
-  not an exhaustive search.
-- Keep the final submission wording conservative: the stored scored CSV is the
-  leaderboard record unless an exact-match rebuild is verified.
-- Sync or re-export the notebook output before using
-  [docs/notebook.md](docs/notebook.md) for final review.
-
 ## Files
 
 | Path                                                         | Role                                                                  |
@@ -125,24 +83,23 @@ The notebook currently follows this flow:
 | [docs/notebook.md](docs/notebook.md)                         | Rendered notebook review artifact; may be stale after notebook edits. |
 | [pipeline.py](pipeline.py)                                   | Clean scored pipeline used for the best CSV.                          |
 | [data/Group_27_Submission.csv](data/Group_27_Submission.csv) | Best scored submission; do not overwrite casually.                    |
-| [\_agent/README.md](_agent/README.md)                        | Rules for local planning and audit notes.                             |
+| [agent/README.md](_agent/README.md)                          | Rules for local planning and audit notes.                             |
 
-Older notebooks and pipelines are kept for history, but `notebook` and
-`pipeline.py` are the active paths.
-
-## Requirements Status
-
-Required final delivery is a single `Group_27.zip` containing:
-
-- `Group_27_Submission.csv` - exists as
-  `[data/Group_27_Submission.csv](data/Group_27_Submission.csv)`.
-- `Group_27_Notebook.ipynb` - not yet assembled under the final submission name;
-  `[notebook.ipynb](notebook.ipynb)` is the current draft.
-- `Group_27_Report.pdf` - separate report deliverable.
+Older notebooks and pipelines are kept for history, but `notebook` and `pipeline.py` are the active paths.
 
 ## How To Run
 
+**Requirements**:
+
 Requires Python 3.13 and `uv`.
+
+**Clone the repo**:
+
+`cd` to desired directory, then run:
+
+```bash
+git clone https://github.com/manemajef/ml-proj.git && cd ml-proj
+```
 
 ```bash
 uv sync
@@ -174,7 +131,7 @@ MPLBACKEND=Agg uv run python notebook.py
 
 ## If You Are An Agent
 
-- Read [\_agent/README.md](_agent/README.md) before creating reusable local notes.
+- Read [agent/README.md](_agent/README.md) before creating reusable local notes.
 - Read [References/instructions.md](References/instructions.md) before making
   grading, sufficiency, or quality judgments.
 - Keep notebook work separate from scored-pipeline work unless explicitly asked.

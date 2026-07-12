@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.14"
 app = marimo.App()
 
 
@@ -421,7 +421,6 @@ def _(pd):
             .str.replace('\\s+', ' ', regex=True)
             .str.strip()
         )
-
 
     return COMMON_NANS, COUNTRY_ALIASES, canonicalize
 
