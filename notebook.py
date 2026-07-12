@@ -1517,16 +1517,19 @@ def _(
 
 
     tuning_rows = []
+    selected_predictions = {}
     for C in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0):
         m = LogisticRegression(C=C, max_iter=2000).fit(Xtr_scaled, y_tr)
+        p_tr = m.predict_proba(Xtr_scaled)[:, 1]
+        p_va = m.predict_proba(Xva_scaled)[:, 1]
         tuning_rows.append({
             'family': 'Logistic Regression',
             'axis': 'C  (less regularisation →)',
             'x': C,
-            **loss_auc(
-                m.predict_proba(Xtr_scaled)[:, 1], m.predict_proba(Xva_scaled)[:, 1]
-            ),
+            **loss_auc(p_tr, p_va),
         })
+        if np.isclose(C, 0.001):
+            selected_predictions['lr'] = p_va
     for alpha in (1.0, 0.1, 0.01, 0.001, 0.0001):
         m = MLPClassifier(
             hidden_layer_sizes=(64, 32),
@@ -1537,14 +1540,16 @@ def _(
             n_iter_no_change=10,
             random_state=SEED,
         ).fit(Xtr_scaled, y_tr)
+        p_tr = m.predict_proba(Xtr_scaled)[:, 1]
+        p_va = m.predict_proba(Xva_scaled)[:, 1]
         tuning_rows.append({
             'family': 'MLP neural network',
             'axis': '1 / alpha  (less regularisation →)',
             'x': 1.0 / alpha,
-            **loss_auc(
-                m.predict_proba(Xtr_scaled)[:, 1], m.predict_proba(Xva_scaled)[:, 1]
-            ),
+            **loss_auc(p_tr, p_va),
         })
+        if np.isclose(alpha, 0.1):
+            selected_predictions['mlp'] = p_va
     for depth in (2, 3, 4, 5, 6, 8, 10):
         _p_tr, _p_va = fit_predict_xgb_pair(
             Xtr_t,
@@ -1632,13 +1637,17 @@ def _(
         ['train_AUC', 'val_AUC']
     ].round(4)
     display(selected_tuning)
-    return Xtr_scaled, Xva_scaled
+    pred_lr = selected_predictions['lr']
+    pred_mlp = selected_predictions['mlp']
+    return pred_lr, pred_mlp
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     Logistic Regression performs best with strong regularization (`C=0.001`); increasing `C` improves training fit slightly but reduces holdout AUC. The MLP performs best at `alpha=0.1`, after which its training/validation gap grows. XGBoost holdout AUC rises through depth 6 and then levels off while training AUC continues upward, so we keep depth 6 as the best trade-off in this sweep.
+
+    The selected settings reach validation AUC 0.8805 for Logistic Regression, 0.8762 for MLP, and 0.9135 for XGBoost. XGBoost's advantage indicates that thresholds, categories, and interactions matter for this problem, so the remaining experiments focus on boosted trees.
     """)
     return
 
@@ -1646,89 +1655,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Fitting the tuned basic models
-
-    With each family's setting chosen, we fit the three basic models once on the
-    chronological training window and score the 2017 holdout.
-    """)
-    return
-
-
-@app.cell
-def _(
-    LogisticRegression,
-    MLPClassifier,
-    SEED,
-    Xtr_scaled,
-    Xtr_t,
-    Xva_scaled,
-    Xva_t,
-    fit_predict_xgb,
-    y_tr,
-):
-    lr = LogisticRegression(C=0.001, max_iter=2000)
-    lr.fit(Xtr_scaled, y_tr)
-    pred_lr = lr.predict_proba(Xva_scaled)[:, 1]
-
-    mlp = MLPClassifier(
-        hidden_layer_sizes=(64, 32),
-        alpha=0.1,
-        learning_rate_init=0.001,
-        max_iter=150,
-        early_stopping=True,
-        n_iter_no_change=10,
-        random_state=SEED,
-    )
-    mlp.fit(Xtr_scaled, y_tr)
-    pred_mlp = mlp.predict_proba(Xva_scaled)[:, 1]
-
-    pred_xgb = fit_predict_xgb(Xtr_t, y_tr, Xva_t)
-    return pred_lr, pred_mlp, pred_xgb
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 7.3 Family comparison: which family do we choose?
-
-    The three tuned basic models meet on the same 2017 holdout. Logistic Regression and the
-    MLP use the encoded/scaled matrix; XGBoost uses native categoricals.
-    """)
-    return
-
-
-@app.cell
-def _(display, pd, pred_lr, pred_mlp, pred_xgb, roc_auc_score, y_va):
-    family_scores = (
-        pd
-        .DataFrame({
-            "model": ["Logistic Regression", "MLP neural network", "XGBoost (tree)"],
-            "family": ["linear", "neural network", "gradient-boosted trees"],
-            "chrono_AUC": [
-                roc_auc_score(y_va, pred_lr),
-                roc_auc_score(y_va, pred_mlp),
-                roc_auc_score(y_va, pred_xgb),
-            ],
-        })
-        .sort_values("chrono_AUC", ascending=False)
-        .reset_index(drop=True)
-    )
-    display(family_scores)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    XGBoost performs about 0.04 AUC better than both baselines on the chronological holdout, indicating that thresholds, categories, and interactions matter for this problem. The remaining experiments therefore focus on boosted trees.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 7.4 Improving the gradient model
+    ## 7.3 Improving the gradient model
 
     After choosing XGBoost, we first tune its boosting budget. We then test whether adding two fixed-configuration boosted-tree implementations improves the ranking further.
 
@@ -1753,6 +1680,7 @@ def _(
     y_va,
 ):
     budget_rows = []
+    budget_predictions = {}
     for lr_rate in (0.1, 0.03):
         for n in (50, 100, 200, 400, 700, 1000):
             _p_tr, _p_va = fit_predict_xgb_pair(
@@ -1765,6 +1693,7 @@ def _(
                 min_child_weight=5,
                 reg_lambda=1.0,
             )
+            budget_predictions[(lr_rate, n)] = _p_va
             budget_rows.append({
                 'learning_rate': lr_rate,
                 'n_trees': n,
@@ -1827,7 +1756,8 @@ def _(
         ['train_AUC', 'val_AUC']
     ].round(4)
     display(budget_best)
-    return
+    pred_xgb = budget_predictions[(0.03, 700)]
+    return (pred_xgb,)
 
 
 @app.cell(hide_code=True)
@@ -1970,7 +1900,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7.5 Returning to the time-index hypothesis
+    ## 7.4 Returning to the time-index hypothesis
 
     EDA suggested that the long-term time position might help. Because XGBoost performed best in the family comparison, we use it to test `days_since_epoch` directly. We also compare recency weighting and a random split.
 
