@@ -6,10 +6,13 @@
 
 This is the **integrated CRISP-DM-style analysis notebook** for the project: business understanding → data exploration → cleaning → feature engineering → modelling → evaluation → interpretation → conclusions.
 
+==not sure the above par is necasry==
+
 Running this notebook top to bottom executes the complete data preparation, model training, and submission-generation pipeline.
 
 **Key Modeling Challenge:** The hidden test set represents the **future** — it starts exactly where the training data ends and runs four months forward. Therefore, the task is a forecasting problem rather than simple interpolation, making a standard random train/validation split overly optimistic. Respecting the chronological order during validation ensures a realistic performance estimate, yielding a generalized test AUC of **0.889**.
 
+==The notebook is ment to present the discovery joureny. At this point, before loading the data we are not ment to "know" about the chrono no?==
 
 ```python
 import warnings
@@ -49,9 +52,9 @@ plt.rcParams['svg.fonttype'] = 'path'
 TRAIN_PATH = 'data/Train_Data.csv'
 TEST_PATH = 'data/Test_Data_No_Target.csv'
 TARGET = 'Dropped_Course'
-CHRONO_CUTOFF = '2017-01-01'
+CHRONO_CUTOFF = '2017-01-01' #==Again, CHRONO_CUTOFF is ment to be discovered, not a pre known fact ..==
 SEED = 42
-GITHUB_RAW_BASES = ['https://raw.githubusercontent.com/manemajef/ml-proj/main']
+GITHUB_RAW_BASES = ['https://raw.githubusercontent.com/manemajef/ml-proj/main'] # rm this no longer nescary
 pd.set_option('display.max_columns', None)  # noqa: B018
 
 
@@ -59,23 +62,24 @@ pd.set_option('display.max_columns', None)  # noqa: B018
 def load_raw(path: str) -> pd.DataFrame:
     df = pd.read_csv(path, parse_dates=["Course_Start_Date"])
     for col in ("Agent_ID", "Company_ID"):
-        df[col] = df[col].astype("string")
+        df[col] = df[col].astype("string") # ==we are ment to not be aware about having to coerce the type yet.== 
     return df
 ```
 
-    /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-      from .autonotebook import tqdm as notebook_tqdm
-
+```
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from .autonotebook import tqdm as notebook_tqdm
+```
 
 # 1. Business understanding
 
-Nova Academy runs paid, in-person B2B technical trainings. Preparing a course is expensive and largely **sunk before it starts** — cloud environments, catering, physical equipment kits, room capacity. When a registered group cancels (`Dropped_Course = 1`), the company loses that spend _and_ the empty seats block other groups from being scheduled.
+Nova Academy runs paid, in-person B2B technical trainings. Preparing a course is expensive and largely **sunk before it starts** — cloud environments, catering, physical equipment kits, room capacity. When a registered group cancels (`Dropped_Course = 1`), the company loses that spend _and_ the empty seats block other groups from being scheduled. ==this par reads like AI== 
 
 **Goal.** Given a new registration, predict the **probability** that it will be cancelled, so operations can manage risk (overbook cautiously, follow up with high-risk groups, hold back irreversible spend).
 
-**Why probability-like scores, not hard labels.** Operations needs to _rank_ and _size_ risk, not receive a yes/no. The grading metric is **AUC** — a threshold-free measure of how well a score ranks droppers above non-droppers. The selected CSV uses a rank-average boosted-tree score optimized for this ranking task; threshold diagnostics below use mean model probabilities separately because the rank score is not calibrated. The passing bar is AUC ≥ 0.70.
+**Why probability-like scores, not hard labels.** Operations needs to _rank_ and _size_ risk, not receive a yes/no. The grading metric is **AUC** — a threshold-free measure of how well a score ranks droppers above non-droppers. The selected CSV uses a rank-average boosted-tree score optimized for this ranking task; threshold diagnostics below use mean model probabilities separately because the rank score is not calibrated. The passing bar is AUC ≥ 0.70. ==We dont need to defend choosing AUC, we dont “choose” it. Thats just the assignment requirements.==  
 
-**CRISP-DM framing.** The rest of the notebook follows the standard cycle: understand the data, prepare it, model, evaluate, and translate results back into business insight.
+**CRISP-DM framing.** The rest of the notebook follows the standard cycle: understand the data, prepare it, model, evaluate, and translate results back into business insight. ==not sure thats needed== 
 
 # 2. Data loading & first look
 
@@ -85,10 +89,9 @@ Two files are provided:
   label.
 - `Test_Data_No_Target.csv` — registrations to score, **without** the label.
 
-If the local `data/` files are missing, `load_raw` falls back to the raw CSVs in the GitHub repository. This keeps the notebook runnable when shared as a single `.ipynb`, as long as the machine has internet access and the repository data files are reachable.
+If the local `data/` files are missing, `load_raw` falls back to the raw CSVs in the GitHub repository. This keeps the notebook runnable when shared as a single `.ipynb`, as long as the machine has internet access and the repository data files are reachable. ==rm== 
 
 Each row is one order (`Client_ID`). We load both and immediately build a data dictionary: dtype, missingness, cardinality, mode, and a zero-count (some "zeros" are really missing-in-disguise).
-
 
 ```python
 train_raw = load_raw(TRAIN_PATH)
@@ -108,51 +111,43 @@ data_dictionary = pd.DataFrame({
 data_dictionary
 ```
 
-    train: 63,464 rows x 29 cols
-    test : 15,866 rows x 28 cols
+```
+train: 63,464 rows x 29 cols
+test : 15,866 rows x 28 cols
+```
 
-
-
-
-
-
-
-| Unnamed: 0                  | dtype          |   n_missing |   missing_% |   n_unique |   n_zero | most_frequent             |
-|:----------------------------|:---------------|------------:|------------:|-----------:|---------:|:--------------------------|
-| Client_ID                   | int64          |           0 |        0    |      63464 |        0 | 1                         |
-| Professionals_Count         | int64          |           0 |        0    |          5 |      338 | 2.0                       |
-| Students_Count              | float64        |           4 |        0.01 |          5 |    59578 | 0.0                       |
-| Observers_Count             | int64          |           0 |        0    |          5 |    63149 | 0.0                       |
-| Course_Start_Date           | datetime64[ns] |           0 |        0    |        666 |        0 | 2015-10-16 00:00:00       |
-| Practical_Hours             | int64          |           0 |        0    |         18 |    30671 | 0.0                       |
-| Theory_Hours                | int64          |           0 |        0    |         29 |     4045 | 2.0                       |
-| Registration_Days_Before    | float64        |        2666 |        4.2  |        423 |     2610 | 0.0                       |
-| Origin_Country              | object         |         557 |        0.88 |        721 |        0 | PRT                       |
-| Catering_Package            | object         |         407 |        0.64 |        321 |        0 | Standard (Coffee Only)    |
-| Welcome_Gift_Type           | object         |           0 |        0    |          4 |        0 | Branded Notebook          |
-| Requested_Lab_Config        | object         |        1736 |        2.74 |          8 |        0 | Standard PC (Windows)     |
-| Assigned_Lab_Config         | object         |           0 |        0    |          9 |        0 | Standard PC (Windows)     |
-| Prev_Course_Dropouts        | int64          |           0 |        0    |         10 |    58184 | 0.0                       |
-| Prev_Course_Attended        | int64          |           0 |        0    |         62 |    62188 | 0.0                       |
-| Pre_Course_Supports_Tickets | int64          |           0 |        0    |          6 |    39830 | 0.0                       |
-| Physical_Course_Kits        | float64        |        1040 |        1.64 |          4 |    60790 | 0.0                       |
-| Waiting_List_Days           | int64          |           0 |        0    |        107 |    60089 | 0.0                       |
-| Registration_Changes        | int64          |           0 |        0    |         19 |    55478 | 0.0                       |
-| Enrollment_Type             | object         |         719 |        1.13 |        298 |        0 | General Admission         |
-| Lanyard_Color               | object         |           0 |        0    |        240 |        0 | Blue                      |
-| Client_Category             | object         |           0 |        0    |        505 |        0 | SaaS & Software Houses    |
-| Submission_Source           | object         |         605 |        0.95 |        328 |        0 | B2B Platforms & Resellers |
-| Returning_Client            | int64          |           0 |        0    |          2 |    61742 | 0.0                       |
-| Agent_ID                    | string         |       11173 |       17.61 |        203 |        0 | 184.0                     |
-| Company_ID                  | string         |       60344 |       95.08 |        184 |        0 | 5181.0                    |
-| Payment_Terms               | object         |         587 |        0.92 |        236 |        0 | Pay Upon Start            |
-| Daily_Tuition_Cost          | float64        |          79 |        0.12 |       4780 |     1079 | 62.0                      |
-| Dropped_Course              | int64          |           0 |        0    |          2 |    37165 | 0.0                       |
-
-
-
-
-
+| Unnamed: 0                  | dtype          | n_missing | missing\_% | n_unique | n_zero | most_frequent             |
+| --------------------------- | -------------- | --------- | ---------- | -------- | ------ | ------------------------- |
+| Client_ID                   | int64          | 0         | 0          | 63464    | 0      | 1                         |
+| Professionals_Count         | int64          | 0         | 0          | 5        | 338    | 2.0                       |
+| Students_Count              | float64        | 4         | 0.01       | 5        | 59578  | 0.0                       |
+| Observers_Count             | int64          | 0         | 0          | 5        | 63149  | 0.0                       |
+| Course_Start_Date           | datetime64[ns] | 0         | 0          | 666      | 0      | 2015-10-16 00:00:00       |
+| Practical_Hours             | int64          | 0         | 0          | 18       | 30671  | 0.0                       |
+| Theory_Hours                | int64          | 0         | 0          | 29       | 4045   | 2.0                       |
+| Registration_Days_Before    | float64        | 2666      | 4.2        | 423      | 2610   | 0.0                       |
+| Origin_Country              | object         | 557       | 0.88       | 721      | 0      | PRT                       |
+| Catering_Package            | object         | 407       | 0.64       | 321      | 0      | Standard (Coffee Only)    |
+| Welcome_Gift_Type           | object         | 0         | 0          | 4        | 0      | Branded Notebook          |
+| Requested_Lab_Config        | object         | 1736      | 2.74       | 8        | 0      | Standard PC (Windows)     |
+| Assigned_Lab_Config         | object         | 0         | 0          | 9        | 0      | Standard PC (Windows)     |
+| Prev_Course_Dropouts        | int64          | 0         | 0          | 10       | 58184  | 0.0                       |
+| Prev_Course_Attended        | int64          | 0         | 0          | 62       | 62188  | 0.0                       |
+| Pre_Course_Supports_Tickets | int64          | 0         | 0          | 6        | 39830  | 0.0                       |
+| Physical_Course_Kits        | float64        | 1040      | 1.64       | 4        | 60790  | 0.0                       |
+| Waiting_List_Days           | int64          | 0         | 0          | 107      | 60089  | 0.0                       |
+| Registration_Changes        | int64          | 0         | 0          | 19       | 55478  | 0.0                       |
+| Enrollment_Type             | object         | 719       | 1.13       | 298      | 0      | General Admission         |
+| Lanyard_Color               | object         | 0         | 0          | 240      | 0      | Blue                      |
+| Client_Category             | object         | 0         | 0          | 505      | 0      | SaaS & Software Houses    |
+| Submission_Source           | object         | 605       | 0.95       | 328      | 0      | B2B Platforms & Resellers |
+| Returning_Client            | int64          | 0         | 0          | 2        | 61742  | 0.0                       |
+| Agent_ID                    | string         | 11173     | 17.61      | 203      | 0      | 184.0                     |
+| Company_ID                  | string         | 60344     | 95.08      | 184      | 0      | 5181.0                    |
+| Payment_Terms               | object         | 587       | 0.92       | 236      | 0      | Pay Upon Start            |
+| Daily_Tuition_Cost          | float64        | 79        | 0.12       | 4780     | 1079   | 62.0                      |
+| Dropped_Course              | int64          | 0         | 0          | 2        | 37165  | 0.0                       |
+==this is probably the aprpriate place to say “agent_ID and company_ID are typed as integer but they are indentifier, thus we coerce them to be strings.== 
 **What the dictionary tells us.**
 
 - `Client_ID` is unique per row — an identifier, never a feature.
@@ -162,37 +157,26 @@ data_dictionary
   (e.g. `Students_Count = 9999`, `Practical_Hours = 10000`) — flagged for the
   outlier section.
 - The categorical text columns are visibly _dirty_ (casing, punctuation,
-  placeholder strings) — handled in cleaning.
-
+  placeholder strings) — handled in cleaning. ==what makes them visibly dirty? (they are but the table above dosnt prove it. future discoveries leakage.== 
 
 ```python
 train_raw.describe()
 ```
 
-
-
-
-
-
-| Unnamed: 0   |   Client_ID |   Professionals_Count |   Students_Count |   Observers_Count | Course_Start_Date             |   Practical_Hours |   Theory_Hours |   Registration_Days_Before |   Prev_Course_Dropouts |   Prev_Course_Attended |   Pre_Course_Supports_Tickets |   Physical_Course_Kits |   Waiting_List_Days |   Registration_Changes |   Returning_Client |   Daily_Tuition_Cost |   Dropped_Course |
-|:-------------|------------:|----------------------:|-----------------:|------------------:|:------------------------------|------------------:|---------------:|---------------------------:|-----------------------:|-----------------------:|------------------------------:|-----------------------:|--------------------:|-----------------------:|-------------------:|---------------------:|-----------------:|
-| count        |     63464   |            63464      |       63460      |        63464      | 63464                         |        63464      |     63464      |                  60798     |             63464      |             63464      |                    63464      |             62424      |          63464      |             63464      |         63464      |           63385      |       63464      |
-| mean         |     39761.8 |                1.8352 |           8.7517 |            0.0053 | 2016-06-23 05:17:23.287533056 |            6.6091 |         2.1644 |                    102.894 |                 0.096  |                 0.123  |                        0.5133 |                 0.0262 |              3.9837 |                 0.18   |             0.0271 |              98.848  |           0.4144 |
-| min          |         1   |                0      |           0      |            0      | 2015-07-01 00:00:00           |           -5      |         0      |                      0     |                 0      |                 0      |                        0      |                 0      |              0      |                 0      |             0      |               0      |           0      |
-| 25%          |     19959.8 |                2      |           0      |            0      | 2016-02-13 00:00:00           |            0      |         1      |                     19     |                 0      |                 0      |                        0      |                 0      |              0      |                 0      |             0      |              75      |           0      |
-| 50%          |     39819.5 |                2      |           0      |            0      | 2016-07-01 00:00:00           |            1      |         2      |                     65     |                 0      |                 0      |                        0      |                 0      |              0      |                 0      |             0      |              94.5    |           0      |
-| 75%          |     59570.2 |                2      |           0      |            0      | 2016-11-11 00:00:00           |            1      |         3      |                    150     |                 0      |                 0      |                        1      |                 0      |              0      |                 0      |             0      |             117      |           1      |
-| max          |     79330   |                4      |        9999      |           10      | 2017-04-26 00:00:00           |        10000      |        41      |                    629     |                21      |                61      |                        5      |                 3      |            391      |                21      |             1      |            5400      |           1      |
-| std          |     22879   |                0.5086 |         294.239  |            0.0897 | nan                           |          215.503  |         1.4699 |                    109.179 |                 0.4485 |                 1.5352 |                        0.7636 |                 0.1602 |             23.1955 |                 0.5926 |             0.1625 |              41.8554 |           0.4926 |
-
-
-
-
+| Unnamed: 0 | Client_ID | Professionals_Count | Students_Count | Observers_Count | Course_Start_Date             | Practical_Hours | Theory_Hours | Registration_Days_Before | Prev_Course_Dropouts | Prev_Course_Attended | Pre_Course_Supports_Tickets | Physical_Course_Kits | Waiting_List_Days | Registration_Changes | Returning_Client | Daily_Tuition_Cost | Dropped_Course |
+| ---------- | --------- | ------------------- | -------------- | --------------- | ----------------------------- | --------------- | ------------ | ------------------------ | -------------------- | -------------------- | --------------------------- | -------------------- | ----------------- | -------------------- | ---------------- | ------------------ | -------------- |
+| count      | 63464     | 63464               | 63460          | 63464           | 63464                         | 63464           | 63464        | 60798                    | 63464                | 63464                | 63464                       | 62424                | 63464             | 63464                | 63464            | 63385              | 63464          |
+| mean       | 39761.8   | 1.8352              | 8.7517         | 0.0053          | 2016-06-23 05:17:23.287533056 | 6.6091          | 2.1644       | 102.894                  | 0.096                | 0.123                | 0.5133                      | 0.0262               | 3.9837            | 0.18                 | 0.0271           | 98.848             | 0.4144         |
+| min        | 1         | 0                   | 0              | 0               | 2015-07-01 00:00:00           | -5              | 0            | 0                        | 0                    | 0                    | 0                           | 0                    | 0                 | 0                    | 0                | 0                  | 0              |
+| 25%        | 19959.8   | 2                   | 0              | 0               | 2016-02-13 00:00:00           | 0               | 1            | 19                       | 0                    | 0                    | 0                           | 0                    | 0                 | 0                    | 0                | 75                 | 0              |
+| 50%        | 39819.5   | 2                   | 0              | 0               | 2016-07-01 00:00:00           | 1               | 2            | 65                       | 0                    | 0                    | 0                           | 0                    | 0                 | 0                    | 0                | 94.5               | 0              |
+| 75%        | 59570.2   | 2                   | 0              | 0               | 2016-11-11 00:00:00           | 1               | 3            | 150                      | 0                    | 0                    | 1                           | 0                    | 0                 | 0                    | 0                | 117                | 1              |
+| max        | 79330     | 4                   | 9999           | 10              | 2017-04-26 00:00:00           | 10000           | 41           | 629                      | 21                   | 61                   | 5                           | 3                    | 391               | 21                   | 1                | 5400               | 1              |
+| std        | 22879     | 0.5086              | 294.239        | 0.0897          | nan                           | 215.503         | 1.4699       | 109.179                  | 0.4485               | 1.5352               | 0.7636                      | 0.1602               | 23.1955           | 0.5926               | 0.1625           | 41.8554            | 0.4926         |
 
 ## 2.1 Target balance
 
 Before anything else: how (im)balanced is the target? A heavily skewed target would change how we read metrics.
-
 
 ```python
 target_counts = train_raw[TARGET].value_counts().sort_index()
@@ -208,22 +192,12 @@ plt.tight_layout()
 plt.show()
 ```
 
+| Unnamed: 0    | count | rate\_% |
+| ------------- | ----- | ------- |
+| 0 = completed | 37165 | 58.6    |
+| 1 = dropped   | 26299 | 41.4    |
 
-
-
-| Unnamed: 0    |   count |   rate_% |
-|:--------------|--------:|---------:|
-| 0 = completed |   37165 |     58.6 |
-| 1 = dropped   |   26299 |     41.4 |
-
-
-
-
-
-    
-![svg](notebook_files/notebook_8_1.svg)
-    
-
+svg
 
 The classes are **roughly balanced** (~59% completed / ~41% dropped). No resampling is needed, and AUC is a sensible, stable choice of metric.
 
@@ -231,10 +205,9 @@ The classes are **roughly balanced** (~59% completed / ~41% dropped). No resampl
 
 Our exploration is shaped by a key temporal shift in the data. We analyze this major time trend first, followed by a detailed look at the individual features.
 
-## 3.1 The headline: **the test set is the future**
+## 3.1 The headline: **the test set is the future** ==another future leakage== 
 
 We plot the monthly drop rate across the _training_ period and overlay where training ends and where the hidden test window ends.
-
 
 ```python
 train_end = train_raw['Course_Start_Date'].max()
@@ -261,26 +234,22 @@ plt.tight_layout()
 plt.show()
 ```
 
-    train dates: 2015-07-01 -> 2017-04-26
-    test  dates: 2017-04-26 -> 2017-08-31
+```
+train dates: 2015-07-01 -> 2017-04-26
+test  dates: 2017-04-26 -> 2017-08-31
+```
 
+svg
 
+**Reading the plot.** Training runs `2015-07 → 2017-04`; the test window starts exactly where training ends and continues to `2017-08`, with essentially **zero overlap in time**. The drop rate also **drifts year to year, indicating the relationship changes over time**. ==the -> unicode gives AI vibe, dosnt read like human== 
 
-    
-![svg](notebook_files/notebook_12_1.svg)
-    
-
-
-**Reading the plot.** Training runs `2015-07 → 2017-04`; the test window starts exactly where training ends and continues to `2017-08`, with essentially **zero overlap in time**. The drop rate also **drifts year to year, indicating the relationship changes over time**.
-
-**Consequence.** We treat the task as "train on the past, predict the future". A random train/validation split leaks future rows into training and produces an _optimistic_ score that does not transfer to the leaderboard. This time structure drives our validation strategy (Section 6) and motivates a feature choice (the time index, Section 5). It likely explains much of the gap between random-split validation and leaderboard behavior, while other feature and model changes also contributed.
+**Consequence.** We treat the task as "train on the past, predict the future". A random train/validation split leaks future rows into training and produces an _optimistic_ score that does not transfer to the leaderboard. This time structure drives our validation strategy (Section 6) and motivates a feature choice (the time index, Section 5). It likely explains much of the gap between random-split validation and leaderboard behavior, while other feature and model changes also contributed. ==another future leakage== 
 
 **Action:** Based on this temporal drift, we reject a random train/validation split and implement a chronological validation window (Section 6) to ensure generalizability to the future.
 
 ## 3.2 Missing values
 
 We compare missingness in train vs the official test file (the pipeline must handle both identically), then ask whether _the fact of being missing_ is itself predictive.
-
 
 ```python
 missing_compare = pd.DataFrame({
@@ -293,31 +262,24 @@ missing_compare = missing_compare[
 display(missing_compare)
 ```
 
-
-
-
-| Unnamed: 0               |   train_missing_% |   test_missing_% |
-|:-------------------------|------------------:|-----------------:|
-| Company_ID               |             95.08 |            96.41 |
-| Agent_ID                 |             17.61 |            17.61 |
-| Registration_Days_Before |              4.2  |             4.05 |
-| Requested_Lab_Config     |              2.74 |             3.01 |
-| Physical_Course_Kits     |              1.64 |             1.43 |
-| Enrollment_Type          |              1.13 |             1.12 |
-| Submission_Source        |              0.95 |             0.94 |
-| Payment_Terms            |              0.92 |             0.91 |
-| Origin_Country           |              0.88 |             1.01 |
-| Catering_Package         |              0.64 |             0.7  |
-| Daily_Tuition_Cost       |              0.12 |             0.01 |
-| Students_Count           |              0.01 |             0    |
-
-
-
+| Unnamed: 0               | train*missing*% | test*missing*% |
+| ------------------------ | --------------- | -------------- |
+| Company_ID               | 95.08           | 96.41          |
+| Agent_ID                 | 17.61           | 17.61          |
+| Registration_Days_Before | 4.2             | 4.05           |
+| Requested_Lab_Config     | 2.74            | 3.01           |
+| Physical_Course_Kits     | 1.64            | 1.43           |
+| Enrollment_Type          | 1.13            | 1.12           |
+| Submission_Source        | 0.95            | 0.94           |
+| Payment_Terms            | 0.92            | 0.91           |
+| Origin_Country           | 0.88            | 1.01           |
+| Catering_Package         | 0.64            | 0.7            |
+| Daily_Tuition_Cost       | 0.12            | 0.01           |
+| Students_Count           | 0.01            | 0              |
 
 Missingness patterns are **consistent between train and test**, so a single imputation policy is safe to reuse for scoring.
 
 **Next**: is missingness itself a signal?
-
 
 ```python
 missingness_cols = [
@@ -346,26 +308,20 @@ for _col in missingness_cols:
 display(pd.DataFrame(rows))
 ```
 
-
-
-
-|   Unnamed: 0 | column                   | is_missing   |   count |   drop_rate_% |
-|-------------:|:-------------------------|:-------------|--------:|--------------:|
-|            0 | Company_ID               | False        |    3120 |          21.2 |
-|            1 | Company_ID               | True         |   60344 |          42.5 |
-|            2 | Agent_ID                 | False        |   52291 |          43.1 |
-|            3 | Agent_ID                 | True         |   11173 |          33.5 |
-|            4 | Registration_Days_Before | False        |   60798 |          41.4 |
-|            5 | Registration_Days_Before | True         |    2666 |          41.5 |
-|            6 | Physical_Course_Kits     | False        |   62424 |          41.5 |
-|            7 | Physical_Course_Kits     | True         |    1040 |          39.3 |
-|            8 | Daily_Tuition_Cost       | False        |   63385 |          41.4 |
-|            9 | Daily_Tuition_Cost       | True         |      79 |          51.9 |
-|           10 | Payment_Terms            | False        |   62877 |          41.5 |
-|           11 | Payment_Terms            | True         |     587 |          35.4 |
-
-
-
+| Unnamed: 0 | column                   | is_missing | count | drop*rate*% |
+| ---------- | ------------------------ | ---------- | ----- | ----------- |
+| 0          | Company_ID               | False      | 3120  | 21.2        |
+| 1          | Company_ID               | True       | 60344 | 42.5        |
+| 2          | Agent_ID                 | False      | 52291 | 43.1        |
+| 3          | Agent_ID                 | True       | 11173 | 33.5        |
+| 4          | Registration_Days_Before | False      | 60798 | 41.4        |
+| 5          | Registration_Days_Before | True       | 2666  | 41.5        |
+| 6          | Physical_Course_Kits     | False      | 62424 | 41.5        |
+| 7          | Physical_Course_Kits     | True       | 1040  | 39.3        |
+| 8          | Daily_Tuition_Cost       | False      | 63385 | 41.4        |
+| 9          | Daily_Tuition_Cost       | True       | 79    | 51.9        |
+| 10         | Payment_Terms            | False      | 62877 | 41.5        |
+| 11         | Payment_Terms            | True       | 587   | 35.4        |
 
 **Missingness is informative.**
 
@@ -374,10 +330,11 @@ display(pd.DataFrame(rows))
 
 **Action:** Rather than erasing these signals with standard median/mode imputation, we will engineer explicit presence flags for high-impact missing indicators.
 
-## 3.3 Categorical data quality (and why cleaning is mandatory)
+## 3.3 Categorical data quality (and why cleaning is mandatory) ==could be a simpler “Categories inspection” or somthing similar== 
 
-In a clean dataset, each text column should contain only a few distinct categories (such as catering package, lanyard color, or payment term). We scan the raw text columns to inspect the unique values and check for cardinality inflation due to formatting inconsistencies:
+In a clean dataset, each text column should contain only a few distinct categories (such as catering package, lanyard color, or payment term). ==thats a bold claim here..== We scan the raw text columns to inspect the unique values and check for cardinality inflation due to formatting inconsistencies: 
 
+==concider rm all this par. first inspect, then comment== 
 
 ```python
 TEXT_COLS = list(train_raw.select_dtypes(include=['object']).columns)
@@ -411,146 +368,145 @@ for _col in TEXT_COLS:
     )
 ```
 
-    
-    ================================================================================
-    
-    Column: Origin_Country
-    Unique values: 721
-    
-    Top 15 categories:
-    
-    'PRT': (38.6%) | 'FRA': (10.2%) | 'DEU': (6.4%)
-    'ESP': (5.7%) | 'GBR': (5.2%) | 'ITA': (4.0%)
-    'BRA': (2.0%) | 'BEL': (2.0%) | 'NLD': (1.8%)
-    'USA': (1.6%) | 'CHE': (1.4%) | 'IRL': (1.2%)
-    'AUT': (1.2%) | 'CHN': (1.0%) | 'prt': (0.9%)
-    
-    
-    ================================================================================
-    
-    Column: Catering_Package
-    Unique values: 321
-    
-    Top 15 categories:
-    
-    'Standard (Coffee Only)': (71.9%) | 'No Food Plan': (10.5%) | 'Lunch Included': (7.5%)
-    'standard (coffee only)': (1.8%) | 'STANDARD (COFFEE ONLY)': (1.7%) | ' Standard (Coffee Only)  ': (0.8%)
-    '  Standard (Coffee Only) ': (0.8%) | ' Standard (Coffee Only) ': (0.8%) | '  Standard (Coffee Only)  ': (0.8%)
-    'no food plan': (0.3%) | 'NO FOOD PLAN': (0.3%) | 'lunch included': (0.2%)
-    'LUNCH INCLUDED': (0.2%) | ' No Food Plan  ': (0.1%) | ' No Food Plan ': (0.1%)
-    
-    
-    ================================================================================
-    
-    Column: Welcome_Gift_Type
-    Unique values: 4
-    
-    Top 4 categories:
-    
-    'Branded Notebook': (50.8%) | 'Water Bottle': (29.0%) | 'USB Drive': (16.0%)
-    'Portable Charger': (4.2%)
-    
-    
-    ================================================================================
-    
-    Column: Requested_Lab_Config
-    Unique values: 8
-    
-    Top 8 categories:
-    
-    'Standard PC (Windows)': (80.5%) | 'Linux Workstation': (13.6%) | 'Dual Monitor Setup': (2.1%)
-    'MacOS Station': (1.6%) | 'Laptop Docking Station': (1.6%) | 'High-GPU Unit': (0.5%)
-    'Touch Screen Interface': (0.0%) | 'VR/AR Station': (0.0%)
-    
-    
-    ================================================================================
-    
-    Column: Assigned_Lab_Config
-    Unique values: 9
-    
-    Top 9 categories:
-    
-    'Standard PC (Windows)': (72.4%) | 'Linux Workstation': (18.4%) | 'Laptop Docking Station': (2.9%)
-    'MacOS Station': (2.5%) | 'Dual Monitor Setup': (2.5%) | 'High-GPU Unit': (0.8%)
-    'Server Access Terminal': (0.4%) | 'Touch Screen Interface': (0.2%) | 'VR/AR Station': (0.0%)
-    
-    
-    ================================================================================
-    
-    Column: Enrollment_Type
-    Unique values: 298
-    
-    Top 15 categories:
-    
-    'General Admission': (64.6%) | 'Affiliated Admission': (21.6%) | 'Contractual Agreement': (3.2%)
-    'general admission': (1.6%) | 'GENERAL ADMISSION': (1.6%) | ' General Admission  ': (0.8%)
-    ' General Admission ': (0.7%) | '  General Admission ': (0.7%) | '  General Admission  ': (0.7%)
-    'AFFILIATED ADMISSION': (0.6%) | 'affiliated admission': (0.6%) | 'Organizational Arrangement': (0.3%)
-    ' Affiliated Admission  ': (0.2%) | '  Affiliated Admission ': (0.2%) | '  Affiliated Admission  ': (0.2%)
-    
-    
-    ================================================================================
-    
-    Column: Lanyard_Color
-    Unique values: 240
-    
-    Top 15 categories:
-    
-    'Blue': (49.6%) | 'Black': (21.0%) | 'Red': (10.1%)
-    'Orange': (5.2%) | 'Green': (3.9%) | 'BLUE': (1.2%)
-    'blue': (1.2%) | '  Blue  ': (0.6%) | ' Blue  ': (0.6%)
-    ' Blue ': (0.6%) | '  Blue ': (0.5%) | 'black': (0.5%)
-    'BLACK': (0.5%) | 'red': (0.3%) | 'RED': (0.3%)
-    
-    
-    ================================================================================
-    
-    Column: Client_Category
-    Unique values: 505
-    
-    Top 15 categories:
-    
-    'SaaS & Software Houses': (41.4%) | 'Traditional IT & Telecomm': (20.4%) | 'Big Tech & Multinationals': (16.8%)
-    'FinTech & Banking': (6.6%) | 'Industrial Tech & IoT': (3.7%) | 'saas & software houses': (1.1%)
-    'SAAS & SOFTWARE HOUSES': (1.0%) | 'Non-Profit & EduTech': (0.7%) | 'TRADITIONAL IT & TELECOMM': (0.5%)
-    'traditional it & telecomm': (0.5%) | ' SaaS & Software Houses ': (0.5%) | '  SaaS & Software Houses  ': (0.5%)
-    '  SaaS & Software Houses ': (0.5%) | ' SaaS & Software Houses  ': (0.5%) | 'big tech & multinationals': (0.4%)
-    
-    
-    ================================================================================
-    
-    Column: Submission_Source
-    Unique values: 328
-    
-    Top 15 categories:
-    
-    'B2B Platforms & Resellers': (77.4%) | 'Direct Website Registration': (7.4%) | 'Dedicated Sales Team': (4.1%)
-    'B2B PLATFORMS & RESELLERS': (2.0%) | 'b2b platforms & resellers': (1.9%) | ' B2B Platforms & Resellers  ': (0.9%)
-    '  B2B Platforms & Resellers ': (0.9%) | ' B2B Platforms & Resellers ': (0.8%) | '  B2B Platforms & Resellers  ': (0.8%)
-    'Unknown': (0.4%) | '?': (0.3%) | 'Government Procurement System': (0.2%)
-    'DIRECT WEBSITE REGISTRATION': (0.2%) | 'direct website registration': (0.2%) | 'DEDICATED SALES TEAM': (0.1%)
-    
-    
-    ================================================================================
-    
-    Column: Payment_Terms
-    Unique values: 236
-    
-    Top 15 categories:
-    
-    'Pay Upon Start': (73.8%) | 'Prepaid (Non-Refundable)': (15.3%) | 'PAY UPON START': (1.9%)
-    'pay upon start': (1.8%) | ' Pay Upon Start ': (0.9%) | '  Pay Upon Start  ': (0.8%)
-    ' Pay Upon Start  ': (0.8%) | '  Pay Upon Start ': (0.8%) | 'prepaid (non-refundable)': (0.4%)
-    'PREPAID (NON-REFUNDABLE)': (0.4%) | 'Unknown': (0.3%) | '?': (0.3%)
-    '  Prepaid (Non-Refundable) ': (0.2%) | ' Prepaid (Non-Refundable) ': (0.2%) | '  Prepaid (Non-Refundable)  ': (0.2%)
-    
+```
+================================================================================
 
+Column: Origin_Country
+Unique values: 721
+
+Top 15 categories:
+
+'PRT': (38.6%) | 'FRA': (10.2%) | 'DEU': (6.4%)
+'ESP': (5.7%) | 'GBR': (5.2%) | 'ITA': (4.0%)
+'BRA': (2.0%) | 'BEL': (2.0%) | 'NLD': (1.8%)
+'USA': (1.6%) | 'CHE': (1.4%) | 'IRL': (1.2%)
+'AUT': (1.2%) | 'CHN': (1.0%) | 'prt': (0.9%)
+
+
+================================================================================
+
+Column: Catering_Package
+Unique values: 321
+
+Top 15 categories:
+
+'Standard (Coffee Only)': (71.9%) | 'No Food Plan': (10.5%) | 'Lunch Included': (7.5%)
+'standard (coffee only)': (1.8%) | 'STANDARD (COFFEE ONLY)': (1.7%) | ' Standard (Coffee Only)  ': (0.8%)
+'  Standard (Coffee Only) ': (0.8%) | ' Standard (Coffee Only) ': (0.8%) | '  Standard (Coffee Only)  ': (0.8%)
+'no food plan': (0.3%) | 'NO FOOD PLAN': (0.3%) | 'lunch included': (0.2%)
+'LUNCH INCLUDED': (0.2%) | ' No Food Plan  ': (0.1%) | ' No Food Plan ': (0.1%)
+
+
+================================================================================
+
+Column: Welcome_Gift_Type
+Unique values: 4
+
+Top 4 categories:
+
+'Branded Notebook': (50.8%) | 'Water Bottle': (29.0%) | 'USB Drive': (16.0%)
+'Portable Charger': (4.2%)
+
+
+================================================================================
+
+Column: Requested_Lab_Config
+Unique values: 8
+
+Top 8 categories:
+
+'Standard PC (Windows)': (80.5%) | 'Linux Workstation': (13.6%) | 'Dual Monitor Setup': (2.1%)
+'MacOS Station': (1.6%) | 'Laptop Docking Station': (1.6%) | 'High-GPU Unit': (0.5%)
+'Touch Screen Interface': (0.0%) | 'VR/AR Station': (0.0%)
+
+
+================================================================================
+
+Column: Assigned_Lab_Config
+Unique values: 9
+
+Top 9 categories:
+
+'Standard PC (Windows)': (72.4%) | 'Linux Workstation': (18.4%) | 'Laptop Docking Station': (2.9%)
+'MacOS Station': (2.5%) | 'Dual Monitor Setup': (2.5%) | 'High-GPU Unit': (0.8%)
+'Server Access Terminal': (0.4%) | 'Touch Screen Interface': (0.2%) | 'VR/AR Station': (0.0%)
+
+
+================================================================================
+
+Column: Enrollment_Type
+Unique values: 298
+
+Top 15 categories:
+
+'General Admission': (64.6%) | 'Affiliated Admission': (21.6%) | 'Contractual Agreement': (3.2%)
+'general admission': (1.6%) | 'GENERAL ADMISSION': (1.6%) | ' General Admission  ': (0.8%)
+' General Admission ': (0.7%) | '  General Admission ': (0.7%) | '  General Admission  ': (0.7%)
+'AFFILIATED ADMISSION': (0.6%) | 'affiliated admission': (0.6%) | 'Organizational Arrangement': (0.3%)
+' Affiliated Admission  ': (0.2%) | '  Affiliated Admission ': (0.2%) | '  Affiliated Admission  ': (0.2%)
+
+
+================================================================================
+
+Column: Lanyard_Color
+Unique values: 240
+
+Top 15 categories:
+
+'Blue': (49.6%) | 'Black': (21.0%) | 'Red': (10.1%)
+'Orange': (5.2%) | 'Green': (3.9%) | 'BLUE': (1.2%)
+'blue': (1.2%) | '  Blue  ': (0.6%) | ' Blue  ': (0.6%)
+' Blue ': (0.6%) | '  Blue ': (0.5%) | 'black': (0.5%)
+'BLACK': (0.5%) | 'red': (0.3%) | 'RED': (0.3%)
+
+
+================================================================================
+
+Column: Client_Category
+Unique values: 505
+
+Top 15 categories:
+
+'SaaS & Software Houses': (41.4%) | 'Traditional IT & Telecomm': (20.4%) | 'Big Tech & Multinationals': (16.8%)
+'FinTech & Banking': (6.6%) | 'Industrial Tech & IoT': (3.7%) | 'saas & software houses': (1.1%)
+'SAAS & SOFTWARE HOUSES': (1.0%) | 'Non-Profit & EduTech': (0.7%) | 'TRADITIONAL IT & TELECOMM': (0.5%)
+'traditional it & telecomm': (0.5%) | ' SaaS & Software Houses ': (0.5%) | '  SaaS & Software Houses  ': (0.5%)
+'  SaaS & Software Houses ': (0.5%) | ' SaaS & Software Houses  ': (0.5%) | 'big tech & multinationals': (0.4%)
+
+
+================================================================================
+
+Column: Submission_Source
+Unique values: 328
+
+Top 15 categories:
+
+'B2B Platforms & Resellers': (77.4%) | 'Direct Website Registration': (7.4%) | 'Dedicated Sales Team': (4.1%)
+'B2B PLATFORMS & RESELLERS': (2.0%) | 'b2b platforms & resellers': (1.9%) | ' B2B Platforms & Resellers  ': (0.9%)
+'  B2B Platforms & Resellers ': (0.9%) | ' B2B Platforms & Resellers ': (0.8%) | '  B2B Platforms & Resellers  ': (0.8%)
+'Unknown': (0.4%) | '?': (0.3%) | 'Government Procurement System': (0.2%)
+'DIRECT WEBSITE REGISTRATION': (0.2%) | 'direct website registration': (0.2%) | 'DEDICATED SALES TEAM': (0.1%)
+
+
+================================================================================
+
+Column: Payment_Terms
+Unique values: 236
+
+Top 15 categories:
+
+'Pay Upon Start': (73.8%) | 'Prepaid (Non-Refundable)': (15.3%) | 'PAY UPON START': (1.9%)
+'pay upon start': (1.8%) | ' Pay Upon Start ': (0.9%) | '  Pay Upon Start  ': (0.8%)
+' Pay Upon Start  ': (0.8%) | '  Pay Upon Start ': (0.8%) | 'prepaid (non-refundable)': (0.4%)
+'PREPAID (NON-REFUNDABLE)': (0.4%) | 'Unknown': (0.3%) | '?': (0.3%)
+'  Prepaid (Non-Refundable) ': (0.2%) | ' Prepaid (Non-Refundable) ': (0.2%) | '  Prepaid (Non-Refundable)  ': (0.2%)
+```
 
 Two regimes: `Welcome_Gift_Type`, `Requested_Lab_Config`, `Assigned_Lab_Config` are
 clean (a few levels); the other seven carry hundreds of uniques — `'BLUE'`, `'blue'`,
 `'  Blue  '` are one value typed three ways. To confirm these are spelling variants,
 not real categories, we collapse each string to a canonical form and group by it.
-
+==the “two regimes” thing reads wierd. concider saying somthing similar to “most cat unique counts is absourdly large (700 countries ? ), and many uniques values are obsiusly just typos / case differences ('BLUE'`, `'blue'`, `'  Blue`). Before deciding weather we hae too much cateories lets try to measure the collapsible typos and see how much it helps reduce the count.==  
 
 ```python
 # Placeholder strings that mean "missing", in any casing/padding after canonicalisation.
@@ -620,26 +576,19 @@ with pd.option_context('display.max_colwidth', None):
     )  # strip # ! * ? etc.  # ignore junk when grouping categories
 ```
 
-
-
-
-|   Unnamed: 0 | column            | true_category             |   raw_spellings_of_it |   junk_strings | sample_raw_spellings                                                                                                                                                                                                                             |
-|-------------:|:------------------|:--------------------------|----------------------:|---------------:|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|            0 | Origin_Country    | prt                       |                    42 |              0 | 'PRT', 'prt', ' PRT ', ' PRT ', ' PRT ', ' PRT ', 'PRT#', '#PRT'                                                                                                                                                                                 |
-|            1 | Catering_Package  | standard (coffee only)    |                   182 |              0 | 'Standard (Coffee Only)', 'standard (coffee only)', 'STANDARD (COFFEE ONLY)', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' STANDARD (COFFEE ONLY) '                         |
-|            2 | Enrollment_Type   | general admission         |                   141 |              0 | 'General Admission', 'general admission', 'GENERAL ADMISSION', ' General Admission ', ' General Admission ', ' General Admission ', ' General Admission ', ' general admission '                                                                 |
-|            3 | Lanyard_Color     | blue                      |                    76 |              0 | 'Blue', 'BLUE', 'blue', ' Blue ', ' Blue ', ' Blue ', ' Blue ', 'Blu#e'                                                                                                                                                                          |
-|            4 | Client_Category   | saas & software houses    |                   141 |              1 | 'SaaS & Software Houses', 'saas & software houses', 'SAAS & SOFTWARE HOUSES', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', 'Saa*S & Software Houses'                          |
-|            5 | Submission_Source | b2b platforms & resellers |                   196 |              2 | 'B2B Platforms & Resellers', 'B2B PLATFORMS & RESELLERS', 'b2b platforms & resellers', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B PLATFORMS & RESELLERS ' |
-|            6 | Payment_Terms     | pay upon start            |                   133 |              2 | 'Pay Upon Start', 'PAY UPON START', 'pay upon start', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', 'Pay Upon# Start'                                                                                          |
-
-
-
+| Unnamed: 0 | column            | true_category             | raw_spellings_of_it | junk_strings | sample_raw_spellings                                                                                                                                                                                                                             |
+| ---------- | ----------------- | ------------------------- | ------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0          | Origin_Country    | prt                       | 42                  | 0            | 'PRT', 'prt', ' PRT ', ' PRT ', ' PRT ', ' PRT ', 'PRT#', '#PRT'                                                                                                                                                                                 |
+| 1          | Catering_Package  | standard (coffee only)    | 182                 | 0            | 'Standard (Coffee Only)', 'standard (coffee only)', 'STANDARD (COFFEE ONLY)', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' STANDARD (COFFEE ONLY) '                         |
+| 2          | Enrollment_Type   | general admission         | 141                 | 0            | 'General Admission', 'general admission', 'GENERAL ADMISSION', ' General Admission ', ' General Admission ', ' General Admission ', ' General Admission ', ' general admission '                                                                 |
+| 3          | Lanyard_Color     | blue                      | 76                  | 0            | 'Blue', 'BLUE', 'blue', ' Blue ', ' Blue ', ' Blue ', ' Blue ', 'Blu#e'                                                                                                                                                                          |
+| 4          | Client_Category   | saas & software houses    | 141                 | 1            | 'SaaS & Software Houses', 'saas & software houses', 'SAAS & SOFTWARE HOUSES', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', 'Saa\*S & Software Houses'                         |
+| 5          | Submission_Source | b2b platforms & resellers | 196                 | 2            | 'B2B Platforms & Resellers', 'B2B PLATFORMS & RESELLERS', 'b2b platforms & resellers', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B PLATFORMS & RESELLERS ' |
+| 6          | Payment_Terms     | pay upon start            | 133                 | 2            | 'Pay Upon Start', 'PAY UPON START', 'pay upon start', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', 'Pay Upon# Start'                                                                                          |
 
 Each inflated column collapses to one category absorbing up to ~200 spellings (`pay upon start` = 133); `Origin_Country` collapses least because its codes are genuinely distinct. A rarer issue is placeholder junk (`'Unknown'`, `'?'`), which must become **missing**, not a level. `normalize_cats` canonicalizes spelling variants and nulls placeholder junk, ensuring both train and test sets share the same clean categories.
 
 **Action:** To prevent cardinality explosion, we implement spelling normalization in Section 4.1 and label-free frequency mapping in Section 5.2.
-
 
 ```python
 CAT_COLS = TEXT_COLS + ['Agent_ID', 'Company_ID']
@@ -654,7 +603,6 @@ def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
     df['Origin_Country'] = df['Origin_Country'].replace(COUNTRY_ALIASES)
     return df
 ```
-
 
 ```python
 clean_train = normalize_cats(train_raw)
@@ -671,33 +619,26 @@ cardinality_change = (
 display(cardinality_change)
 ```
 
-
-
-
-| Unnamed: 0           |   raw_unique |   clean_unique |   collapsed |
-|:---------------------|-------------:|---------------:|------------:|
-| Origin_Country       |          721 |            153 |         568 |
-| Client_Category      |          505 |              7 |         498 |
-| Submission_Source    |          328 |              4 |         324 |
-| Catering_Package     |          321 |              4 |         317 |
-| Enrollment_Type      |          298 |              4 |         294 |
-| Lanyard_Color        |          240 |              5 |         235 |
-| Payment_Terms        |          236 |              3 |         233 |
-| Welcome_Gift_Type    |            4 |              4 |           0 |
-| Requested_Lab_Config |            8 |              8 |           0 |
-| Assigned_Lab_Config  |            9 |              9 |           0 |
-
-
-
+| Unnamed: 0           | raw_unique | clean_unique | collapsed |
+| -------------------- | ---------- | ------------ | --------- |
+| Origin_Country       | 721        | 153          | 568       |
+| Client_Category      | 505        | 7            | 498       |
+| Submission_Source    | 328        | 4            | 324       |
+| Catering_Package     | 321        | 4            | 317       |
+| Enrollment_Type      | 298        | 4            | 294       |
+| Lanyard_Color        | 240        | 5            | 235       |
+| Payment_Terms        | 236        | 3            | 233       |
+| Welcome_Gift_Type    | 4          | 4            | 0         |
+| Requested_Lab_Config | 8          | 8            | 0         |
+| Assigned_Lab_Config  | 9          | 9            | 0         |
 
 Inflated columns collapse to their true counts (`Payment_Terms` 236 → 3,
 `Client_Category` 505 → 7), controls untouched. This is cleaning, not feature
 engineering.
-
+==I would remove the reduendunt varient_collapse table display, and collapse the two steps (collapse and measure and print -> fix data) into 1 step only. (write the cleaning algorithm, clean the data, display only the cradinelaity_change table as proof. its probably enough no?== 
 ## 3.4 Which categories actually relate to dropping?
 
 For the cleaned categoricals we plot the drop rate of the most frequent levels against the dataset mean. A level far from the dashed mean line carries signal.
-
 
 ```python
 def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
@@ -737,26 +678,26 @@ plt.tight_layout()
 plt.show()
 ```
 
-
-    
-![svg](notebook_files/notebook_28_0.svg)
-    
+svg
+==the code above excludes country, company_id, agent_id, as if we “magicly” know in advance tp treat them differently.==  
 
 
 **Findings.**
 
-- **`Payment_Terms` is the strongest categorical signal in this view.** _Prepaid (non-refundable)_ orders drop far more often than _pay-on-start_ ones.
-  - This is surprising (why cancel something you can't refund?) and strong enough that we analyze this relationship further in the model interpretation phase (Section 9).
-- **`Client_Category`**: big-tech / multinational segments drop above average; fintech/banking and industrial/IoT below.
-- **`Submission_Source`**: direct-website and dedicated-sales orders are lower risk than B2B-platform / reseller traffic.
-- **`Enrollment_Type`**: organisational / affiliated arrangements are lower risk than general or one-off contractual admissions.
+- `Payment_Terms` **is the strongest categorical signal in this view.** _Prepaid (non-refundable)_ orders drop far more often than _pay-on-start_ ones.
+  - This is surprising (why cancel something you can't refund?) and strong enough that we analyze this relationship further in the model interpretation phase (Section 9). ==this is more dramatic then the way the notebook says it, a human discovering this fact would probably be more excited / concenre by it==.  
+- `Client_Category`: big-tech / multinational segments drop above average; fintech/banking and industrial/IoT below.
+- `Submission_Source`: direct-website and dedicated-sales orders are lower risk than B2B-platform / reseller traffic.
+- `Enrollment_Type`: organisational / affiliated arrangements are lower risk than general or one-off contractual admissions.
 
 By contrast, `Lanyard_Color` and `Welcome_Gift_Type` show no stable pattern and have no business reason to matter — candidates to drop as noise.
 
-### Country, agent, and acquisition context
+### Country, agent, and acquisition context ==perhaps we could change this section into “further inspection into high impact cateogires (see comments bellow and above and how it relates)==  
 
 The categorical EDA suggests that dropout risk is not only attached to course logistics. Several business-context fields move together: country, agent, company presence, payment terms, and registration source.
+==if we were to follow my prev comment, here would could be a straight jump into furhter inspection into georgraphy (since the plt from above should already show the prt problem)== 
 
+==this could dramitcly shrink code size and markdown size in this section while carying the exact same message== 
 
 ```python
 country_min_n = 150
@@ -821,38 +762,27 @@ display(
 )  # ignore countries with too few rows for a stable rate  # sort by distance from the overall drop rate
 ```
 
+svg
 
-    
-![svg](notebook_files/notebook_31_0.svg)
-    
-
-
-
-
-
-| ('Unnamed: 0_level_0', 'Origin_Country')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate_pct', 'Unnamed: 2_level_1') |   ('lift_pp', 'Unnamed: 3_level_1') |
-|:-------------------------------------------|----------------------------------:|------------------------------------------:|------------------------------------:|
-| prt                                        |                             26429 |                                     63.78 |                               22.34 |
-| fra                                        |                              6961 |                                     17.28 |                              -24.16 |
-| deu                                        |                              4400 |                                     16.7  |                              -24.73 |
-| esp                                        |                              3896 |                                     27.31 |                              -14.13 |
-| gbr                                        |                              3514 |                                     27.8  |                              -13.64 |
-| ita                                        |                              2726 |                                     35.88 |                               -5.56 |
-| bra                                        |                              1402 |                                     38.02 |                               -3.42 |
-| bel                                        |                              1324 |                                     19.18 |                              -22.25 |
-| nld                                        |                              1222 |                                     19.97 |                              -21.47 |
-| usa                                        |                              1072 |                                     22.39 |                              -19.05 |
-| chn                                        |                              1054 |                                     42.79 |                                1.35 |
-| che                                        |                               935 |                                     22.78 |                              -18.66 |
-
-
-
+| ('Unnamed: 0_level_0', 'Origin_Country') | ('count', 'Unnamed: 1_level_1') | ('drop_rate_pct', 'Unnamed: 2_level_1') | ('lift_pp', 'Unnamed: 3_level_1') |
+| ---------------------------------------- | ------------------------------- | --------------------------------------- | --------------------------------- |
+| prt                                      | 26429                           | 63.78                                   | 22.34                             |
+| fra                                      | 6961                            | 17.28                                   | -24.16                            |
+| deu                                      | 4400                            | 16.7                                    | -24.73                            |
+| esp                                      | 3896                            | 27.31                                   | -14.13                            |
+| gbr                                      | 3514                            | 27.8                                    | -13.64                            |
+| ita                                      | 2726                            | 35.88                                   | -5.56                             |
+| bra                                      | 1402                            | 38.02                                   | -3.42                             |
+| bel                                      | 1324                            | 19.18                                   | -22.25                            |
+| nld                                      | 1222                            | 19.97                                   | -21.47                            |
+| usa                                      | 1072                            | 22.39                                   | -19.05                            |
+| chn                                      | 1054                            | 42.79                                   | 1.35                              |
+| che                                      | 935                             | 22.78                                   | -18.66                            |
 
 `Origin_Country` is a strong signal, and Portugal is the clearest case — common _and_
 far above the base rate in both plots, so not a rare-country fluke. But country alone
 isn't the whole story: a risky country can concentrate certain payment terms,
 channels, or agents, so we read it as context, not cause.
-
 
 ```python
 is_portugal = clean_train["Origin_Country"].eq("prt").fillna(False).to_numpy(dtype=bool)
@@ -869,21 +799,15 @@ portugal_summary = (
 display(portugal_summary[["count", "drop_rate_pct"]].round(1))
 ```
 
+| ('Unnamed: 0_level_0', 'country_group') | ('count', 'Unnamed: 1_level_1') | ('drop_rate_pct', 'Unnamed: 2_level_1') |
+| --------------------------------------- | ------------------------------- | --------------------------------------- |
+| Other countries                         | 37035                           | 25.5                                    |
+| Portugal                                | 26429                           | 63.8                                    |
 
-
-
-| ('Unnamed: 0_level_0', 'country_group')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate_pct', 'Unnamed: 2_level_1') |
-|:------------------------------------------|----------------------------------:|------------------------------------------:|
-| Other countries                           |                             37035 |                                      25.5 |
-| Portugal                                  |                             26429 |                                      63.8 |
-
-
-
-
+==I would present it as using `prt` as a case study to see weather the high impact cats found (payment, enromlement b2b etc) are explaining geography or the other way around, justifying in markdown why, as well as testing weather anything that could be georgraphy related could explain it. we need to mention that we specifcly use `prt` for this because 1. it is he only country with 10k+ samples, 2. it differs by a huge amount from most countries, and a naive submission could say “just ban portugal and bam ylu reduced drop rate. we could show more business nderstandign by somthing like “looking at portugal (compare drop rate with protugal vs drop rate all data vs drop rate wihtout portugal) one might think simply banning portugal could already reduce drop rates bty a decent amount. but reality is more complex, and we want to find out weather georgrpaht explains other variables, or the other way around. either way,since portugal is the largest client country, it is never an option==  ==i would also test things here against numeric features (see upcoming coments on numeric features==) 
 The split confirms the gap is real, not a plotting artifact. Next, the identifier
 fields: `Agent_ID` and `Company_ID` are labels, not numbers, and may carry related
 signal.
-
 
 ```python
 _fig, _axes = plt.subplots(1, 2, figsize=(15, 6))
@@ -904,29 +828,18 @@ plt.show()
 display(company_presence)
 ```
 
+svg
 
-    
-![svg](notebook_files/notebook_35_0.svg)
-    
-
-
-
-
-
-| Unnamed: 0     |   count |   drop_rate |
-|:---------------|--------:|------------:|
-| no company_id  |   60344 |      0.4248 |
-| has company_id |    3120 |      0.2122 |
-
-
-
+| Unnamed: 0     | count | drop_rate |
+| -------------- | ----- | --------- |
+| no company_id  | 60344 | 0.4248    |
+| has company_id | 3120  | 0.2122    |
 
 Both identifiers separate risk: frequent agents drop at very different rates, and
 _having_ a `Company_ID` nearly halves risk (42.5% → 21.2%). But risky agents may just
 be the ones assigned to risky countries — overlapping categorical signal, not numeric
 multicollinearity — so we test it directly: how well does `Agent_ID` predict
 `Origin_Country`?
-
 
 ```python
 agent_country_pairs = clean_train[["Agent_ID", "Origin_Country"]].dropna()
@@ -953,23 +866,18 @@ display(
 )
 ```
 
-
-
-
-|   Unnamed: 0 | check                     |   accuracy |
-|-------------:|:--------------------------|-----------:|
-|            0 | majority country baseline |      0.391 |
-|            1 | agent modal country       |      0.421 |
-
-
-
+| Unnamed: 0 | check                     | accuracy |
+| ---------- | ------------------------- | -------- |
+| 0          | majority country baseline | 0.391    |
+| 1          | agent modal country       | 0.421    |
 
 The modal-country check performs much better than the majority-country baseline, so agent and country contain overlapping information. The match is still not perfect, so neither field fully explains the other. We keep both signals, but encode them compactly later instead of one-hotting hundreds of levels.
 
+==a summary about categories could be appririate, especiialy -> which cateogires seem to relate (mentinoning “good canidndates for the featur eengenring section” {this is showing we think about the workflow and poroces, no direct future leakage.}) which categories still have too much cats (e.g. country, has 180 countries, magority is less then 1k rows, and a similar to `none-portugal` mean) mentinoning “the upcoming dimension reductin section”  (that shows grader we think about dimension problems even at discovry stage, and we understand that a lot of catoegires is a problem -> probbaly would earn us some points, and maybe also mentinoning cats that seems uncorllated and also from business prespectivre sound unimporatnt (welcome gift type, bandwith color). This summary should only say ideas and conclusions wihtout direct action yet.== 
 ## 3.5 Numeric features: summary, correlation, and suspects
+==one thing that might make more sense is to first discover numeric featurs and only after this check the categorials. That is because it would let us check cateogries corrlations against numeric features we already know matter / suspect they relate. (for example when we use portugal or company id or business type as case study, we could check them against known numeric features that are corrolated with drop rate. the other way around isnt possible).== 
 
 We examine the distribution, summary statistics, and correlations of the numeric features:
-
 
 ```python
 ID_LIKE = ["Client_ID", "Agent_ID", "Company_ID"]
@@ -1001,31 +909,25 @@ def numeric_summary(df, cols):
 display(numeric_summary(train_raw, num_cols))
 ```
 
-
-
-
-|   Unnamed: 0 | column                      |   missing_% |   corr_target |   mean |   median |    std |   min |   max |   skew |
-|-------------:|:----------------------------|------------:|--------------:|-------:|---------:|-------:|------:|------:|-------:|
-|            5 | Registration_Days_Before    |         4.2 |         0.351 | 102.89 |     65   | 109.18 |     0 |   629 |   1.5  |
-|            8 | Pre_Course_Supports_Tickets |         0   |        -0.301 |   0.51 |      0   |   0.76 |     0 |     5 |   1.47 |
-|            6 | Prev_Course_Dropouts        |         0   |         0.199 |   0.1  |      0   |   0.45 |     0 |    21 |  15.7  |
-|           11 | Registration_Changes        |         0   |        -0.148 |   0.18 |      0   |   0.59 |     0 |    21 |   7.36 |
-|            9 | Physical_Course_Kits        |         1.6 |        -0.138 |   0.03 |      0   |   0.16 |     0 |     3 |   6    |
-|           10 | Waiting_List_Days           |         0   |         0.068 |   3.98 |      0   |  23.2  |     0 |   391 |   9.26 |
-|           12 | Returning_Client            |         0   |        -0.059 |   0.03 |      0   |   0.16 |     0 |     1 |   5.82 |
-|            0 | Professionals_Count         |         0   |         0.057 |   1.84 |      2   |   0.51 |     0 |     4 |  -0.47 |
-|            7 | Prev_Course_Attended        |         0   |        -0.052 |   0.12 |      0   |   1.54 |     0 |    61 |  21.96 |
-|            4 | Theory_Hours                |         0   |         0.045 |   2.16 |      2   |   1.47 |     0 |    41 |   3.35 |
-|            2 | Observers_Count             |         0   |        -0.031 |   0.01 |      0   |   0.09 |     0 |    10 |  45.38 |
-|           13 | Daily_Tuition_Cost          |         0.1 |        -0.024 |  98.85 |     94.5 |  41.86 |     0 |  5400 |  32.55 |
-|            3 | Practical_Hours             |         0   |         0.005 |   6.61 |      1   | 215.5  |    -5 | 10000 |  40.45 |
-|            1 | Students_Count              |         0   |         0     |   8.75 |      0   | 294.24 |     0 |  9999 |  33.92 |
-
-
-
+| Unnamed: 0 | column                      | missing\_% | corr_target | mean   | median | std    | min | max   | skew  |
+| ---------- | --------------------------- | ---------- | ----------- | ------ | ------ | ------ | --- | ----- | ----- |
+| 5          | Registration_Days_Before    | 4.2        | 0.351       | 102.89 | 65     | 109.18 | 0   | 629   | 1.5   |
+| 8          | Pre_Course_Supports_Tickets | 0          | -0.301      | 0.51   | 0      | 0.76   | 0   | 5     | 1.47  |
+| 6          | Prev_Course_Dropouts        | 0          | 0.199       | 0.1    | 0      | 0.45   | 0   | 21    | 15.7  |
+| 11         | Registration_Changes        | 0          | -0.148      | 0.18   | 0      | 0.59   | 0   | 21    | 7.36  |
+| 9          | Physical_Course_Kits        | 1.6        | -0.138      | 0.03   | 0      | 0.16   | 0   | 3     | 6     |
+| 10         | Waiting_List_Days           | 0          | 0.068       | 3.98   | 0      | 23.2   | 0   | 391   | 9.26  |
+| 12         | Returning_Client            | 0          | -0.059      | 0.03   | 0      | 0.16   | 0   | 1     | 5.82  |
+| 0          | Professionals_Count         | 0          | 0.057       | 1.84   | 2      | 0.51   | 0   | 4     | -0.47 |
+| 7          | Prev_Course_Attended        | 0          | -0.052      | 0.12   | 0      | 1.54   | 0   | 61    | 21.96 |
+| 4          | Theory_Hours                | 0          | 0.045       | 2.16   | 2      | 1.47   | 0   | 41    | 3.35  |
+| 2          | Observers_Count             | 0          | -0.031      | 0.01   | 0      | 0.09   | 0   | 10    | 45.38 |
+| 13         | Daily_Tuition_Cost          | 0.1        | -0.024      | 98.85  | 94.5   | 41.86  | 0   | 5400  | 32.55 |
+| 3          | Practical_Hours             | 0          | 0.005       | 6.61   | 1      | 215.5  | -5  | 10000 | 40.45 |
+| 1          | Students_Count              | 0          | 0           | 8.75   | 0      | 294.24 | 0   | 9999  | 33.92 |
 
 The `max` column already exposes the corrupted values: `Students_Count` maxes at 9999 and `Practical_Hours` at 10000, with a negative minimum. We handle these in Section 4. First, the correlation picture.
-
+==maybe we could mention “for corrolation map, we use a generic .99 cap (or anything else) just to make the hetmap not distroted by likely error values, this is not the finale pipeline and only done for visibility porpuses (push back if thats wrong)== 
 
 ```python
 corr = train_raw[num_cols + [TARGET]].corr()
@@ -1038,18 +940,13 @@ plt.tight_layout()
 plt.show()
 ```
 
-
-    
-![svg](notebook_files/notebook_42_0.svg)
-    
-
+svg
 
 **Reading the heatmap.** No single raw numeric feature correlates strongly with the target. That is consistent with **non-linear / interaction-driven** signal, which we test later by comparing linear baselines with gradient-boosted trees. Inter-feature correlations are mild, so there is no severe multicollinearity forcing us to drop columns; the dimensionality problem lives in the _categoricals_, not here (Section 5.2).
 
 ## 3.6 Numeric drop-rate profiles
 
 Binning a couple of the more predictive numeric features shows _how_ risk moves with them (not just whether they correlate linearly).
-
 
 ```python
 def plot_dropout_by_bins(df, col, bins=8, ax=None):
@@ -1074,18 +971,14 @@ plt.tight_layout()
 plt.show()
 ```
 
+svg
 
-    
-![svg](notebook_files/notebook_45_0.svg)
-    
-
-
-- **`Registration_Days_Before`**: the earlier a group registers relative to the
+- `Registration_Days_Before`: the earlier a group registers relative to the
   course, the more likely it is to drop — plausibly because plans change over a
   longer horizon.
-- **`Pre_Course_Supports_Tickets`**: more pre-course engagement is associated
+- `Pre_Course_Supports_Tickets`: more pre-course engagement is associated
   with _lower_ dropping — a group that is actively preparing is committed.
-
+==perhpas a linear regression + scatter plot could peresent more proof and be a nice bonus?== 
 ## 3.7 EDA synthesis — from numbers to a business story
 
 Stepping back, the individual signals are not independent curiosities; most of them
@@ -1105,8 +998,8 @@ committed a group is at registration.
 
 This helps explain why _missingness itself_ is predictive — a missing `Company_ID` is a
 commitment signal, not merely a gap to impute.
-
-**2. `Payment_Terms` looks endogenous.** Prepaid, non-refundable orders drop _more_, not less—the opposite of the naive "money is locked in" intuition. The most plausible reading is selection: the company likely demands prepayment precisely from deals it already judges risky, making the variable a _symptom_ of risk rather than a cause. We keep its strong predictive power, but analyze model sensitivity without this feature in Section 9.
+==the above reads like an ai and not like a human that just finished the discoveries and found very intresting patters, it also present hes hypothesis as facts, rather then ideas. it should remain compact tho, since the submission report woud do some of the heavy intrpetation.==  
+**2.** `Payment_Terms` **looks endogenous.** Prepaid, non-refundable orders drop _more_, not less—the opposite of the naive "money is locked in" intuition. The most plausible reading is selection: the company likely demands prepayment precisely from deals it already judges risky, making the variable a _symptom_ of risk rather than a cause. We keep its strong predictive power, but analyze model sensitivity without this feature in Section 9.
 
 **3. Geography is a proxy, not a cause.** Portugal's 63.8% drop rate is real but
 confounded — `Agent_ID` predicts country well above chance, so "risky country" and
@@ -1130,7 +1023,6 @@ To ensure consistency, both cleaning and imputation are packaged inside our feat
 ## 4.1 Outliers: identify, justify, cap
 
 We look for values that are physically impossible or absurdly far from the bulk.
-
 
 ```python
 def sus_report(df, cols, max_mult=10):
@@ -1162,42 +1054,31 @@ print("Suspect columns — TEST")
 display(sus_report(test_raw, num_cols))
 ```
 
-    Suspect columns — TRAIN
+```
+Suspect columns — TRAIN
+```
 
+| Unnamed: 0 | column               | min | max   | q99   | why                                 |
+| ---------- | -------------------- | --- | ----- | ----- | ----------------------------------- |
+| 0          | Students_Count       | 0   | 9999  | 2     | max=9999 >> q99=2                   |
+| 1          | Practical_Hours      | -5  | 10000 | 3     | negative values; max=10000 >> q99=3 |
+| 2          | Prev_Course_Dropouts | 0   | 21    | 1     | max=21 >> q99=1                     |
+| 3          | Prev_Course_Attended | 0   | 61    | 3     | max=61 >> q99=3                     |
+| 4          | Registration_Changes | 0   | 21    | 2     | max=21 >> q99=2                     |
+| 5          | Daily_Tuition_Cost   | 0   | 5400  | 209.7 | max=5400 >> q99=209.7               |
 
+```
+Suspect columns — TEST
+```
 
-
-
-|   Unnamed: 0 | column               |   min |   max |   q99 | why                                 |
-|-------------:|:---------------------|------:|------:|------:|:------------------------------------|
-|            0 | Students_Count       |     0 |  9999 |   2   | max=9999 >> q99=2                   |
-|            1 | Practical_Hours      |    -5 | 10000 |   3   | negative values; max=10000 >> q99=3 |
-|            2 | Prev_Course_Dropouts |     0 |    21 |   1   | max=21 >> q99=1                     |
-|            3 | Prev_Course_Attended |     0 |    61 |   3   | max=61 >> q99=3                     |
-|            4 | Registration_Changes |     0 |    21 |   2   | max=21 >> q99=2                     |
-|            5 | Daily_Tuition_Cost   |     0 |  5400 | 209.7 | max=5400 >> q99=209.7               |
-
-
-
-
-    Suspect columns — TEST
-
-
-
-
-
-|   Unnamed: 0 | column               |   min |   max |   q99 | why                                 |
-|-------------:|:---------------------|------:|------:|------:|:------------------------------------|
-|            0 | Students_Count       |     0 |  9999 |     2 | max=9999 >> q99=2                   |
-|            1 | Practical_Hours      |    -5 | 10000 |     2 | negative values; max=10000 >> q99=2 |
-|            2 | Prev_Course_Attended |     0 |    72 |     3 | max=72 >> q99=3                     |
-|            3 | Waiting_List_Days    |     0 |   183 |     0 | max=183 >> q99=0                    |
-
-
-
+| Unnamed: 0 | column               | min | max   | q99 | why                                 |
+| ---------- | -------------------- | --- | ----- | --- | ----------------------------------- |
+| 0          | Students_Count       | 0   | 9999  | 2   | max=9999 >> q99=2                   |
+| 1          | Practical_Hours      | -5  | 10000 | 2   | negative values; max=10000 >> q99=2 |
+| 2          | Prev_Course_Attended | 0   | 72    | 3   | max=72 >> q99=3                     |
+| 3          | Waiting_List_Days    | 0   | 183   | 0   | max=183 >> q99=0                    |
 
 The test set introduces no new forms of corruption, suggesting the same cleaning policy can be safely shared. Comparing the maximum values to the 99th percentile helps identify columns with extreme outliers:
-
 
 ```python
 TAIL_CHECK_COLS = ['Students_Count', 'Practical_Hours', 'Daily_Tuition_Cost']
@@ -1247,11 +1128,7 @@ plt.tight_layout(rect=[0, 0, 1, 0.9])
 plt.show()
 ```
 
-
-    
-![svg](notebook_files/notebook_52_0.svg)
-    
-
+svg
 
 **Decisions and justification.**
 We cap (winsorize) extreme values instead of dropping rows, since the remaining features in those records still contain valuable signal.
@@ -1263,7 +1140,7 @@ Based on the suspect-column screen and the boxplots, we apply three caps:
 - `Daily_Tuition_Cost <= 600`: train has a single `5400` value, while the test maximum is 510. A cap of 600 leaves the observed test range untouched and prevents one corrupted training value from dominating cost calculations.
 
 Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) are heavy-tailed but plausible, so we leave them uncapped unless a concrete domain rule gives a cap.
-
+==we say other ones are heaily tailed but dont present proof/plots for that. we also ould say “for other features the extreme values dont seem obisu errors, so we leave them for now, relying on furhor scaling in upcoming section for models whihc are sensitive for extremes, leving the data as is for models that can handle it nativly (that shows that we understand that 1. we need to think about different models and what they require (as instructions requests) 2. we understand that extreme != bad, and simply removign anythign that is faraway from mean / gneral std can destroy valuable data. so we instead decide to only handle values that are obius to just be place holders / errors rather then an extreme case (which can be learne and study from, and also might show in test).==  
 
 ```python
 CAP_RULES = {
@@ -1335,23 +1212,13 @@ plt.tight_layout()
 plt.show()
 ```
 
+| Unnamed: 0 | column             | raw_train_min | raw_train_max | problem                   | action          | train_rows_affected | test_rows_affected | reason                                            |
+| ---------- | ------------------ | ------------- | ------------- | ------------------------- | --------------- | ------------------- | ------------------ | ------------------------------------------------- |
+| 0          | Students_Count     | 0             | 9999          | 9999 placeholder          | clip to <= 10   | 55                  | 12                 | corporate classroom groups are single-/low-dou... |
+| 1          | Practical_Hours    | -5            | 10000         | negative values and 10000 | clip to [0, 12] | 121                 | 23                 | course hours cannot be negative; 12 covers a l... |
+| 2          | Daily_Tuition_Cost | 0             | 5400          | 5400 value                | clip to <= 600  | 1                   | 0                  | 5400 is far beyond the valid fee range; 600 ke... |
 
-
-
-|   Unnamed: 0 | column             |   raw_train_min |   raw_train_max | problem                   | action          |   train_rows_affected |   test_rows_affected | reason                                            |
-|-------------:|:-------------------|----------------:|----------------:|:--------------------------|:----------------|----------------------:|---------------------:|:--------------------------------------------------|
-|            0 | Students_Count     |               0 |            9999 | 9999 placeholder          | clip to <= 10   |                    55 |                   12 | corporate classroom groups are single-/low-dou... |
-|            1 | Practical_Hours    |              -5 |           10000 | negative values and 10000 | clip to [0, 12] |                   121 |                   23 | course hours cannot be negative; 12 covers a l... |
-|            2 | Daily_Tuition_Cost |               0 |            5400 | 5400 value                | clip to <= 600  |                     1 |                    0 | 5400 is far beyond the valid fee range; 600 ke... |
-
-
-
-
-
-    
-![svg](notebook_files/notebook_54_1.svg)
-    
-
+svg
 
 The before/after distributions show that the caps remove isolated invalid tails while
 preserving the bulk of each feature.
@@ -1360,7 +1227,6 @@ One more data-quality issue appears in the historical counters. Some rows have m
 recorded prior dropouts than prior attended courses, so those fields are not a clean
 numerator/denominator pair.
 
-
 ```python
 impossible = train_raw[
     train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]
@@ -1368,8 +1234,9 @@ impossible = train_raw[
 print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
 ```
 
-    rows where historical dropouts exceed historical attended: 4985
-
+```
+rows where historical dropouts exceed historical attended: 4985
+```
 
 We keep the raw historical counters because the values can still carry risk signal, but
 any ratio derived from them should be interpreted as dropout **intensity**, not as a
@@ -1382,10 +1249,12 @@ Different column types get different treatment, each justified:
 
 - **Categoricals** → keep an explicit `"missing"` level. For tree models,
   "missing" is just another category the model can split on; the EDA showed
-  missingness is itself predictive, so we must not erase it.
+  missingness is itself predictive, so we must not erase it. ==i would use the same justification from prev comment and say “since missinggness in catoegires is a signal we make it its own cateogry, and for ones where its critical we also add a dummy flag. Also, “missing” cat is not usefull only for trees, and arguably as usefull if not even more for linear / net models. Any model can learn from it.==. 
 - **High-cardinality IDs** (`Agent_ID`, `Company_ID`) → represented via
   **presence flags** and **frequency encoding** (Section 5.2), not imputed.
-- **Numerics** → Tree ensembles (LightGBM, XGBoost, CatBoost) handle missing values natively, learning a default split direction for NaNs. We therefore **pass numeric NaNs through** to the models rather than imputing them, preserving the informative missingness signals instead of masking them via imputation. Imputation is only applied to intermediate calculations in engineered ratios to avoid division errors.
+- **Numerics** → Tree ensembles (LightGBM, XGBoost, CatBoost) handle missing values natively, learning a default split direction for NaNs. We therefore **pass numeric NaNs  through** to the models rather than imputing them, preserving the informative missingness signals instead of masking them via imputation. Imputation is only applied to intermediate calculations in engineered ratios to avoid division errors. ==here we once again leak future notebook, who said we gonna use the blend? we only decide to use it afte choosing GBoost as best and then improving it. at this level, we are only ment to think broadly in terms of (tree based models, linear models, deep models)==. ==this is another good opertuinity to mention we concider how eahc family needs a different treatement, and thus a single policy for imputing would never be optimal. we could say (for models that can handle missingness nativly we do x, for continutes models we would use y== 
+
+==the above par dosnt read like human. sound like a robot or like chat gpt answering “explain to me like im 5 years old”== 
 
 # 5. Feature engineering & dimensionality
 
@@ -1406,13 +1275,16 @@ Each engineered feature either preserves raw information in a more model-friendl
 | Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves missingness signals seen in Section 3.2.                                                                                           |
 | Agent/company/country IDs | frequency encodings; native categoricals for tree boosters   | Keeps identity/frequency signal without one-hot explosion; frequencies use only covariate counts, never labels.                              |
 
+==this is weak. why we do that ? what specific discoveries so far in the notbook supports it ? why is it in a table format ? (note that an answer exists for most, we just need to make sure we mention it, for example the time thing could easily be justified by the time plot we did. participent could be explained as just making data more compact (mentioning future dimention reduction), theory-practical could be justified by either showing that by theire own theyre not usefull, or giving a good business justification + mentioning the benfit it would do to the model, tuition+hour cost cood be easily justified as looking at one without the other can mislead (preventing the models from looking at tuition cost in isolation from practical hours), requestd+assigned could be justified by simple logic. the last two has alreayd been justified==  
 ## 5.2 Dimensionality
-
 The curse of dimensionality here comes from the **identifiers**, not the numerics.
 `Agent_ID` alone has 204 distinct levels and `Origin_Country` 154, so naive one-hot
 encoding would turn each into hundreds of sparse binary columns.
+==we could also print `X.shape` with naiive one hot encoding to show why we even need dim reduction==.
 
-Because our candidate models handle categorical columns differently, we keep two practical preprocessing paths:
+==perhaps talking about time and why we dont have a single shardb y all models dim reduction stradegy for this with justification ?== 
+
+Because our candidate models handle categorical columns differently, we keep two practical preprocessing paths: ==we still havnt talked about candidate models. this is leakege. again, we need to speak in a more general term: “continutes models that must recive some kind of encoding (since they only understand ordered continues numbers) vs models that can use the native cat feature. again - showing that we think in terms of “what each faimly needs”.== 
 
 - **Logistic Regression / MLP path.** These models need a fully numeric matrix. In Section 7.1 we therefore collapse rare category levels to `"other"`, one-hot encode the remaining levels, median-impute numeric missing values, and scale the matrix.
 - **Tree-booster path.** Gradient-boosted trees can avoid most of that one-hot expansion. We keep categorical columns as native `category` values, add label-free frequency encodings for high-cardinality IDs, and drop raw `Company_ID` while keeping `has_company_id` and `Company_ID_freq`.
@@ -1429,6 +1301,9 @@ stacked one-vs-rest splits to approximate, and without ever materialising the ex
 columns. (LightGBM finds this partition with the Fisher (1958) sorted-gradient
 heuristic; XGBoost does a similar subset split, and CatBoost uses ordered target
 statistics.)
+
+==the par above reads awfull, it does everythign wrong: leaks future, uses “explain like im 5 years old chat” mesg, explain unneded techincal details, ignores thoery. this should either be destroyed, or combined in the above (when we talk abuut cat stradegy, and how it needs to be different based on weather the model can nativly handle categories or not, (something liek “some model families  (for example tree based ones) can hanlde catoegires nativly, for them it is prefered to use this (preserving as mich data as possible wihtout bloating dimensitons), other cannot andle categories and must be incoded, for them we would use xyz==  
+
 
 
 ```python
@@ -1519,6 +1394,8 @@ def build_features(
         out[_col] = df[_col].fillna('missing').astype('category')
     return out
 
+#==a human woould never manualy right out[feature] = df[feature]. humans are lazy, they would only right what needs to be changes, and the rest would just programitcly copy / apply as is==.  
+
 
 def align_categories(train_X, *others):
     """Give every frame identical category levels so the boosters agree."""
@@ -1551,38 +1428,42 @@ display(
 )  # lab config: only "was the request honoured?" matters  # predictive missingness of the IDs  # frequency encodings for high-cardinality IDs (compact, label-free)  # native categoricals for the boosters (no one-hot expansion).  # Note: Company_ID (highest cardinality) is intentionally NOT kept raw —  # only its frequency + presence flag survive.
 ```
 
-    features with native categorical handling : 42
-    estimated dims after naive one-hot        : 435
-    dummy columns avoided                     : 393
-    
-    category cardinalities:
+```
+features with native categorical handling : 42
+estimated dims after naive one-hot        : 435
+dummy columns avoided                     : 393
+
+category cardinalities:
 
 
 
-    Agent_ID                204
-    Origin_Country          154
-    Requested_Lab_Config      9
-    Client_Category           8
-    Catering_Package          5
-    Enrollment_Type           5
-    Lanyard_Color             5
-    Submission_Source         5
-    Welcome_Gift_Type         4
-    Payment_Terms             4
-    dtype: int64
-
+Agent_ID                204
+Origin_Country          154
+Requested_Lab_Config      9
+Client_Category           8
+Catering_Package          5
+Enrollment_Type           5
+Lanyard_Color             5
+Submission_Source         5
+Welcome_Gift_Type         4
+Payment_Terms             4
+dtype: int64
+```
+==does the above code show treduction for contuniues or for tree pipelines ? its not clear.== 
 
 **The tree-compatible dimensionality strategy** combines three levers, each doing a different job:
 
-1. **Native `category` dtype** — the boosters split on level subsets directly, so the
+1. **Native** `category` **dtype** — the boosters split on level subsets directly, so the
    feature matrix stays at 42 columns instead of ~435 (**393 dummy columns avoided**,
    almost all from `Agent_ID` and `Origin_Country`).
 2. **Frequency encoding** per ID (how common each value is) — one numeric column
    that, unlike the dtype trick, can also be included in the continuous baselines.
-3. **Dropping raw `Company_ID`** (highest cardinality) — keeping only its frequency
+3. **Dropping raw** `Company_ID` (highest cardinality) — keeping only its frequency
    and presence flag.
 
 **Caveat.** This low-column representation is _tree-specific_. The continuous baselines still use one-hot columns, but the `min_count` rare-level collapse keeps that matrix bounded. And a low column count is not the whole battle — 204 sparse agent levels can still overfit — which is why levers 2–3 and the boosters' regularisation matter alongside native categorical splits.
+
+==the above list and par reads like AI. terrible prose.== 
 
 # 6. Validation methodology
 
@@ -1591,7 +1472,6 @@ Everything in modelling hinges on measuring performance the _right_ way.
 ## 6.1 Adversarial validation — quantifying the drift
 
 We train a classifier to tell **test rows from train rows** using the features (label removed, raw date and `Client_ID` dropped). If it separates them well above AUC 0.5, the feature distributions have genuinely drifted.
-
 
 ```python
 def adversarial_validation():
@@ -1638,26 +1518,26 @@ def adversarial_validation():
 adversarial_validation()
 ```
 
-    adversarial AUC (train vs test): 0.935  (0.5=identical, 1.0=trivially separable)
-    
-    top drift drivers:
-    Daily_Tuition_Cost          0.125937
-    Prev_Course_Dropouts        0.085177
-    Registration_Days_Before    0.076319
-    Waiting_List_Days           0.074023
-    Catering_Package            0.065934
-    Assigned_Lab_Config         0.064619
-    Client_Category             0.053575
-    Enrollment_Type             0.052758
-    dtype: float32
+```
+adversarial AUC (train vs test): 0.935  (0.5=identical, 1.0=trivially separable)
 
+top drift drivers:
+Daily_Tuition_Cost          0.125937
+Prev_Course_Dropouts        0.085177
+Registration_Days_Before    0.076319
+Waiting_List_Days           0.074023
+Catering_Package            0.065934
+Assigned_Lab_Config         0.064619
+Client_Category             0.053575
+Enrollment_Type             0.052758
+dtype: float32
+```
 
 The classifier separates test from train **well above chance**, driven by the ID / frequency-style columns — the client population shifts over time. This is another reason not to trust a random split.
 
 ## 6.2 The chronological holdout
 
 We select every model and feature on a **chronological holdout**: fit on rows before `2017-01-01`, validate on the 2017 rows (~4 months, matching the real test window). This mirrors the leaderboard's "train on the past, score the future" setup, so improvements here should move in the same direction as the real score.
-
 
 ```python
 cutoff = pd.Timestamp(CHRONO_CUTOFF)
@@ -1682,9 +1562,11 @@ Xva_n = build_features(va_raw, freq_maps_chrono, add_time=False)
 align_categories(Xtr_n, Xva_n)
 ```
 
-    chrono split -> fit=51,822  validate=11,642  (val drop rate=0.420)
+```
+chrono split -> fit=51,822  validate=11,642  (val drop rate=0.420)
+```
 
-
+==Im not sure this is the right place in the chornological order of the notbook to put here. I could be wrong. discuss it.== 
 # 7. Model experiments & tuning
 
 We follow the assignment's requirement of **at least three models from different families**, each with a short description and its hyper-parameters, and tune on the chronological holdout.
@@ -1707,6 +1589,7 @@ Each model family is paired with its appropriate preprocessing pipeline: bounded
   boosters. Key hyper-parameters: number of trees, `learning_rate`, tree size
   (`max_depth` / `num_leaves`), and regularisation (`reg_lambda`, `min_child_*`).
 
+==generaly good, language could be a bit humanized tho==  
 
 ```python
 def get_lgbm(**kw):
@@ -1837,13 +1720,13 @@ def encode_for_continuous_models(X_tr: pd.DataFrame, X_va: pd.DataFrame, min_cou
 ```
 
 ## 7.2 Hyper-parameter tuning: reading the bias–variance trade-off
+==hyper paramter tuning isnt uust about “reading the bias variance trade-off” need to refer back to instructions to see what is actualt requires in bias variance secrion.== 
 
-For each family, we sweep a single capacity/regularization parameter and plot the training and validation ROC-AUC scores. This directly exposes the bias-variance trade-off: as model capacity grows, training performance climbs toward 1.0, while validation performance eventually peaks and plateaus or declines (the variance regime). The stars mark the optimal settings selected for each final model.
+For each family, we sweep a single capacity/regularization parameter and plot the training and validation ROC-AUC scores. This directly exposes the bias-variance trade-off: as model capacity grows, training performance climbs toward 1.0, while validation performance eventually peaks and plateaus or declines (the variance regime). The stars mark the optimal settings selected for each final model. ==the par reads as if it was explictly required to show the bias varience trade off, it wasnt. its just a nice to have/mention==. 
 
 We tune and select parameters directly against validation ROC-AUC rather than the standard training cost function. Since ROC-AUC is rank-based, this allows the models to leverage higher flexibility (lower bias) at the cost of some variance, whereas tuning on the cost function would penalize probability scale shifts and yield overly conservative parameters.
 
 For the tree family, we tune **XGBoost** on its `max_depth` axis, keeping the boosting budget fixed without early stopping so that deeper trees are free to overfit and expose the variance threshold.
-
 
 ```python
 Xtr_enc, Xva_enc = encode_for_continuous_models(Xtr_t, Xva_t)
@@ -1997,39 +1880,30 @@ display(
 )  # C = 0.001  # alpha = 0.1 (x = 10.0)  # max_depth = 6  # Plot Train vs Validation ROC-AUC (single y-axis)  # Highlight the selected star on the validation AUC curve  # Ensure scales are correct  # Choose clean legend placement
 ```
 
+svg
 
-    
-![svg](notebook_files/notebook_73_0.svg)
-    
+| Unnamed: 0 | family                           | x     | train_logloss | val_logloss | train_AUC | val_AUC | selected |
+| ---------- | -------------------------------- | ----- | ------------- | ----------- | --------- | ------- | -------- |
+| 0          | Logistic Regression              | 0.001 | 0.3458        | 0.418       | 0.9217    | 0.8805  | True     |
+| 1          | Logistic Regression              | 0.01  | 0.3336        | 0.4248      | 0.9239    | 0.879   | False    |
+| 2          | Logistic Regression              | 0.1   | 0.3318        | 0.4303      | 0.924     | 0.8776  | False    |
+| 3          | Logistic Regression              | 1     | 0.3306        | 0.4318      | 0.9241    | 0.8773  | False    |
+| 4          | Logistic Regression              | 10    | 0.3305        | 0.4326      | 0.9241    | 0.8772  | False    |
+| 5          | Logistic Regression              | 100   | 0.3305        | 0.4325      | 0.9241    | 0.8773  | False    |
+| 6          | MLP neural network               | 1     | 0.2447        | 0.4592      | 0.9606    | 0.869   | False    |
+| 7          | MLP neural network               | 10    | 0.2321        | 0.46        | 0.9645    | 0.8762  | True     |
+| 8          | MLP neural network               | 100   | 0.1973        | 0.5408      | 0.9746    | 0.8668  | False    |
+| 9          | MLP neural network               | 1000  | 0.2034        | 0.5139      | 0.9734    | 0.8702  | False    |
+| 10         | MLP neural network               | 10000 | 0.2044        | 0.5113      | 0.9732    | 0.8696  | False    |
+| 11         | Gradient-boosted trees (XGBoost) | 2     | 0.3008        | 0.3841      | 0.9413    | 0.9003  | False    |
+| 12         | Gradient-boosted trees (XGBoost) | 3     | 0.2773        | 0.3731      | 0.9499    | 0.9058  | False    |
+| 13         | Gradient-boosted trees (XGBoost) | 4     | 0.2555        | 0.3663      | 0.9581    | 0.9109  | False    |
+| 14         | Gradient-boosted trees (XGBoost) | 5     | 0.2373        | 0.3651      | 0.9645    | 0.9124  | False    |
+| 15         | Gradient-boosted trees (XGBoost) | 6     | 0.217         | 0.3653      | 0.9715    | 0.9135  | True     |
+| 16         | Gradient-boosted trees (XGBoost) | 8     | 0.1813        | 0.3705      | 0.9824    | 0.9134  | False    |
+| 17         | Gradient-boosted trees (XGBoost) | 10    | 0.1486        | 0.3672      | 0.9904    | 0.913   | False    |
 
-
-
-
-
-|   Unnamed: 0 | family                           |         x |   train_logloss |   val_logloss |   train_AUC |   val_AUC | selected   |
-|-------------:|:---------------------------------|----------:|----------------:|--------------:|------------:|----------:|:-----------|
-|            0 | Logistic Regression              |     0.001 |          0.3458 |        0.418  |      0.9217 |    0.8805 | True       |
-|            1 | Logistic Regression              |     0.01  |          0.3336 |        0.4248 |      0.9239 |    0.879  | False      |
-|            2 | Logistic Regression              |     0.1   |          0.3318 |        0.4303 |      0.924  |    0.8776 | False      |
-|            3 | Logistic Regression              |     1     |          0.3306 |        0.4318 |      0.9241 |    0.8773 | False      |
-|            4 | Logistic Regression              |    10     |          0.3305 |        0.4326 |      0.9241 |    0.8772 | False      |
-|            5 | Logistic Regression              |   100     |          0.3305 |        0.4325 |      0.9241 |    0.8773 | False      |
-|            6 | MLP neural network               |     1     |          0.2447 |        0.4592 |      0.9606 |    0.869  | False      |
-|            7 | MLP neural network               |    10     |          0.2321 |        0.46   |      0.9645 |    0.8762 | True       |
-|            8 | MLP neural network               |   100     |          0.1973 |        0.5408 |      0.9746 |    0.8668 | False      |
-|            9 | MLP neural network               |  1000     |          0.2034 |        0.5139 |      0.9734 |    0.8702 | False      |
-|           10 | MLP neural network               | 10000     |          0.2044 |        0.5113 |      0.9732 |    0.8696 | False      |
-|           11 | Gradient-boosted trees (XGBoost) |     2     |          0.3008 |        0.3841 |      0.9413 |    0.9003 | False      |
-|           12 | Gradient-boosted trees (XGBoost) |     3     |          0.2773 |        0.3731 |      0.9499 |    0.9058 | False      |
-|           13 | Gradient-boosted trees (XGBoost) |     4     |          0.2555 |        0.3663 |      0.9581 |    0.9109 | False      |
-|           14 | Gradient-boosted trees (XGBoost) |     5     |          0.2373 |        0.3651 |      0.9645 |    0.9124 | False      |
-|           15 | Gradient-boosted trees (XGBoost) |     6     |          0.217  |        0.3653 |      0.9715 |    0.9135 | True       |
-|           16 | Gradient-boosted trees (XGBoost) |     8     |          0.1813 |        0.3705 |      0.9824 |    0.9134 | False      |
-|           17 | Gradient-boosted trees (XGBoost) |    10     |          0.1486 |        0.3672 |      0.9904 |    0.913  | False      |
-
-
-
-
+==this table is bloat. the plots should be enough to show the point, the table should only show selected rows. since we choose and plot against AUC, no need for logloss col== 
 **Reading the plot.** All three panels show the capacity sweeps directly in ROC-AUC:
 
 - Logistic Regression is **bias-dominated** — even at strong regularisation (C=0.001) it reaches its generalization limit, and adding capacity (higher C) only degrades validation AUC as it fits noise.
@@ -2040,7 +1914,6 @@ display(
 
 With each family's setting chosen, we fit the three basic models once on the
 chronological training window and score the 2017 holdout.
-
 
 ```python
 lr = LogisticRegression(C=0.001, max_iter=2000)
@@ -2059,7 +1932,7 @@ mlp = MLPClassifier(
 mlp.fit(Xtr_scaled, y_tr)
 pred_mlp = mlp.predict_proba(Xva_scaled)[:, 1]
 
-# the tuned tree model (single XGBoost) — the blend in 7.4 reuses this prediction
+# the tuned tree model (single XGBoost) — the blend in 7.4 reuses this prediction #==future leakage!== , ==also, this could be a part of the next codechunk. why a specific cell for this ?== 
 pred_xgb = fit_predict("xgb", Xtr_t, y_tr, Xva_t)
 ```
 
@@ -2067,7 +1940,6 @@ pred_xgb = fit_predict("xgb", Xtr_t, y_tr, Xva_t)
 
 The three tuned basic models meet on the same 2017 holdout. Logistic Regression and the
 MLP use the encoded/scaled matrix; XGBoost uses native categoricals.
-
 
 ```python
 family_scores = (
@@ -2087,17 +1959,11 @@ family_scores = (
 display(family_scores)
 ```
 
-
-
-
-|   Unnamed: 0 | model               | family                 |   chrono_AUC |
-|-------------:|:--------------------|:-----------------------|-------------:|
-|            0 | XGBoost (tree)      | gradient-boosted trees |       0.9135 |
-|            1 | Logistic Regression | linear                 |       0.8805 |
-|            2 | MLP neural network  | neural network         |       0.8762 |
-
-
-
+| Unnamed: 0 | model               | family                 | chrono_AUC |
+| ---------- | ------------------- | ---------------------- | ---------- |
+| 0          | XGBoost (tree)      | gradient-boosted trees | 0.9135     |
+| 1          | Logistic Regression | linear                 | 0.8805     |
+| 2          | MLP neural network  | neural network         | 0.8762     |
 
 The gradient-boosted tree performs clearly better on the chronological holdout (~0.04 AUC over both baselines), which matches the EDA: much of the signal is non-linear, categorical, and interaction-driven. Logistic Regression is a useful reference floor; the MLP adds flexibility, but it still has to reconstruct categorical splits, missingness flags, and thresholds from a one-hot matrix. From here we use the tree model as the main direction and try to improve it.
 
@@ -2108,7 +1974,6 @@ After choosing trees, we try to improve them in two ways: **(a)** tune the boost
 ### (a) Boosting budget: number of trees × learning rate
 
 The number of trees and the learning rate interact directly. Consistent with our validation choice, we evaluate the tree budget directly in ROC-AUC. We evaluate various tree counts across two learning rate settings:
-
 
 ```python
 budget_rows = []
@@ -2189,32 +2054,22 @@ display(
 )  # Highlight the point of maximum validation AUC
 ```
 
+svg
 
-    
-![svg](notebook_files/notebook_81_0.svg)
-    
-
-
-
-
-
-|   Unnamed: 0 |   learning_rate |   n_trees |   train_logloss |   val_logloss |   train_AUC |   val_AUC |
-|-------------:|----------------:|----------:|----------------:|--------------:|------------:|----------:|
-|            0 |            0.1  |        50 |          0.2749 |        0.3729 |      0.9534 |    0.9078 |
-|            1 |            0.1  |       100 |          0.2396 |        0.365  |      0.9644 |    0.9119 |
-|            2 |            0.1  |       200 |          0.2032 |        0.3675 |      0.9756 |    0.9125 |
-|            3 |            0.1  |       400 |          0.162  |        0.3764 |      0.9866 |    0.9115 |
-|            4 |            0.1  |       700 |          0.1248 |        0.3903 |      0.9939 |    0.9075 |
-|            5 |            0.1  |      1000 |          0.1    |        0.4034 |      0.997  |    0.9063 |
-|            6 |            0.03 |        50 |          0.368  |        0.439  |      0.9402 |    0.8978 |
-|            7 |            0.03 |       100 |          0.3044 |        0.3901 |      0.9482 |    0.9062 |
-|            8 |            0.03 |       200 |          0.2673 |        0.3692 |      0.9556 |    0.9101 |
-|            9 |            0.03 |       400 |          0.2305 |        0.3643 |      0.9673 |    0.9125 |
-|           10 |            0.03 |       700 |          0.1989 |        0.3662 |      0.977  |    0.9135 |
-|           11 |            0.03 |      1000 |          0.1791 |        0.3675 |      0.9825 |    0.9133 |
-
-
-
+| Unnamed: 0 | learning_rate | n_trees | train_logloss | val_logloss | train_AUC | val_AUC |
+| ---------- | ------------- | ------- | ------------- | ----------- | --------- | ------- |
+| 0          | 0.1           | 50      | 0.2749        | 0.3729      | 0.9534    | 0.9078  |
+| 1          | 0.1           | 100     | 0.2396        | 0.365       | 0.9644    | 0.9119  |
+| 2          | 0.1           | 200     | 0.2032        | 0.3675      | 0.9756    | 0.9125  |
+| 3          | 0.1           | 400     | 0.162         | 0.3764      | 0.9866    | 0.9115  |
+| 4          | 0.1           | 700     | 0.1248        | 0.3903      | 0.9939    | 0.9075  |
+| 5          | 0.1           | 1000    | 0.1           | 0.4034      | 0.997     | 0.9063  |
+| 6          | 0.03          | 50      | 0.368         | 0.439       | 0.9402    | 0.8978  |
+| 7          | 0.03          | 100     | 0.3044        | 0.3901      | 0.9482    | 0.9062  |
+| 8          | 0.03          | 200     | 0.2673        | 0.3692      | 0.9556    | 0.9101  |
+| 9          | 0.03          | 400     | 0.2305        | 0.3643      | 0.9673    | 0.9125  |
+| 10         | 0.03          | 700     | 0.1989        | 0.3662      | 0.977     | 0.9135  |
+| 11         | 0.03          | 1000    | 0.1791        | 0.3675      | 0.9825    | 0.9133  |
 
 **Reading the plot.** At `lr = 0.1`, training AUC climbs rapidly but validation AUC peaks early (around 200 trees) and declines as the model over-boosts. At `lr = 0.03`, both curves rise more gradually, but the validation curve reaches a higher, more stable plateau (peaking at 700 trees): shrinkage trades compute for generalization. We therefore keep a **low learning rate (0.03) with a generous budget (~700 trees)** for the final models. The remaining tree hyper-parameters follow the same bias–variance logic rather than an exhaustive sweep: `max_depth` (7.2) and `min_child_weight` / `min_child_samples` bound tree complexity, `reg_lambda` penalises leaf weights, and `subsample` / `colsample_bytree` (row/column sampling) inject randomness that decorrelates the trees — all pushing toward lower variance.
 
@@ -2235,6 +2090,7 @@ blend should edge any single booster. (We rank-average, not probability-average,
 model's calibration scale is discarded and only its ordering counts — which is exactly
 what AUC rewards.)
 
+==great idea, terrible presnetaion. very none human vibe. a more natural and a human stlye prose would be more like: “To squeeze even higher AUC, we attempt to blend / assmble additional gradient boosted models, hoping that they could slightly differ in erros, and thus giving us more accurate results. two candidats are CatBoost (justify why we belive it could increase AUC XGBOost), and LightGBM (justifty why we think it could increase AUC / improve predictions when blended with the first two (i guess rthe hustification is “the model works a bit different so it might see opatterns the first ones dont” or somthing simnilar). 
 
 ```python
 pred_t = {
@@ -2269,18 +2125,12 @@ blend_check["delta_vs_XGBoost"] = (blend_check["chrono_AUC"] - xgb_auc).round(4)
 display(blend_check)
 ```
 
-
-
-
-|   Unnamed: 0 | model                             |   chrono_AUC |   delta_vs_XGBoost |
-|-------------:|:----------------------------------|-------------:|-------------------:|
-|            0 | Rank-average blend (LGBM+XGB+Cat) |       0.9156 |             0.0021 |
-|            1 | XGBoost (tuned)                   |       0.9135 |             0      |
-|            2 | LightGBM (tuned)                  |       0.9135 |            -0.0001 |
-|            3 | CatBoost (tuned)                  |       0.913  |            -0.0005 |
-
-
-
+| Unnamed: 0 | model                             | chrono_AUC | delta_vs_XGBoost |
+| ---------- | --------------------------------- | ---------- | ---------------- |
+| 0          | Rank-average blend (LGBM+XGB+Cat) | 0.9156     | 0.0021           |
+| 1          | XGBoost (tuned)                   | 0.9135     | 0                |
+| 2          | LightGBM (tuned)                  | 0.9135     | -0.0001          |
+| 3          | CatBoost (tuned)                  | 0.913      | -0.0005          |
 
 The three boosters perform comparably, but the rank-average blend provides a minor but stable generalization improvement by averaging out individual model variance. We therefore select the rank-average blend as our final modeling pipeline.
 
@@ -2289,7 +2139,7 @@ The three boosters perform comparably, but the rank-average blend provides a min
 With the model chosen, we isolate the single feature decision the chronological framing
 motivated: the linear time index `days_since_epoch`. We use the representative LightGBM
 (not the full blend) so the feature effect is not diluted by averaging, and we score
-three deliberate comparators against it:
+three deliberate comparators against it: ==why use LightGBM?==, ==is this section even required ? if so, isnt it wierd we do it now and not in rpev feature eng/ tuning ? if it isrequird, it could be presented as “previously, we hypothisized tha tlinear time index could help. now that weve chosen our model and tuned it, we proof/disproof it. (and thats it, no additional slop)== 
 
 - **no time index** — the counterfactual, to measure the feature's marginal value;
 - **recency sample-weighting** — a plausible _alternative_ way to emphasise recent rows
@@ -2304,7 +2154,6 @@ training range, but the test window sits immediately after training: a monotone
 `days_since_epoch` lets late-period splits isolate the most recent regime, so test rows
 inherit the behaviour of the closest-in-time training data rather than the global
 average.
-
 
 ```python
 pred_lgbm_no_time = fit_predict("lgbm", Xtr_n, y_tr, Xva_n)
@@ -2342,18 +2191,12 @@ ablation = pd.DataFrame({
 display(ablation)
 ```
 
-
-
-
-|   Unnamed: 0 | configuration                                     |    AUC | validation   |
-|-------------:|:--------------------------------------------------|-------:|:-------------|
-|            0 | LightGBM, no time index                           | 0.9112 | chrono       |
-|            1 | LightGBM, + time index                            | 0.9135 | chrono       |
-|            2 | LightGBM + recency weights (rejected)             | 0.9122 | chrono       |
-|            3 | LightGBM, random split (optimistic — do NOT tr... | 0.9637 | random       |
-
-
-
+| Unnamed: 0 | configuration                                     | AUC    | validation |
+| ---------- | ------------------------------------------------- | ------ | ---------- |
+| 0          | LightGBM, no time index                           | 0.9112 | chrono     |
+| 1          | LightGBM, + time index                            | 0.9135 | chrono     |
+| 2          | LightGBM + recency weights (rejected)             | 0.9122 | chrono     |
+| 3          | LightGBM, random split (optimistic — do NOT tr... | 0.9637 | random     |
 
 **What the table shows.**
 
@@ -2364,9 +2207,8 @@ display(ablation)
 # 8. Model evaluation
 
 AUC is the competition metric, but operations act on a **threshold**. We evaluate the chosen blend on the chronological holdout with ROC and precision–recall curves. For confusion-matrix diagnostics, we use the mean boosted-tree probability (`blend_prob`), because the submitted rank-average score (`blend_t`) is optimized for ranking and is not calibrated. Rank-averaging is good for AUC because it ignores model-specific calibration scales, but after converting predictions to rank percentiles, a threshold like `0.5` no longer means `P(drop) >= 0.5`.
-
+==this reads a little wierd, might be reuqired, but check instructions to verify, and if so, work the language. it needs to read like a human student. not like an ai coding agent.== 
 ## 8.1 ROC & precision–recall curves
-
 
 ```python
 _fig, _axes = plt.subplots(1, 2, figsize=(15, 5.5))
@@ -2404,18 +2246,13 @@ plt.tight_layout()
 plt.show()
 ```
 
-
-    
-![svg](notebook_files/notebook_90_0.svg)
-    
-
+svg
 
 The blend has the best holdout AUC in this comparison, so it is the selected ranking score.
 
 ## 8.2 Confusion matrix & threshold metrics
 
-At the default 0.5 threshold we turn the mean boosted-tree probabilities into hard decisions and read off the operational metrics. This is a diagnostic threshold, not the submitted rank-average score. Thresholding the rank-average at 0.5 would only flag roughly the riskier half of the rows; it would not be a probability cutoff.
-
+At the default 0.5 threshold we turn the mean boosted-tree probabilities into hard decisions and read off the operational metrics. This is a diagnostic threshold, not the submitted rank-average score. Thresholding the rank-average at 0.5 would only flag roughly the riskier half of the rows; it would not be a probability cutoff. ==this par goes above and beyond to justify the 0.5 threshold. note that if reuiqrements require confusion matrix (i belive it does) so its ovious we need to decide on a thresh, so we could just say “for confusion matrix we must choose a threshhold, differnet thresholds serves different porpuses, and depends on Nova’s preferences and need. We therfore use a general 0.5 threshold which is a natural choice”== 
 
 ```python
 y_hat = (blend_prob >= 0.5).astype(int)
@@ -2441,24 +2278,21 @@ print(f'AUC of selected rank-average score: {roc_auc_score(y_va, blend_t):.4f}')
 print(f'AUC of mean booster probability: {roc_auc_score(y_va, blend_prob):.4f}')
 ```
 
+svg
 
-    
-![svg](notebook_files/notebook_93_0.svg)
-    
+```
+              precision    recall  f1-score   support
 
+   completed      0.862     0.826     0.844      6754
+     dropped      0.773     0.817     0.794      4888
 
-                  precision    recall  f1-score   support
-    
-       completed      0.862     0.826     0.844      6754
-         dropped      0.773     0.817     0.794      4888
-    
-        accuracy                          0.822     11642
-       macro avg      0.817     0.822     0.819     11642
-    weighted avg      0.825     0.822     0.823     11642
-    
-    AUC of selected rank-average score: 0.9156
-    AUC of mean booster probability: 0.9156
+    accuracy                          0.822     11642
+   macro avg      0.817     0.822     0.819     11642
+weighted avg      0.825     0.822     0.823     11642
 
+AUC of selected rank-average score: 0.9156
+AUC of mean booster probability: 0.9156
+```
 
 **What each metric means here.**
 
@@ -2468,12 +2302,13 @@ print(f'AUC of mean booster probability: {roc_auc_score(y_va, blend_prob):.4f}')
   Low recall ⇒ we get blindsided by cancellations.
 - **Accuracy / F1** — overall correctness; useful but threshold-dependent.
 
+==above list reads like robotic ai== 
+
 Because operations can trade these off by moving the threshold (and the grade is AUC), we submit a continuous risk score, not hard labels. If the business needs the score to read as a true probability, a separate calibration step should be added.
 
 ## 8.3 Where is the model unsure?
 
 This distribution shows how predictions are spread, highlighting the proportion of borderline (uncertain) cases near the decision boundary:
-
 
 ```python
 plt.figure(figsize=(9, 4.5))
@@ -2490,21 +2325,17 @@ uncertain = ((blend_prob > 0.40) & (blend_prob < 0.60)).mean() * 100
 print(f"share of holdout in the 0.40–0.60 low-confidence zone: {uncertain:.1f}%")
 ```
 
+svg
 
-    
-![svg](notebook_files/notebook_96_0.svg)
-    
-
-
-    share of holdout in the 0.40–0.60 low-confidence zone: 10.5%
-
+```
+share of holdout in the 0.40–0.60 low-confidence zone: 10.5%
+```
 
 The probability diagnostic is separate from the submitted rank score. Cases in the 0.4–0.6 band are useful examples of orders where the representative models are less separated. To understand why a case falls into this low-confidence zone, we will perform a local SHAP explanation in the next section.
-
+==this par above reads wierd and unclear. what does it try to say==? 
 # 9. Interpretation with SHAP
 
-For model interpretation, we analyze our representative **XGBoost** model. Because computing game-theoretic Shapley values (SHAP) is computationally expensive on the full dataset, we use a representative validation sample of 10,000 rows to ensure notebook execution remains efficient. SHAP attributes each prediction to its features, providing both global feature importance and individual observation explanations.
-
+For model interpretation, we analyze our representative **XGBoost** model. Because computing game-theoretic Shapley values (SHAP) is computationally expensive on the full dataset ==At class we were tahught that TreeShap solves the “game therory” exponential complexity problem. isnt it the case ? couldnt we use the true blended model ? (even at the cost of a slightly smaller sample (lets say 5k ? )== , we use a representative validation sample of 10,000 rows to ensure notebook execution remains efficient. SHAP attributes each prediction to its features, providing both global feature importance and individual observation explanations.
 
 ```python
 shap_model = get_xgb()
@@ -2523,11 +2354,11 @@ if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
     shap_values = shap_values[:, :, 1]
 ```
 
-    XGBoost+time chrono AUC: 0.9135
-
+```
+XGBoost+time chrono AUC: 0.9135
+```
 
 ## 9.1 Global importance (beeswarm + bar)
-
 
 ```python
 shap.summary_plot(shap_values, X_shap, show=False, max_display=20)
@@ -2554,53 +2385,36 @@ plt.show()
 display(top)
 ```
 
+svgsvg
 
-    
-![svg](notebook_files/notebook_101_0.svg)
-    
-
-
-
-    
-![svg](notebook_files/notebook_101_1.svg)
-    
-
-
-
-
-
-|   Unnamed: 0 | feature                     |   mean_abs_shap |
-|-------------:|:----------------------------|----------------:|
-|            0 | Payment_Terms               |          1.2374 |
-|            1 | Origin_Country              |          0.6693 |
-|            2 | days_since_epoch            |          0.5305 |
-|            3 | Agent_ID                    |          0.5042 |
-|            4 | tickets_per_participant     |          0.3554 |
-|            5 | Registration_Days_Before    |          0.3389 |
-|            6 | Pre_Course_Supports_Tickets |          0.2485 |
-|            7 | Enrollment_Type             |          0.2338 |
-|            8 | Client_Category             |          0.2259 |
-|            9 | Origin_Country_freq         |          0.2002 |
-|           10 | got_requested_lab           |          0.1766 |
-|           11 | Registration_Changes        |          0.1201 |
-|           12 | prev_drop_rate              |          0.1078 |
-|           13 | Physical_Course_Kits        |          0.1064 |
-|           14 | Daily_Tuition_Cost          |          0.0863 |
-|           15 | Agent_ID_freq               |          0.0836 |
-|           16 | start_week                  |          0.0836 |
-|           17 | cost_x_days                 |          0.0698 |
-|           18 | Catering_Package            |          0.0426 |
-|           19 | kits_per_participant        |          0.0408 |
-
-
-
+| Unnamed: 0 | feature                     | mean_abs_shap |
+| ---------- | --------------------------- | ------------- |
+| 0          | Payment_Terms               | 1.2374        |
+| 1          | Origin_Country              | 0.6693        |
+| 2          | days_since_epoch            | 0.5305        |
+| 3          | Agent_ID                    | 0.5042        |
+| 4          | tickets_per_participant     | 0.3554        |
+| 5          | Registration_Days_Before    | 0.3389        |
+| 6          | Pre_Course_Supports_Tickets | 0.2485        |
+| 7          | Enrollment_Type             | 0.2338        |
+| 8          | Client_Category             | 0.2259        |
+| 9          | Origin_Country_freq         | 0.2002        |
+| 10         | got_requested_lab           | 0.1766        |
+| 11         | Registration_Changes        | 0.1201        |
+| 12         | prev_drop_rate              | 0.1078        |
+| 13         | Physical_Course_Kits        | 0.1064        |
+| 14         | Daily_Tuition_Cost          | 0.0863        |
+| 15         | Agent_ID_freq               | 0.0836        |
+| 16         | start_week                  | 0.0836        |
+| 17         | cost_x_days                 | 0.0698        |
+| 18         | Catering_Package            | 0.0426        |
+| 19         | kits_per_participant        | 0.0408        |
 
 **Reading the SHAP importance.** The drivers line up with the EDA: `Payment_Terms`, the **time index** (`days_since_epoch`) and seasonality, the **frequency-encoded IDs** (`Agent_ID_freq`, `Company_ID_freq`), registration timing, and the engineered **history/ratio** features. The prominence of the time index is consistent with the boosted-tree ablation in Section 7.5: this representative model uses _when_ an order occurs to score the future window.
 
-### The `Payment_Terms` leakage plausibility assessment
+### The `Payment_Terms` leakage plausibility assessment ==title reads like AI. would be more natural as “Additional inspection for the suspicious payment_terms feature”== 
 
 EDA flagged prepaid-non-refundable as suspiciously strong. SHAP confirms it is influential, but feature importance cannot answer the timing question by itself. We therefore run one small sensitivity check: refit representative XGBoost without `Payment_Terms` and compare chronological AUC. This measures how dependent the model is on the field; the operational logging timestamp remains a separate data-governance check.
-
 
 ```python
 pred_xgb_no_payment = fit_predict(
@@ -2622,21 +2436,14 @@ payment_check["delta_vs_with_payment"] = (
 display(payment_check)
 ```
 
-
-
-
-|   Unnamed: 0 | model                            |   chrono_AUC |   delta_vs_with_payment |
-|-------------:|:---------------------------------|-------------:|------------------------:|
-|            0 | XGBoost + time                   |       0.9135 |                  0      |
-|            1 | XGBoost + time, no Payment_Terms |       0.9098 |                 -0.0037 |
-
-
-
+| Unnamed: 0 | model                            | chrono_AUC | delta_vs_with_payment |
+| ---------- | -------------------------------- | ---------- | --------------------- |
+| 0          | XGBoost + time                   | 0.9135     | 0                     |
+| 1          | XGBoost + time, no Payment_Terms | 0.9098     | -0.0037               |
 
 The model remains strong without `Payment_Terms`, so the field is useful but not the sole source of performance. Our working assumption is that payment terms are set _at registration_ (before cancellation), making them a plausible early risk signal. Before production use, the data owner should audit the exact logging path and confirm that the field is not populated or overwritten after cancellation.
 
 ## 9.2 Dependence view for the top signal
-
 
 ```python
 top_feat = (
@@ -2693,16 +2500,11 @@ except Exception as e:
     print(f'(dependence view skipped for {top_feat}: {e})')
 ```
 
-
-    
-![svg](notebook_files/notebook_106_0.svg)
-    
-
+svg
 
 ## 9.3 Explaining a single low-confidence order
 
 To answer "_how_ does the model handle uncertain observations?", we pick one illustrative XGBoost sample case near P(drop) ≈ 0.5 and decompose its prediction. The waterfall shows which features pushed the score up vs down.
-
 
 ```python
 sample_scores = shap_model.predict_proba(X_shap)[:, 1]
@@ -2726,14 +2528,11 @@ plt.tight_layout()
 plt.show()
 ```
 
-    explaining order at sample position 13 — model P(drop)=0.488
+```
+explaining order at sample position 13 — model P(drop)=0.488
+```
 
-
-
-    
-![svg](notebook_files/notebook_108_1.svg)
-    
-
+svg
 
 For this illustrative borderline order, the positive and negative contributions nearly balance in the representative XGBoost model. In practice, cases like this are good candidates for human follow-up because the model score is near the decision boundary.
 
@@ -2742,7 +2541,6 @@ For this illustrative borderline order, the positive and negative contributions 
 We train our final ensembled boosters (XGBoost, LightGBM, CatBoost) on the complete training dataset.
 The predictions on the test set are rank-averaged to generate the final submission probabilities
 in the required `[Client_ID, Drop_Probability]` format.
-
 
 ```python
 def build_submission(out_path="data/Group_27_Submission_v3.csv", write=False):
@@ -2844,3 +2642,5 @@ The output has the required schema (`Client_ID`, `Drop_Probability`), one row pe
 - Careful leave-one-out / target encoding of `Agent_ID` / `Company_ID` (fit inside CV folds to prevent leakage).
 - Confirm the `Payment_Terms` signal with the data owner before leaning on it in production.
 - Probability **calibration** (isotonic/Platt) if the business needs the scores to read as true probabilities rather than just a good ranking.
+
+

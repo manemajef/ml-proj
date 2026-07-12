@@ -235,8 +235,8 @@ def main() -> None:
     parser.add_argument(
         "--assets-dir",
         "-a",
-        default="docs/assets",
-        help="Directory to save assets/images (default: 'docs/assets')"
+        default="docs",
+        help="Directory to save assets/images (default: 'docs')"
     )
     parser.add_argument(
         "--eval",
