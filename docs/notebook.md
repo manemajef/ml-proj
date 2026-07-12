@@ -107,8 +107,6 @@ for _df in (train_raw, test_raw):
 
 
 
-
-
 | Unnamed: 0                  | dtype          |   n_missing |   missing_% |   n_unique |   n_zero | most_frequent             |
 |:----------------------------|:---------------|------------:|------------:|-----------:|---------:|:--------------------------|
 | Client_ID                   | int64          |           0 |        0    |      63464 |        0 | 1                         |
@@ -135,12 +133,11 @@ for _df in (train_raw, test_raw):
 | Client_Category             | object         |           0 |        0    |        505 |        0 | SaaS & Software Houses    |
 | Submission_Source           | object         |         605 |        0.95 |        328 |        0 | B2B Platforms & Resellers |
 | Returning_Client            | int64          |           0 |        0    |          2 |    61742 | 0.0                       |
-| Agent_ID                    | string         |       11173 |       17.61 |        203 |        0 | 184.0                     |
-| Company_ID                  | string         |       60344 |       95.08 |        184 |        0 | 5181.0                    |
+| Agent_ID                    | float64        |       11173 |       17.61 |        203 |        0 | 184.0                     |
+| Company_ID                  | float64        |       60344 |       95.08 |        184 |        0 | 5181.0                    |
 | Payment_Terms               | object         |         587 |        0.92 |        236 |        0 | Pay Upon Start            |
 | Daily_Tuition_Cost          | float64        |          79 |        0.12 |       4780 |     1079 | 62.0                      |
 | Dropped_Course              | int64          |           0 |        0    |          2 |    37165 | 0.0                       |
-
 
 
 
@@ -396,13 +393,11 @@ for _col in TEXT_COLS:
     Column: Origin_Country
     Unique values: 721
     
-    Top 15 categories:
+    Top 8 categories:
     
     'PRT': (38.6%) | 'FRA': (10.2%) | 'DEU': (6.4%)
     'ESP': (5.7%) | 'GBR': (5.2%) | 'ITA': (4.0%)
-    'BRA': (2.0%) | 'BEL': (2.0%) | 'NLD': (1.8%)
-    'USA': (1.6%) | 'CHE': (1.4%) | 'IRL': (1.2%)
-    'AUT': (1.2%) | 'CHN': (1.0%) | 'prt': (0.9%)
+    'BRA': (2.0%) | 'BEL': (2.0%)
     
     
     ================================================================================
@@ -410,13 +405,11 @@ for _col in TEXT_COLS:
     Column: Catering_Package
     Unique values: 321
     
-    Top 15 categories:
+    Top 8 categories:
     
     'Standard (Coffee Only)': (71.9%) | 'No Food Plan': (10.5%) | 'Lunch Included': (7.5%)
     'standard (coffee only)': (1.8%) | 'STANDARD (COFFEE ONLY)': (1.7%) | ' Standard (Coffee Only)  ': (0.8%)
-    '  Standard (Coffee Only) ': (0.8%) | ' Standard (Coffee Only) ': (0.8%) | '  Standard (Coffee Only)  ': (0.8%)
-    'no food plan': (0.3%) | 'NO FOOD PLAN': (0.3%) | 'lunch included': (0.2%)
-    'LUNCH INCLUDED': (0.2%) | ' No Food Plan  ': (0.1%) | ' No Food Plan ': (0.1%)
+    '  Standard (Coffee Only) ': (0.8%) | ' Standard (Coffee Only) ': (0.8%)
     
     
     ================================================================================
@@ -447,11 +440,11 @@ for _col in TEXT_COLS:
     Column: Assigned_Lab_Config
     Unique values: 9
     
-    Top 9 categories:
+    Top 8 categories:
     
     'Standard PC (Windows)': (72.4%) | 'Linux Workstation': (18.4%) | 'Laptop Docking Station': (2.9%)
     'MacOS Station': (2.5%) | 'Dual Monitor Setup': (2.5%) | 'High-GPU Unit': (0.8%)
-    'Server Access Terminal': (0.4%) | 'Touch Screen Interface': (0.2%) | 'VR/AR Station': (0.0%)
+    'Server Access Terminal': (0.4%) | 'Touch Screen Interface': (0.2%)
     
     
     ================================================================================
@@ -459,13 +452,11 @@ for _col in TEXT_COLS:
     Column: Enrollment_Type
     Unique values: 298
     
-    Top 15 categories:
+    Top 8 categories:
     
     'General Admission': (64.6%) | 'Affiliated Admission': (21.6%) | 'Contractual Agreement': (3.2%)
     'general admission': (1.6%) | 'GENERAL ADMISSION': (1.6%) | ' General Admission  ': (0.8%)
-    ' General Admission ': (0.7%) | '  General Admission ': (0.7%) | '  General Admission  ': (0.7%)
-    'AFFILIATED ADMISSION': (0.6%) | 'affiliated admission': (0.6%) | 'Organizational Arrangement': (0.3%)
-    ' Affiliated Admission  ': (0.2%) | '  Affiliated Admission ': (0.2%) | '  Affiliated Admission  ': (0.2%)
+    ' General Admission ': (0.7%) | '  General Admission ': (0.7%)
     
     
     ================================================================================
@@ -473,13 +464,11 @@ for _col in TEXT_COLS:
     Column: Lanyard_Color
     Unique values: 240
     
-    Top 15 categories:
+    Top 8 categories:
     
     'Blue': (49.6%) | 'Black': (21.0%) | 'Red': (10.1%)
     'Orange': (5.2%) | 'Green': (3.9%) | 'BLUE': (1.2%)
-    'blue': (1.2%) | '  Blue  ': (0.6%) | ' Blue  ': (0.6%)
-    ' Blue ': (0.6%) | '  Blue ': (0.5%) | 'black': (0.5%)
-    'BLACK': (0.5%) | 'red': (0.3%) | 'RED': (0.3%)
+    'blue': (1.2%) | '  Blue  ': (0.6%)
     
     
     ================================================================================
@@ -487,13 +476,11 @@ for _col in TEXT_COLS:
     Column: Client_Category
     Unique values: 505
     
-    Top 15 categories:
+    Top 8 categories:
     
     'SaaS & Software Houses': (41.4%) | 'Traditional IT & Telecomm': (20.4%) | 'Big Tech & Multinationals': (16.8%)
     'FinTech & Banking': (6.6%) | 'Industrial Tech & IoT': (3.7%) | 'saas & software houses': (1.1%)
-    'SAAS & SOFTWARE HOUSES': (1.0%) | 'Non-Profit & EduTech': (0.7%) | 'TRADITIONAL IT & TELECOMM': (0.5%)
-    'traditional it & telecomm': (0.5%) | ' SaaS & Software Houses ': (0.5%) | '  SaaS & Software Houses  ': (0.5%)
-    '  SaaS & Software Houses ': (0.5%) | ' SaaS & Software Houses  ': (0.5%) | 'big tech & multinationals': (0.4%)
+    'SAAS & SOFTWARE HOUSES': (1.0%) | 'Non-Profit & EduTech': (0.7%)
     
     
     ================================================================================
@@ -501,13 +488,11 @@ for _col in TEXT_COLS:
     Column: Submission_Source
     Unique values: 328
     
-    Top 15 categories:
+    Top 8 categories:
     
     'B2B Platforms & Resellers': (77.4%) | 'Direct Website Registration': (7.4%) | 'Dedicated Sales Team': (4.1%)
     'B2B PLATFORMS & RESELLERS': (2.0%) | 'b2b platforms & resellers': (1.9%) | ' B2B Platforms & Resellers  ': (0.9%)
-    '  B2B Platforms & Resellers ': (0.9%) | ' B2B Platforms & Resellers ': (0.8%) | '  B2B Platforms & Resellers  ': (0.8%)
-    'Unknown': (0.4%) | '?': (0.3%) | 'Government Procurement System': (0.2%)
-    'DIRECT WEBSITE REGISTRATION': (0.2%) | 'direct website registration': (0.2%) | 'DEDICATED SALES TEAM': (0.1%)
+    '  B2B Platforms & Resellers ': (0.9%) | ' B2B Platforms & Resellers ': (0.8%)
     
     
     ================================================================================
@@ -515,13 +500,11 @@ for _col in TEXT_COLS:
     Column: Payment_Terms
     Unique values: 236
     
-    Top 15 categories:
+    Top 8 categories:
     
     'Pay Upon Start': (73.8%) | 'Prepaid (Non-Refundable)': (15.3%) | 'PAY UPON START': (1.9%)
     'pay upon start': (1.8%) | ' Pay Upon Start ': (0.9%) | '  Pay Upon Start  ': (0.8%)
-    ' Pay Upon Start  ': (0.8%) | '  Pay Upon Start ': (0.8%) | 'prepaid (non-refundable)': (0.4%)
-    'PREPAID (NON-REFUNDABLE)': (0.4%) | 'Unknown': (0.3%) | '?': (0.3%)
-    '  Prepaid (Non-Refundable) ': (0.2%) | ' Prepaid (Non-Refundable) ': (0.2%) | '  Prepaid (Non-Refundable)  ': (0.2%)
+    ' Pay Upon Start  ': (0.8%) | '  Pay Upon Start ': (0.8%)
     
 
 
@@ -558,24 +541,7 @@ def canonicalize(s: pd.Series) -> pd.Series:
         .str.replace('\\s+', ' ', regex=True)
         .str.strip()
     )
-
 ```
-
-
-
-
-|   Unnamed: 0 | column            | true_category             |   raw_spellings_of_it |   junk_strings | sample_raw_spellings                                                                                                                                                                                                                             |
-|-------------:|:------------------|:--------------------------|----------------------:|---------------:|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|            0 | Origin_Country    | prt                       |                    42 |              0 | 'PRT', 'prt', ' PRT ', ' PRT ', ' PRT ', ' PRT ', 'PRT#', '#PRT'                                                                                                                                                                                 |
-|            1 | Catering_Package  | standard (coffee only)    |                   182 |              0 | 'Standard (Coffee Only)', 'standard (coffee only)', 'STANDARD (COFFEE ONLY)', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' Standard (Coffee Only) ', ' STANDARD (COFFEE ONLY) '                         |
-|            2 | Enrollment_Type   | general admission         |                   141 |              0 | 'General Admission', 'general admission', 'GENERAL ADMISSION', ' General Admission ', ' General Admission ', ' General Admission ', ' General Admission ', ' general admission '                                                                 |
-|            3 | Lanyard_Color     | blue                      |                    76 |              0 | 'Blue', 'BLUE', 'blue', ' Blue ', ' Blue ', ' Blue ', ' Blue ', 'Blu#e'                                                                                                                                                                          |
-|            4 | Client_Category   | saas & software houses    |                   141 |              1 | 'SaaS & Software Houses', 'saas & software houses', 'SAAS & SOFTWARE HOUSES', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', ' SaaS & Software Houses ', 'Saa*S & Software Houses'                          |
-|            5 | Submission_Source | b2b platforms & resellers |                   196 |              2 | 'B2B Platforms & Resellers', 'B2B PLATFORMS & RESELLERS', 'b2b platforms & resellers', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B Platforms & Resellers ', ' B2B PLATFORMS & RESELLERS ' |
-|            6 | Payment_Terms     | pay upon start            |                   133 |              2 | 'Pay Upon Start', 'PAY UPON START', 'pay upon start', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', ' Pay Upon Start ', 'Pay Upon# Start'                                                                                          |
-
-
-
 
 We normalize case, surrounding whitespace, repeated spaces, and injected punctuation. Placeholder labels such as `Unknown` and `?` become missing values rather than new categories. The same deterministic cleaning function will be applied to train and test.
 
@@ -1232,7 +1198,7 @@ plt.show()
 
 |   Unnamed: 0 | column             |   raw_train_min |   raw_train_max | problem                   | action          |   train_rows_affected |   test_rows_affected | reason                                            |
 |-------------:|:-------------------|----------------:|----------------:|:--------------------------|:----------------|----------------------:|---------------------:|:--------------------------------------------------|
-|            0 | Students_Count     |               0 |            9999 | 9999 placeholder          | clip to <= 10   |                    55 |                   12 | corporate classroom groups are single-/low-dou... |
+|            0 | Students_Count     |               0 |            9999 | 9999 placeholder          | clip to <= 10   |                    55 |                   12 | repeated 9999 values are isolated placeholders... |
 |            1 | Practical_Hours    |              -5 |           10000 | negative values and 10000 | clip to [0, 12] |                   121 |                   23 | course hours cannot be negative; 12 covers a l... |
 |            2 | Daily_Tuition_Cost |               0 |            5400 | 5400 value                | clip to <= 600  |                     1 |                    0 | 5400 is far beyond the valid fee range; 600 ke... |
 
@@ -1495,14 +1461,14 @@ adversarial_validation()
     adversarial AUC (train vs test): 0.935  (0.5=identical, 1.0=trivially separable)
     
     top drift drivers:
-    Daily_Tuition_Cost          0.125937
-    Prev_Course_Dropouts        0.085177
-    Registration_Days_Before    0.076319
-    Waiting_List_Days           0.074023
-    Catering_Package            0.065934
-    Assigned_Lab_Config         0.064619
-    Client_Category             0.053575
-    Enrollment_Type             0.052758
+    Daily_Tuition_Cost          0.126626
+    Prev_Course_Dropouts        0.079528
+    Registration_Days_Before    0.077459
+    Waiting_List_Days           0.072729
+    Assigned_Lab_Config         0.070094
+    Catering_Package            0.063975
+    Enrollment_Type             0.059224
+    Client_Category             0.054426
     dtype: float32
 
 
@@ -1782,26 +1748,11 @@ pred_mlp = selected_predictions['mlp']
 
 
 
-|   Unnamed: 0 | family                           |         x |   train_logloss |   val_logloss |   train_AUC |   val_AUC | selected   |
-|-------------:|:---------------------------------|----------:|----------------:|--------------:|------------:|----------:|:-----------|
-|            0 | Logistic Regression              |     0.001 |          0.3458 |        0.418  |      0.9217 |    0.8805 | True       |
-|            1 | Logistic Regression              |     0.01  |          0.3336 |        0.4248 |      0.9239 |    0.879  | False      |
-|            2 | Logistic Regression              |     0.1   |          0.3318 |        0.4303 |      0.924  |    0.8776 | False      |
-|            3 | Logistic Regression              |     1     |          0.3306 |        0.4318 |      0.9241 |    0.8773 | False      |
-|            4 | Logistic Regression              |    10     |          0.3305 |        0.4326 |      0.9241 |    0.8772 | False      |
-|            5 | Logistic Regression              |   100     |          0.3305 |        0.4325 |      0.9241 |    0.8773 | False      |
-|            6 | MLP neural network               |     1     |          0.2447 |        0.4592 |      0.9606 |    0.869  | False      |
-|            7 | MLP neural network               |    10     |          0.2321 |        0.46   |      0.9645 |    0.8762 | True       |
-|            8 | MLP neural network               |   100     |          0.1973 |        0.5408 |      0.9746 |    0.8668 | False      |
-|            9 | MLP neural network               |  1000     |          0.2034 |        0.5139 |      0.9734 |    0.8702 | False      |
-|           10 | MLP neural network               | 10000     |          0.2044 |        0.5113 |      0.9732 |    0.8696 | False      |
-|           11 | Gradient-boosted trees (XGBoost) |     2     |          0.3008 |        0.3841 |      0.9413 |    0.9003 | False      |
-|           12 | Gradient-boosted trees (XGBoost) |     3     |          0.2773 |        0.3731 |      0.9499 |    0.9058 | False      |
-|           13 | Gradient-boosted trees (XGBoost) |     4     |          0.2555 |        0.3663 |      0.9581 |    0.9109 | False      |
-|           14 | Gradient-boosted trees (XGBoost) |     5     |          0.2373 |        0.3651 |      0.9645 |    0.9124 | False      |
-|           15 | Gradient-boosted trees (XGBoost) |     6     |          0.217  |        0.3653 |      0.9715 |    0.9135 | True       |
-|           16 | Gradient-boosted trees (XGBoost) |     8     |          0.1813 |        0.3705 |      0.9824 |    0.9134 | False      |
-|           17 | Gradient-boosted trees (XGBoost) |    10     |          0.1486 |        0.3672 |      0.9904 |    0.913  | False      |
+|   Unnamed: 0 | family                           |      x |   train_AUC |   val_AUC |
+|-------------:|:---------------------------------|-------:|------------:|----------:|
+|            0 | Logistic Regression              |  0.001 |      0.9217 |    0.8805 |
+|            7 | MLP neural network               | 10     |      0.9645 |    0.8762 |
+|           15 | Gradient-boosted trees (XGBoost) |  6     |      0.9715 |    0.9135 |
 
 
 
@@ -1899,6 +1850,23 @@ budget_best[['train_AUC', 'val_AUC']] = budget_best[
 display(budget_best)
 pred_xgb = budget_predictions[(0.03, 700)]
 ```
+
+
+    
+![svg](notebook_files/notebook_76_0.svg)
+    
+
+
+
+
+
+|   Unnamed: 0 |   learning_rate |   n_trees |   train_AUC |   val_AUC |
+|-------------:|----------------:|----------:|------------:|----------:|
+|           10 |            0.03 |       700 |      0.977  |    0.9135 |
+|            2 |            0.1  |       200 |      0.9756 |    0.9125 |
+
+
+
 
 At learning rate 0.1, validation AUC peaks around 200 trees and then declines while training AUC keeps rising. At 0.03, improvement is slower but the holdout reaches a slightly higher plateau around 700 trees. We choose `learning_rate=0.03` and `n_estimators=700` for XGBoost.
 
@@ -2010,11 +1978,12 @@ display(blend_check)
 
 
 
-|   Unnamed: 0 | model               | family                 |   chrono_AUC |
-|-------------:|:--------------------|:-----------------------|-------------:|
-|            0 | XGBoost (tree)      | gradient-boosted trees |       0.9135 |
-|            1 | Logistic Regression | linear                 |       0.8805 |
-|            2 | MLP neural network  | neural network         |       0.8762 |
+|   Unnamed: 0 | model                             |   chrono_AUC |   delta_vs_XGBoost |
+|-------------:|:----------------------------------|-------------:|-------------------:|
+|            0 | Rank-average blend (LGBM+XGB+Cat) |       0.9156 |             0.0021 |
+|            1 | XGBoost (tuned)                   |       0.9135 |             0      |
+|            2 | LightGBM (fixed setting)          |       0.9135 |            -0.0001 |
+|            3 | CatBoost (fixed setting)          |       0.913  |            -0.0005 |
 
 
 
@@ -2023,18 +1992,26 @@ All three boosters perform similarly on this holdout. Adding the fixed LightGBM 
 
 ## 7.4 Returning to the time-index hypothesis
 
-EDA suggested that the long-term time position might help. Because XGBoost performed best in the family comparison, we use it to test `days_since_epoch` directly. We also compare recency weighting and a random split.
+EDA suggested that the long-term time position might help. Now that the rank-average blend is selected, we test `days_since_epoch` on that full blend. We also compare recency weighting and a random split using the same three-model combination.
 
 Trees cannot extrapolate a linear trend beyond the observed range, but the index can still separate older and more recent training regimes. Whether that helps is an empirical question answered by the chronological holdout below.
 
 
 ```python
-pred_xgb_no_time = fit_predict_xgb(Xtr_n, y_tr, Xva_n)
+model_names = ("lgbm", "xgb", "cat")
+pred_blend_no_time = rank_avg(
+    [fit_predict(name, Xtr_n, y_tr, Xva_n) for name in model_names]
+)
 
 # rejected idea: down-weight old rows by a 1-year half-life
 age = (tr_raw["Course_Start_Date"].max() - tr_raw["Course_Start_Date"]).dt.days
 w = np.power(0.5, age / 365.0).values
-pred_recency = fit_predict_xgb(Xtr_t, y_tr, Xva_t, sample_weight=w)
+pred_blend_recency = rank_avg(
+    [
+        fit_predict(name, Xtr_t, y_tr, Xva_t, sample_weight=w)
+        for name in model_names
+    ]
+)
 
 # Diagnostic only: a random split mixes time periods and is optimistic for
 # the future-window task. Its frequency maps still use training rows only.
@@ -2045,20 +2022,25 @@ fm_r = make_freq_maps(tr_r)
 Xtr_r = build_features(tr_r, fm_r)
 Xva_r = build_features(va_r, fm_r)
 align_categories(Xtr_r, Xva_r)
-pred_random = fit_predict_xgb(Xtr_r, tr_r[TARGET].values, Xva_r)
+pred_blend_random = rank_avg(
+    [
+        fit_predict(name, Xtr_r, tr_r[TARGET].values, Xva_r)
+        for name in model_names
+    ]
+)
 
 ablation = pd.DataFrame({
     "configuration": [
-        "XGBoost, no time index",
-        "XGBoost, + time index",
-        "XGBoost + recency weights",
-        "XGBoost, random split (diagnostic only)",
+        "Rank-average blend, no time index",
+        "Rank-average blend, + time index",
+        "Rank-average blend + recency weights",
+        "Rank-average blend, random split (diagnostic only)",
     ],
     "AUC": [
-        roc_auc_score(y_va, pred_xgb_no_time),
-        roc_auc_score(y_va, pred_xgb),
-        roc_auc_score(y_va, pred_recency),
-        roc_auc_score(va_r[TARGET].values, pred_random),
+        roc_auc_score(y_va, pred_blend_no_time),
+        roc_auc_score(y_va, blend_t),
+        roc_auc_score(y_va, pred_blend_recency),
+        roc_auc_score(va_r[TARGET].values, pred_blend_random),
     ],
     "validation": ["chrono", "chrono", "chrono", "random"],
 })
@@ -2066,37 +2048,23 @@ display(ablation)
 ```
 
 
-    
-![svg](notebook_files/notebook_81_0.svg)
-    
+
+
+|   Unnamed: 0 | configuration                                     |    AUC | validation   |
+|-------------:|:--------------------------------------------------|-------:|:-------------|
+|            0 | Rank-average blend, no time index                 | 0.9122 | chrono       |
+|            1 | Rank-average blend, + time index                  | 0.9156 | chrono       |
+|            2 | Rank-average blend + recency weights              | 0.9149 | chrono       |
+|            3 | Rank-average blend, random split (diagnostic o... | 0.962  | random       |
 
 
 
 
-
-|   Unnamed: 0 |   learning_rate |   n_trees |   train_logloss |   val_logloss |   train_AUC |   val_AUC |
-|-------------:|----------------:|----------:|----------------:|--------------:|------------:|----------:|
-|            0 |            0.1  |        50 |          0.2749 |        0.3729 |      0.9534 |    0.9078 |
-|            1 |            0.1  |       100 |          0.2396 |        0.365  |      0.9644 |    0.9119 |
-|            2 |            0.1  |       200 |          0.2032 |        0.3675 |      0.9756 |    0.9125 |
-|            3 |            0.1  |       400 |          0.162  |        0.3764 |      0.9866 |    0.9115 |
-|            4 |            0.1  |       700 |          0.1248 |        0.3903 |      0.9939 |    0.9075 |
-|            5 |            0.1  |      1000 |          0.1    |        0.4034 |      0.997  |    0.9063 |
-|            6 |            0.03 |        50 |          0.368  |        0.439  |      0.9402 |    0.8978 |
-|            7 |            0.03 |       100 |          0.3044 |        0.3901 |      0.9482 |    0.9062 |
-|            8 |            0.03 |       200 |          0.2673 |        0.3692 |      0.9556 |    0.9101 |
-|            9 |            0.03 |       400 |          0.2305 |        0.3643 |      0.9673 |    0.9125 |
-|           10 |            0.03 |       700 |          0.1989 |        0.3662 |      0.977  |    0.9135 |
-|           11 |            0.03 |      1000 |          0.1791 |        0.3675 |      0.9825 |    0.9133 |
-
-
-
-
-Adding the time index improves XGBoost on the chronological holdout, while recency weighting does not improve on that result. The random split mixes periods and reaches a much higher AUC, showing why it gives an optimistic estimate for the later test window.
+The table tests the time index and recency weighting on the selected blend. The random split mixes periods and is included only to show why that validation design gives an optimistic estimate for the later test window.
 
 # 8. Model evaluation
 
-We use the selected rank-average score for ROC-AUC and precision-recall comparison. The confusion matrix and local interpretation use XGBoost probabilities because these analyses require a threshold on one fitted model.
+We use the selected rank-average score throughout the evaluation below.
 
 ## 8.1 ROC & precision–recall curves
 
@@ -2147,12 +2115,11 @@ The blend has the best holdout AUC in this comparison, so it is the selected ran
 
 ## 8.2 Confusion matrix & threshold metrics
 
-A confusion matrix requires a threshold, so we use 0.5 as a simple reference point. Nova Academy could later adjust it according to the relative cost of unnecessary follow-up and missed cancellations.
+A confusion matrix requires a threshold, so we use 0.5 as a simple reference cutoff on the selected rank-average risk score. This is not a 50% cancellation probability: rank averaging preserves ordering but discards the individual models' probability scales. Nova Academy could later adjust the cutoff according to the relative cost of unnecessary follow-up and missed cancellations.
 
 
 ```python
-xgb_prob = pred_t['xgb']
-y_hat = (xgb_prob >= 0.5).astype(int)
+y_hat = (blend_t >= 0.5).astype(int)
 cm = confusion_matrix(y_va, y_hat)
 _fig, _ax = plt.subplots(figsize=(5, 4))
 sns.heatmap(
@@ -2165,14 +2132,13 @@ sns.heatmap(
     yticklabels=['true completed', 'true dropped'],
     ax=_ax,
 )
-_ax.set_title('Confusion matrix — XGBoost @ 0.5')
+_ax.set_title('Confusion matrix — rank-average blend @ 0.5')
 plt.tight_layout()
 plt.show()
 print(
     classification_report(y_va, y_hat, target_names=['completed', 'dropped'], digits=3)
 )
 print(f'AUC of selected rank-average score: {roc_auc_score(y_va, blend_t):.4f}')
-print(f'AUC of representative XGBoost: {roc_auc_score(y_va, xgb_prob):.4f}')
 ```
 
 
@@ -2183,38 +2149,37 @@ print(f'AUC of representative XGBoost: {roc_auc_score(y_va, xgb_prob):.4f}')
 
                   precision    recall  f1-score   support
     
-       completed      0.862     0.826     0.844      6754
-         dropped      0.773     0.817     0.794      4888
+       completed      0.887     0.770     0.825      6754
+         dropped      0.732     0.865     0.793      4888
     
-        accuracy                          0.822     11642
-       macro avg      0.817     0.822     0.819     11642
-    weighted avg      0.825     0.822     0.823     11642
+        accuracy                          0.810     11642
+       macro avg      0.809     0.818     0.809     11642
+    weighted avg      0.822     0.810     0.811     11642
     
     AUC of selected rank-average score: 0.9156
-    AUC of mean booster probability: 0.9156
 
 
-For the dropped class, recall is the share of actual cancellations that XGBoost flags, while precision is the share of its alerts that actually cancel. False positives consume follow-up resources; false negatives leave cancellations unflagged. Accuracy and F1 summarize the chosen threshold but will change if the threshold moves.
+For the dropped class, recall is the share of actual cancellations that the blend flags, while precision is the share of its alerts that actually cancel. False positives consume follow-up resources; false negatives leave cancellations unflagged. Accuracy and F1 summarize this reference cutoff but will change if the cutoff moves.
 
 We submit continuous scores because ROC-AUC evaluates the ordering of registrations across all possible thresholds.
 
 ## 8.3 Registrations near the illustrative threshold
 
-We inspect how many XGBoost predictions fall near the 0.5 reference threshold.
+We inspect how many selected-blend scores fall near the 0.5 reference cutoff.
 
 
 ```python
 plt.figure(figsize=(9, 4.5))
-sns.histplot(xgb_prob, bins=50, kde=True, color="teal")
-plt.axvline(0.5, color="red", ls="--", label="decision boundary")
+sns.histplot(blend_t, bins=50, kde=True, color="teal")
+plt.axvline(0.5, color="red", ls="--", label="reference cutoff")
 plt.axvspan(0.40, 0.60, color="orange", alpha=0.2, label="near-threshold band")
-plt.xlabel("XGBoost predicted P(drop)")
-plt.title("XGBoost prediction distribution")
+plt.xlabel("Rank-average risk score")
+plt.title("Selected-blend score distribution")
 plt.legend()
 plt.tight_layout()
 plt.show()
 
-near_threshold = ((xgb_prob > 0.40) & (xgb_prob < 0.60)).mean() * 100
+near_threshold = ((blend_t > 0.40) & (blend_t < 0.60)).mean() * 100
 print(f"share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%")
 ```
 
@@ -2224,14 +2189,14 @@ print(f"share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%")
     
 
 
-    share of holdout in the 0.40–0.60 low-confidence zone: 10.5%
+    share of holdout in the 0.40–0.60 band: 20.2%
 
 
-We use one registration from this band for the local SHAP explanation below.
+Scores in this band are close to the illustrative cutoff, so small changes in the cutoff can change their binary classification.
 
 # 9. Interpretation with SHAP
 
-We use the tuned XGBoost model for detailed interpretation and then compare its SHAP results with the patterns found during EDA.
+The selected blend averages three sets of prediction ranks and therefore has no single fitted tree structure for SHAP to decompose. We use the tuned XGBoost component as a representative fitted model for detailed interpretation, then compare its SHAP patterns with the earlier EDA.
 
 We compute TreeSHAP values on a fixed validation sample of up to 10,000 rows to keep the analysis reproducible and the runtime manageable.
 
@@ -2329,21 +2294,26 @@ The strongest XGBoost contributions broadly match the earlier exploration: `Paym
 
 ### Checking the suspicious `Payment_Terms` signal
 
-EDA showed that prepaid, non-refundable registrations drop unexpectedly often, and SHAP now ranks `Payment_Terms` first. To see how strongly the model relies on it, we refit XGBoost without the field and compare chronological AUC.
+EDA showed that prepaid, non-refundable registrations drop unexpectedly often, and representative-model SHAP now ranks `Payment_Terms` first. To measure how strongly the selected model relies on it, we refit all three blend components without the field and compare chronological AUC.
 
 
 ```python
-pred_xgb_no_payment = fit_predict(
-    "xgb",
-    Xtr_t.drop(columns=["Payment_Terms"]),
-    y_tr,
-    Xva_t.drop(columns=["Payment_Terms"]),
+Xtr_no_payment = Xtr_t.drop(columns=["Payment_Terms"])
+Xva_no_payment = Xva_t.drop(columns=["Payment_Terms"])
+pred_blend_no_payment = rank_avg(
+    [
+        fit_predict(name, Xtr_no_payment, y_tr, Xva_no_payment)
+        for name in ("lgbm", "xgb", "cat")
+    ]
 )
 payment_check = pd.DataFrame({
-    "model": ["XGBoost + time", "XGBoost + time, no Payment_Terms"],
+    "model": [
+        "Rank-average blend",
+        "Rank-average blend, no Payment_Terms",
+    ],
     "chrono_AUC": [
-        roc_auc_score(y_va, pred_t["xgb"]),
-        roc_auc_score(y_va, pred_xgb_no_payment),
+        roc_auc_score(y_va, blend_t),
+        roc_auc_score(y_va, pred_blend_no_payment),
     ],
 })
 payment_check["delta_vs_with_payment"] = (
@@ -2355,15 +2325,46 @@ display(payment_check)
 
 
 
-|   Unnamed: 0 | model                            |   chrono_AUC |   delta_vs_with_payment |
-|-------------:|:---------------------------------|-------------:|------------------------:|
-|            0 | XGBoost + time                   |       0.9135 |                  0      |
-|            1 | XGBoost + time, no Payment_Terms |       0.9098 |                 -0.0037 |
+|   Unnamed: 0 | model                                |   chrono_AUC |   delta_vs_with_payment |
+|-------------:|:-------------------------------------|-------------:|------------------------:|
+|            0 | Rank-average blend                   |       0.9156 |                  0      |
+|            1 | Rank-average blend, no Payment_Terms |       0.9101 |                 -0.0055 |
 
 
 
 
-Removing `Payment_Terms` lowers chronological AUC from 0.9135 to 0.9098, so the field helps but is not carrying the model by itself. Its exact recording time is still worth confirming with the data owner.
+
+```python
+auc_with_payment = payment_check.loc[
+    payment_check["model"] == "Rank-average blend", "chrono_AUC"
+].iloc[0]
+auc_without_payment = payment_check.loc[
+    payment_check["model"] == "Rank-average blend, no Payment_Terms", "chrono_AUC"
+].iloc[0]
+mo.md(f"""
+Removing `Payment_Terms` changes chronological AUC from {auc_with_payment:.4f} to {auc_without_payment:.4f}. The field's exact recording time is still worth confirming with the data owner.
+""")
+```
+
+
+    ---------------------------------------------------------------------------
+
+    NameError                                 Traceback (most recent call last)
+
+    Cell In[38], line 7
+          1 auc_with_payment = payment_check.loc[
+          2     payment_check["model"] == "Rank-average blend", "chrono_AUC"
+          3 ].iloc[0]
+          4 auc_without_payment = payment_check.loc[
+          5     payment_check["model"] == "Rank-average blend, no Payment_Terms", "chrono_AUC"
+          6 ].iloc[0]
+    ----> 7 mo.md(f"""
+          8 Removing `Payment_Terms` changes chronological AUC from {auc_with_payment:.4f} to {auc_without_payment:.4f}. The field's exact recording time is still worth confirming with the data owner.
+          9 """)
+
+
+    NameError: name 'mo' is not defined
+
 
 ## 9.2 Direction of the strongest non-payment signal
 
@@ -2555,4 +2556,4 @@ Cleaning reduced hundreds of inconsistent text labels to compact category sets. 
 
 The stored rank-average submission received test ROC-AUC **0.889314**, above the required 0.70.
 
-Further work could include rolling temporal validation, confirming when `Payment_Terms` is recorded, and calibrating XGBoost probabilities for cost-based operational thresholds.
+Further work could include rolling temporal validation, confirming when `Payment_Terms` is recorded, and calibrating the selected blend score for cost-based operational thresholds.

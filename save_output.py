@@ -152,58 +152,63 @@ def sync_pipeline(input_file: Path, output_dir: Path, assets_dir: Path, evaluate
     suffix = input_file.suffix.lower()
 
     if suffix == ".ipynb":
-        # Just convert directly using nbconvert (fast, no evaluation)
-        md_file = export_ipynb(input_file, output_dir, assets_dir)
-        print(f"\n[Fast Sync Success]")
-        print(f"Saved Markdown: {md_file}")
-        
-        if export_html:
-            html_file = output_dir / f"{input_file.stem}.html"
-            export_ipynb_to_html(input_file, html_file)
-            print(f"Saved HTML (nbconvert): {html_file}")
-
+        ipynb_file = input_file
+        py_file = input_file.parent / f"{input_file.stem}.py"
     elif suffix == ".py":
-        if not is_marimo_py(input_file):
-            raise RuntimeError(
-                f"{input_file} is a .py file, but it does not look like a marimo notebook."
-            )
-        
-        # Determine the root ipynb file path
+        py_file = input_file
         ipynb_file = input_file.parent / f"{input_file.stem}.ipynb"
-        html_file = output_dir / f"{input_file.stem}.html"
+    else:
+        raise ValueError("Expected a .ipynb file or a marimo .py file")
 
+    is_marimo = py_file.exists() and is_marimo_py(py_file)
+
+    if is_marimo:
         if evaluate:
+            if suffix == ".ipynb":
+                print(f"\n>>> Syncing code from {ipynb_file.name} to {py_file.name} before evaluation...")
+                run(["jupytext", "--to", "py:marimo", str(ipynb_file)])
+
             print("\n>>> Re-evaluating/running notebook to generate fresh outputs (this may take a few minutes)...")
-            # 1. Export .py to .ipynb with evaluation
+            # Export .py to .ipynb with evaluation
             run([
                 "marimo",
                 "export",
                 "ipynb",
-                str(input_file),
+                str(py_file),
                 "-o",
                 str(ipynb_file),
                 "--include-outputs",
                 "-f",
             ])
-            # 2. Convert .ipynb to .md
             md_file = export_ipynb(ipynb_file, output_dir, assets_dir)
             print(f"\n[Full Sync/Eval Success]")
         else:
-            print("\n>>> Running Fast Sync (updating code without re-evaluation)...")
-            # 1. Sync .py and .ipynb using jupytext
-            sync_jupytext(input_file)
-            # 2. Convert .ipynb to .md
-            md_file = export_ipynb(ipynb_file, output_dir, assets_dir)
-            print(f"\n[Fast Sync Success]")
+            if suffix == ".ipynb":
+                print(f"\n>>> Running Fast Sync (syncing code from {ipynb_file.name} to {py_file.name} without re-evaluation)...")
+                run(["jupytext", "--to", "py:marimo", str(ipynb_file)])
+                md_file = export_ipynb(ipynb_file, output_dir, assets_dir)
+                print(f"\n[Fast Sync Success]")
+            else:
+                print("\n>>> Running Fast Sync (updating code without re-evaluation)...")
+                # 1. Sync .py and .ipynb using jupytext
+                sync_jupytext(py_file)
+                
+                print("\nWARNING: Fast Sync on a Marimo (.py) notebook updates the code in the .ipynb file,")
+                print("but does not re-evaluate cells. Outputs for modified cells in the generated markdown")
+                print("will be missing or outdated. To generate fresh outputs, run with --eval.\n")
+                
+                # 2. Convert .ipynb to .md
+                md_file = export_ipynb(ipynb_file, output_dir, assets_dir)
+                print(f"\n[Fast Sync Success]")
 
-        # Run HTML export if requested (always runs marimo evaluation to get styled HTML)
         if export_html:
             print("\n>>> Exporting marimo notebook to HTML (this will run/evaluate the notebook)...")
+            html_file = output_dir / f"{py_file.stem}.html"
             run([
                 "marimo",
                 "export",
                 "html",
-                str(input_file),
+                str(py_file),
                 "-o",
                 str(html_file),
                 "-f",
@@ -212,8 +217,22 @@ def sync_pipeline(input_file: Path, output_dir: Path, assets_dir: Path, evaluate
 
         print(f"Saved/Updated root notebook: {ipynb_file}")
         print(f"Saved Markdown: {md_file}")
+
     else:
-        raise ValueError("Expected a .ipynb file or a marimo .py file")
+        # Standard Jupyter notebook path
+        if suffix == ".ipynb":
+            md_file = export_ipynb(ipynb_file, output_dir, assets_dir)
+            print(f"\n[Fast Sync Success]")
+            print(f"Saved Markdown: {md_file}")
+            
+            if export_html:
+                html_file = output_dir / f"{ipynb_file.stem}.html"
+                export_ipynb_to_html(ipynb_file, html_file)
+                print(f"Saved HTML (nbconvert): {html_file}")
+        else:
+            raise RuntimeError(
+                f"{input_file} is a .py file, but it does not look like a marimo notebook."
+            )
 
 
 def main() -> None:
@@ -223,8 +242,8 @@ def main() -> None:
     parser.add_argument(
         "file",
         nargs="?",
-        default="notebook.py",
-        help="Path to .ipynb or marimo .py file (default: 'notebook.py')"
+        default=None,
+        help="Path to .ipynb or marimo .py file (default: auto-detected based on newer file)"
     )
     parser.add_argument(
         "--output-dir",
@@ -250,9 +269,30 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    target_file = Path(args.file) if args.file is not None else None
+    if target_file is None:
+        # Auto-detect newer file if both notebook.ipynb and notebook.py exist
+        ipynb_candidate = Path("notebook.ipynb")
+        py_candidate = Path("notebook.py")
+        if ipynb_candidate.exists() and py_candidate.exists():
+            mtime_ipynb = ipynb_candidate.stat().st_mtime
+            mtime_py = py_candidate.stat().st_mtime
+            if mtime_ipynb > mtime_py:
+                target_file = ipynb_candidate
+            else:
+                target_file = py_candidate
+        elif ipynb_candidate.exists():
+            target_file = ipynb_candidate
+        elif py_candidate.exists():
+            target_file = py_candidate
+        else:
+            target_file = py_candidate  # Fallback
+
+        print(f"Auto-detected source of truth: '{target_file.name}' (newer modification time)")
+
     try:
         sync_pipeline(
-            Path(args.file),
+            target_file,
             output_dir=Path(args.output_dir),
             assets_dir=Path(args.assets_dir),
             evaluate=args.eval,

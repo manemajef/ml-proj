@@ -1459,12 +1459,7 @@ def _(OneHotEncoder, SEED, XGBClassifier, pd):
         Xv_out = pd.concat([Xv_num, pd.DataFrame(Xv_cat, columns=names)], axis=1)
         return Xt_out, Xv_out
 
-    return (
-        encode_for_continuous_models,
-        fit_predict_xgb,
-        fit_predict_xgb_pair,
-        get_xgb,
-    )
+    return encode_for_continuous_models, fit_predict_xgb_pair, get_xgb
 
 
 @app.cell(hide_code=True)
@@ -1901,7 +1896,7 @@ def _(mo):
     mo.md(r"""
     ## 7.4 Returning to the time-index hypothesis
 
-    EDA suggested that the long-term time position might help. Because XGBoost performed best in the family comparison, we use it to test `days_since_epoch` directly. We also compare recency weighting and a random split.
+    EDA suggested that the long-term time position might help. Now that the rank-average blend is selected, we test `days_since_epoch` on that full blend. We also compare recency weighting and a random split using the same three-model combination.
 
     Trees cannot extrapolate a linear trend beyond the observed range, but the index can still separate older and more recent training regimes. Whether that helps is an empirical question answered by the chronological holdout below.
     """)
@@ -1917,13 +1912,14 @@ def _(
     Xva_n,
     Xva_t,
     align_categories,
+    blend_t,
     build_features,
     display,
-    fit_predict_xgb,
+    fit_predict,
     make_freq_maps,
     np,
     pd,
-    pred_xgb,
+    rank_avg,
     roc_auc_score,
     tr_raw,
     train_raw,
@@ -1931,12 +1927,20 @@ def _(
     y_tr,
     y_va,
 ):
-    pred_xgb_no_time = fit_predict_xgb(Xtr_n, y_tr, Xva_n)
+    model_names = ("lgbm", "xgb", "cat")
+    pred_blend_no_time = rank_avg(
+        [fit_predict(name, Xtr_n, y_tr, Xva_n) for name in model_names]
+    )
 
     # rejected idea: down-weight old rows by a 1-year half-life
     age = (tr_raw["Course_Start_Date"].max() - tr_raw["Course_Start_Date"]).dt.days
     w = np.power(0.5, age / 365.0).values
-    pred_recency = fit_predict_xgb(Xtr_t, y_tr, Xva_t, sample_weight=w)
+    pred_blend_recency = rank_avg(
+        [
+            fit_predict(name, Xtr_t, y_tr, Xva_t, sample_weight=w)
+            for name in model_names
+        ]
+    )
 
     # Diagnostic only: a random split mixes time periods and is optimistic for
     # the future-window task. Its frequency maps still use training rows only.
@@ -1947,20 +1951,25 @@ def _(
     Xtr_r = build_features(tr_r, fm_r)
     Xva_r = build_features(va_r, fm_r)
     align_categories(Xtr_r, Xva_r)
-    pred_random = fit_predict_xgb(Xtr_r, tr_r[TARGET].values, Xva_r)
+    pred_blend_random = rank_avg(
+        [
+            fit_predict(name, Xtr_r, tr_r[TARGET].values, Xva_r)
+            for name in model_names
+        ]
+    )
 
     ablation = pd.DataFrame({
         "configuration": [
-            "XGBoost, no time index",
-            "XGBoost, + time index",
-            "XGBoost + recency weights",
-            "XGBoost, random split (diagnostic only)",
+            "Rank-average blend, no time index",
+            "Rank-average blend, + time index",
+            "Rank-average blend + recency weights",
+            "Rank-average blend, random split (diagnostic only)",
         ],
         "AUC": [
-            roc_auc_score(y_va, pred_xgb_no_time),
-            roc_auc_score(y_va, pred_xgb),
-            roc_auc_score(y_va, pred_recency),
-            roc_auc_score(va_r[TARGET].values, pred_random),
+            roc_auc_score(y_va, pred_blend_no_time),
+            roc_auc_score(y_va, blend_t),
+            roc_auc_score(y_va, pred_blend_recency),
+            roc_auc_score(va_r[TARGET].values, pred_blend_random),
         ],
         "validation": ["chrono", "chrono", "chrono", "random"],
     })
@@ -1971,7 +1980,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Adding the time index improves XGBoost on the chronological holdout, while recency weighting does not improve on that result. The random split mixes periods and reaches a much higher AUC, showing why it gives an optimistic estimate for the later test window.
+    The table tests the time index and recency weighting on the selected blend. The random split mixes periods and is included only to show why that validation design gives an optimistic estimate for the later test window.
     """)
     return
 
@@ -1981,7 +1990,7 @@ def _(mo):
     mo.md(r"""
     # 8. Model evaluation
 
-    We use the selected rank-average score for ROC-AUC and precision-recall comparison. The confusion matrix and local interpretation use XGBoost probabilities because these analyses require a threshold on one fitted model.
+    We use the selected rank-average score throughout the evaluation below.
     """)
     return
 
@@ -2056,7 +2065,7 @@ def _(mo):
     mo.md(r"""
     ## 8.2 Confusion matrix & threshold metrics
 
-    A confusion matrix requires a threshold, so we use 0.5 as a simple reference point. Nova Academy could later adjust it according to the relative cost of unnecessary follow-up and missed cancellations.
+    A confusion matrix requires a threshold, so we use 0.5 as a simple reference cutoff on the selected rank-average risk score. This is not a 50% cancellation probability: rank averaging preserves ordering but discards the individual models' probability scales. Nova Academy could later adjust the cutoff according to the relative cost of unnecessary follow-up and missed cancellations.
     """)
     return
 
@@ -2067,13 +2076,11 @@ def _(
     classification_report,
     confusion_matrix,
     plt,
-    pred_t,
     roc_auc_score,
     sns,
     y_va,
 ):
-    xgb_prob = pred_t['xgb']
-    y_hat = (xgb_prob >= 0.5).astype(int)
+    y_hat = (blend_t >= 0.5).astype(int)
     cm = confusion_matrix(y_va, y_hat)
     _fig, _ax = plt.subplots(figsize=(5, 4))
     sns.heatmap(
@@ -2086,21 +2093,20 @@ def _(
         yticklabels=['true completed', 'true dropped'],
         ax=_ax,
     )
-    _ax.set_title('Confusion matrix — XGBoost @ 0.5')
+    _ax.set_title('Confusion matrix — rank-average blend @ 0.5')
     plt.tight_layout()
     plt.show()
     print(
         classification_report(y_va, y_hat, target_names=['completed', 'dropped'], digits=3)
     )
     print(f'AUC of selected rank-average score: {roc_auc_score(y_va, blend_t):.4f}')
-    print(f'AUC of representative XGBoost: {roc_auc_score(y_va, xgb_prob):.4f}')
-    return (xgb_prob,)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    For the dropped class, recall is the share of actual cancellations that XGBoost flags, while precision is the share of its alerts that actually cancel. False positives consume follow-up resources; false negatives leave cancellations unflagged. Accuracy and F1 summarize the chosen threshold but will change if the threshold moves.
+    For the dropped class, recall is the share of actual cancellations that the blend flags, while precision is the share of its alerts that actually cancel. False positives consume follow-up resources; false negatives leave cancellations unflagged. Accuracy and F1 summarize this reference cutoff but will change if the cutoff moves.
 
     We submit continuous scores because ROC-AUC evaluates the ordering of registrations across all possible thresholds.
     """)
@@ -2112,24 +2118,24 @@ def _(mo):
     mo.md(r"""
     ## 8.3 Registrations near the illustrative threshold
 
-    We inspect how many XGBoost predictions fall near the 0.5 reference threshold.
+    We inspect how many selected-blend scores fall near the 0.5 reference cutoff.
     """)
     return
 
 
 @app.cell
-def _(plt, sns, xgb_prob):
+def _(blend_t, plt, sns):
     plt.figure(figsize=(9, 4.5))
-    sns.histplot(xgb_prob, bins=50, kde=True, color="teal")
-    plt.axvline(0.5, color="red", ls="--", label="decision boundary")
+    sns.histplot(blend_t, bins=50, kde=True, color="teal")
+    plt.axvline(0.5, color="red", ls="--", label="reference cutoff")
     plt.axvspan(0.40, 0.60, color="orange", alpha=0.2, label="near-threshold band")
-    plt.xlabel("XGBoost predicted P(drop)")
-    plt.title("XGBoost prediction distribution")
+    plt.xlabel("Rank-average risk score")
+    plt.title("Selected-blend score distribution")
     plt.legend()
     plt.tight_layout()
     plt.show()
 
-    near_threshold = ((xgb_prob > 0.40) & (xgb_prob < 0.60)).mean() * 100
+    near_threshold = ((blend_t > 0.40) & (blend_t < 0.60)).mean() * 100
     print(f"share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%")
     return
 
@@ -2137,7 +2143,7 @@ def _(plt, sns, xgb_prob):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    We use one registration from this band for the local SHAP explanation below.
+    Scores in this band are close to the illustrative cutoff, so small changes in the cutoff can change their binary classification.
     """)
     return
 
@@ -2147,7 +2153,7 @@ def _(mo):
     mo.md(r"""
     # 9. Interpretation with SHAP
 
-    We use the tuned XGBoost model for detailed interpretation and then compare its SHAP results with the patterns found during EDA.
+    The selected blend averages three sets of prediction ranks and therefore has no single fitted tree structure for SHAP to decompose. We use the tuned XGBoost component as a representative fitted model for detailed interpretation, then compare its SHAP patterns with the earlier EDA.
 
     We compute TreeSHAP values on a fixed validation sample of up to 10,000 rows to keep the analysis reproducible and the runtime manageable.
     """)
@@ -2215,7 +2221,7 @@ def _(mo):
 
     ### Checking the suspicious `Payment_Terms` signal
 
-    EDA showed that prepaid, non-refundable registrations drop unexpectedly often, and SHAP now ranks `Payment_Terms` first. To see how strongly the model relies on it, we refit XGBoost without the field and compare chronological AUC.
+    EDA showed that prepaid, non-refundable registrations drop unexpectedly often, and representative-model SHAP now ranks `Payment_Terms` first. To measure how strongly the selected model relies on it, we refit all three blend components without the field and compare chronological AUC.
     """)
     return
 
@@ -2224,38 +2230,50 @@ def _(mo):
 def _(
     Xtr_t,
     Xva_t,
+    blend_t,
     display,
     fit_predict,
     pd,
-    pred_t,
+    rank_avg,
     roc_auc_score,
     y_tr,
     y_va,
 ):
-    pred_xgb_no_payment = fit_predict(
-        "xgb",
-        Xtr_t.drop(columns=["Payment_Terms"]),
-        y_tr,
-        Xva_t.drop(columns=["Payment_Terms"]),
+    Xtr_no_payment = Xtr_t.drop(columns=["Payment_Terms"])
+    Xva_no_payment = Xva_t.drop(columns=["Payment_Terms"])
+    pred_blend_no_payment = rank_avg(
+        [
+            fit_predict(name, Xtr_no_payment, y_tr, Xva_no_payment)
+            for name in ("lgbm", "xgb", "cat")
+        ]
     )
     payment_check = pd.DataFrame({
-        "model": ["XGBoost + time", "XGBoost + time, no Payment_Terms"],
+        "model": [
+            "Rank-average blend",
+            "Rank-average blend, no Payment_Terms",
+        ],
         "chrono_AUC": [
-            roc_auc_score(y_va, pred_t["xgb"]),
-            roc_auc_score(y_va, pred_xgb_no_payment),
+            roc_auc_score(y_va, blend_t),
+            roc_auc_score(y_va, pred_blend_no_payment),
         ],
     })
     payment_check["delta_vs_with_payment"] = (
         payment_check["chrono_AUC"] - payment_check.loc[0, "chrono_AUC"]
     )
     display(payment_check)
-    return
+    return (payment_check,)
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    Removing `Payment_Terms` lowers chronological AUC from 0.9135 to 0.9098, so the field helps but is not carrying the model by itself. Its exact recording time is still worth confirming with the data owner.
+def _(mo, payment_check):
+    auc_with_payment = payment_check.loc[
+        payment_check["model"] == "Rank-average blend", "chrono_AUC"
+    ].iloc[0]
+    auc_without_payment = payment_check.loc[
+        payment_check["model"] == "Rank-average blend, no Payment_Terms", "chrono_AUC"
+    ].iloc[0]
+    mo.md(f"""
+    Removing `Payment_Terms` changes chronological AUC from {auc_with_payment:.4f} to {auc_without_payment:.4f}. The field's exact recording time is still worth confirming with the data owner.
     """)
     return
 
@@ -2483,7 +2501,7 @@ def _(mo):
 
     The stored rank-average submission received test ROC-AUC **0.889314**, above the required 0.70.
 
-    Further work could include rolling temporal validation, confirming when `Payment_Terms` is recorded, and calibrating XGBoost probabilities for cost-based operational thresholds.
+    Further work could include rolling temporal validation, confirming when `Payment_Terms` is recorded, and calibrating the selected blend score for cost-based operational thresholds.
     """)
     return
 
