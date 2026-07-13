@@ -1,7 +1,3 @@
-```python
-import marimo as mo
-```
-
 # Group 27 — Course-Drop Prediction (Nova Academy)
 
 **Submitters:** Rotem David Semah (ID: `211396593`) · Ron Drach (ID: `213915499`)
@@ -81,6 +77,10 @@ def load_raw(path: str) -> pd.DataFrame:
     return pd.read_csv(path, parse_dates=["Course_Start_Date"])
 ```
 
+    /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+      from .autonotebook import tqdm as notebook_tqdm
+
+
 # 1. Business understanding
 
 Nova Academy prepares cloud environments, catering, equipment, and classroom capacity before each B2B course begins. A cancellation therefore wastes prepared resources and can leave capacity that could have been offered to another group.
@@ -131,7 +131,297 @@ for df in (train_raw, test_raw):
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>dtype</th><th>n_missing</th><th>missing_%</th><th>n_unique</th><th>n_zero</th><th>most_frequent</th></tr></thead><tbody><tr><th>Client_ID</th><td>int64</td><td>0</td><td>0.00</td><td>63464</td><td>0</td><td>1</td></tr><tr><th>Professionals_Count</th><td>int64</td><td>0</td><td>0.00</td><td>5</td><td>338</td><td>2.0</td></tr><tr><th>Students_Count</th><td>float64</td><td>4</td><td>0.01</td><td>5</td><td>59578</td><td>0.0</td></tr><tr><th>Observers_Count</th><td>int64</td><td>0</td><td>0.00</td><td>5</td><td>63149</td><td>0.0</td></tr><tr><th>Course_Start_Date</th><td>datetime64[us]</td><td>0</td><td>0.00</td><td>666</td><td>0</td><td>2015-10-16 00:00:00</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr><tr><th>Agent_ID</th><td>float64</td><td>11173</td><td>17.61</td><td>203</td><td>0</td><td>184.0</td></tr><tr><th>Company_ID</th><td>float64</td><td>60344</td><td>95.08</td><td>184</td><td>0</td><td>5181.0</td></tr><tr><th>Payment_Terms</th><td>str</td><td>587</td><td>0.92</td><td>236</td><td>0</td><td>Pay Upon Start</td></tr><tr><th>Daily_Tuition_Cost</th><td>float64</td><td>79</td><td>0.12</td><td>4780</td><td>1079</td><td>62.0</td></tr><tr><th>Dropped_Course</th><td>int64</td><td>0</td><td>0.00</td><td>2</td><td>37165</td><td>0.0</td></tr></tbody></table><p>29 rows × 6 columns</p></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>dtype</th>
+      <th>n_missing</th>
+      <th>missing_%</th>
+      <th>n_unique</th>
+      <th>n_zero</th>
+      <th>most_frequent</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Client_ID</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>63464</td>
+      <td>0</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>Professionals_Count</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>5</td>
+      <td>338</td>
+      <td>2.0</td>
+    </tr>
+    <tr>
+      <th>Students_Count</th>
+      <td>float64</td>
+      <td>4</td>
+      <td>0.01</td>
+      <td>5</td>
+      <td>59578</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Observers_Count</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>5</td>
+      <td>63149</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Course_Start_Date</th>
+      <td>datetime64[ns]</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>666</td>
+      <td>0</td>
+      <td>2015-10-16 00:00:00</td>
+    </tr>
+    <tr>
+      <th>Practical_Hours</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>18</td>
+      <td>30671</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Theory_Hours</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>29</td>
+      <td>4045</td>
+      <td>2.0</td>
+    </tr>
+    <tr>
+      <th>Registration_Days_Before</th>
+      <td>float64</td>
+      <td>2666</td>
+      <td>4.20</td>
+      <td>423</td>
+      <td>2610</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Origin_Country</th>
+      <td>object</td>
+      <td>557</td>
+      <td>0.88</td>
+      <td>721</td>
+      <td>0</td>
+      <td>PRT</td>
+    </tr>
+    <tr>
+      <th>Catering_Package</th>
+      <td>object</td>
+      <td>407</td>
+      <td>0.64</td>
+      <td>321</td>
+      <td>0</td>
+      <td>Standard (Coffee Only)</td>
+    </tr>
+    <tr>
+      <th>Welcome_Gift_Type</th>
+      <td>object</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>4</td>
+      <td>0</td>
+      <td>Branded Notebook</td>
+    </tr>
+    <tr>
+      <th>Requested_Lab_Config</th>
+      <td>object</td>
+      <td>1736</td>
+      <td>2.74</td>
+      <td>8</td>
+      <td>0</td>
+      <td>Standard PC (Windows)</td>
+    </tr>
+    <tr>
+      <th>Assigned_Lab_Config</th>
+      <td>object</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>9</td>
+      <td>0</td>
+      <td>Standard PC (Windows)</td>
+    </tr>
+    <tr>
+      <th>Prev_Course_Dropouts</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>10</td>
+      <td>58184</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Prev_Course_Attended</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>62</td>
+      <td>62188</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Pre_Course_Supports_Tickets</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>6</td>
+      <td>39830</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Physical_Course_Kits</th>
+      <td>float64</td>
+      <td>1040</td>
+      <td>1.64</td>
+      <td>4</td>
+      <td>60790</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Waiting_List_Days</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>107</td>
+      <td>60089</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Registration_Changes</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>19</td>
+      <td>55478</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Enrollment_Type</th>
+      <td>object</td>
+      <td>719</td>
+      <td>1.13</td>
+      <td>298</td>
+      <td>0</td>
+      <td>General Admission</td>
+    </tr>
+    <tr>
+      <th>Lanyard_Color</th>
+      <td>object</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>240</td>
+      <td>0</td>
+      <td>Blue</td>
+    </tr>
+    <tr>
+      <th>Client_Category</th>
+      <td>object</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>505</td>
+      <td>0</td>
+      <td>SaaS &amp; Software Houses</td>
+    </tr>
+    <tr>
+      <th>Submission_Source</th>
+      <td>object</td>
+      <td>605</td>
+      <td>0.95</td>
+      <td>328</td>
+      <td>0</td>
+      <td>B2B Platforms &amp; Resellers</td>
+    </tr>
+    <tr>
+      <th>Returning_Client</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>2</td>
+      <td>61742</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>Agent_ID</th>
+      <td>float64</td>
+      <td>11173</td>
+      <td>17.61</td>
+      <td>203</td>
+      <td>0</td>
+      <td>184.0</td>
+    </tr>
+    <tr>
+      <th>Company_ID</th>
+      <td>float64</td>
+      <td>60344</td>
+      <td>95.08</td>
+      <td>184</td>
+      <td>0</td>
+      <td>5181.0</td>
+    </tr>
+    <tr>
+      <th>Payment_Terms</th>
+      <td>object</td>
+      <td>587</td>
+      <td>0.92</td>
+      <td>236</td>
+      <td>0</td>
+      <td>Pay Upon Start</td>
+    </tr>
+    <tr>
+      <th>Daily_Tuition_Cost</th>
+      <td>float64</td>
+      <td>79</td>
+      <td>0.12</td>
+      <td>4780</td>
+      <td>1079</td>
+      <td>62.0</td>
+    </tr>
+    <tr>
+      <th>Dropped_Course</th>
+      <td>int64</td>
+      <td>0</td>
+      <td>0.00</td>
+      <td>2</td>
+      <td>37165</td>
+      <td>0.0</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 **What the dictionary tells us.**
@@ -147,7 +437,210 @@ train_raw.describe()
 ```
 
 
-<table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>Client_ID</th><th>Professionals_Count</th><th>Students_Count</th><th>Observers_Count</th><th>Course_Start_Date</th><th>Practical_Hours</th><th>Theory_Hours</th><th>Registration_Days_Before</th><th>Prev_Course_Dropouts</th><th>Prev_Course_Attended</th><th>Pre_Course_Supports_Tickets</th><th>Physical_Course_Kits</th><th>Waiting_List_Days</th><th>Registration_Changes</th><th>Returning_Client</th><th>Daily_Tuition_Cost</th><th>Dropped_Course</th></tr></thead><tbody><tr><th>count</th><td>63464.000000</td><td>63464.000000</td><td>63460.000000</td><td>63464.000000</td><td>63464</td><td>63464.000000</td><td>63464.000000</td><td>60798.000000</td><td>63464.000000</td><td>63464.000000</td><td>63464.000000</td><td>62424.000000</td><td>63464.000000</td><td>63464.000000</td><td>63464.000000</td><td>63385.000000</td><td>63464.000000</td></tr><tr><th>mean</th><td>39761.752616</td><td>1.835214</td><td>8.751718</td><td>0.005326</td><td>2016-06-23 05:17:23.287533</td><td>6.609054</td><td>2.164392</td><td>102.894470</td><td>0.095991</td><td>0.122967</td><td>0.513330</td><td>0.026224</td><td>3.983676</td><td>0.180039</td><td>0.027133</td><td>98.847963</td><td>0.414392</td></tr><tr><th>min</th><td>1.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>2015-07-01 00:00:00</td><td>-5.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td></tr><tr><th>25%</th><td>19959.750000</td><td>2.000000</td><td>0.000000</td><td>0.000000</td><td>2016-02-13 00:00:00</td><td>0.000000</td><td>1.000000</td><td>19.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>75.000000</td><td>0.000000</td></tr><tr><th>50%</th><td>39819.500000</td><td>2.000000</td><td>0.000000</td><td>0.000000</td><td>2016-07-01 00:00:00</td><td>1.000000</td><td>2.000000</td><td>65.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>94.500000</td><td>0.000000</td></tr><tr><th>75%</th><td>59570.250000</td><td>2.000000</td><td>0.000000</td><td>0.000000</td><td>2016-11-11 00:00:00</td><td>1.000000</td><td>3.000000</td><td>150.000000</td><td>0.000000</td><td>0.000000</td><td>1.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>117.000000</td><td>1.000000</td></tr><tr><th>max</th><td>79330.000000</td><td>4.000000</td><td>9999.000000</td><td>10.000000</td><td>2017-04-26 00:00:00</td><td>10000.000000</td><td>41.000000</td><td>629.000000</td><td>21.000000</td><td>61.000000</td><td>5.000000</td><td>3.000000</td><td>391.000000</td><td>21.000000</td><td>1.000000</td><td>5400.000000</td><td>1.000000</td></tr><tr><th>std</th><td>22878.980699</td><td>0.508607</td><td>294.238584</td><td>0.089662</td><td>NaN</td><td>215.502929</td><td>1.469854</td><td>109.178824</td><td>0.448526</td><td>1.535201</td><td>0.763563</td><td>0.160202</td><td>23.195495</td><td>0.592577</td><td>0.162474</td><td>41.855391</td><td>0.492621</td></tr></tbody></table>
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Client_ID</th>
+      <th>Professionals_Count</th>
+      <th>Students_Count</th>
+      <th>Observers_Count</th>
+      <th>Course_Start_Date</th>
+      <th>Practical_Hours</th>
+      <th>Theory_Hours</th>
+      <th>Registration_Days_Before</th>
+      <th>Prev_Course_Dropouts</th>
+      <th>Prev_Course_Attended</th>
+      <th>Pre_Course_Supports_Tickets</th>
+      <th>Physical_Course_Kits</th>
+      <th>Waiting_List_Days</th>
+      <th>Registration_Changes</th>
+      <th>Returning_Client</th>
+      <th>Daily_Tuition_Cost</th>
+      <th>Dropped_Course</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>count</th>
+      <td>63464.000000</td>
+      <td>63464.000000</td>
+      <td>63460.000000</td>
+      <td>63464.000000</td>
+      <td>63464</td>
+      <td>63464.000000</td>
+      <td>63464.000000</td>
+      <td>60798.000000</td>
+      <td>63464.000000</td>
+      <td>63464.000000</td>
+      <td>63464.000000</td>
+      <td>62424.000000</td>
+      <td>63464.000000</td>
+      <td>63464.000000</td>
+      <td>63464.000000</td>
+      <td>63385.000000</td>
+      <td>63464.000000</td>
+    </tr>
+    <tr>
+      <th>mean</th>
+      <td>39761.752616</td>
+      <td>1.835214</td>
+      <td>8.751718</td>
+      <td>0.005326</td>
+      <td>2016-06-23 05:17:23.287533056</td>
+      <td>6.609054</td>
+      <td>2.164392</td>
+      <td>102.894470</td>
+      <td>0.095991</td>
+      <td>0.122967</td>
+      <td>0.513330</td>
+      <td>0.026224</td>
+      <td>3.983676</td>
+      <td>0.180039</td>
+      <td>0.027133</td>
+      <td>98.847963</td>
+      <td>0.414392</td>
+    </tr>
+    <tr>
+      <th>min</th>
+      <td>1.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>2015-07-01 00:00:00</td>
+      <td>-5.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>25%</th>
+      <td>19959.750000</td>
+      <td>2.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>2016-02-13 00:00:00</td>
+      <td>0.000000</td>
+      <td>1.000000</td>
+      <td>19.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>75.000000</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>50%</th>
+      <td>39819.500000</td>
+      <td>2.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>2016-07-01 00:00:00</td>
+      <td>1.000000</td>
+      <td>2.000000</td>
+      <td>65.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>94.500000</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>75%</th>
+      <td>59570.250000</td>
+      <td>2.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>2016-11-11 00:00:00</td>
+      <td>1.000000</td>
+      <td>3.000000</td>
+      <td>150.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>1.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>117.000000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <th>max</th>
+      <td>79330.000000</td>
+      <td>4.000000</td>
+      <td>9999.000000</td>
+      <td>10.000000</td>
+      <td>2017-04-26 00:00:00</td>
+      <td>10000.000000</td>
+      <td>41.000000</td>
+      <td>629.000000</td>
+      <td>21.000000</td>
+      <td>61.000000</td>
+      <td>5.000000</td>
+      <td>3.000000</td>
+      <td>391.000000</td>
+      <td>21.000000</td>
+      <td>1.000000</td>
+      <td>5400.000000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <th>std</th>
+      <td>22878.980699</td>
+      <td>0.508607</td>
+      <td>294.238584</td>
+      <td>0.089662</td>
+      <td>NaN</td>
+      <td>215.502929</td>
+      <td>1.469854</td>
+      <td>109.178824</td>
+      <td>0.448526</td>
+      <td>1.535201</td>
+      <td>0.763563</td>
+      <td>0.160202</td>
+      <td>23.195495</td>
+      <td>0.592577</td>
+      <td>0.162474</td>
+      <td>41.855391</td>
+      <td>0.492621</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
 
 
 ## 2.1 Target balance
@@ -177,13 +670,48 @@ plot_target_balance()
 ```
 
 
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>count</th>
+      <th>rate_%</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0 = completed</th>
+      <td>37165</td>
+      <td>58.6</td>
+    </tr>
+    <tr>
+      <th>1 = dropped</th>
+      <td>26299</td>
+      <td>41.4</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
     
-![png](notebook_files/notebook_10_0.png)
+![svg](notebook_files/notebook_9_1.svg)
     
-
-
-
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>rate_%</th></tr></thead><tbody><tr><th>0 = completed</th><td>37165</td><td>58.6</td></tr><tr><th>1 = dropped</th><td>26299</td><td>41.4</td></tr></tbody></table></div>
 
 
 The classes are reasonably balanced: about 59% completed and 41% dropped
@@ -244,7 +772,7 @@ plot_monthly_drop_rate()
 
 
     
-![png](notebook_files/notebook_14_1.png)
+![svg](notebook_files/notebook_13_1.svg)
     
 
 
@@ -270,7 +798,92 @@ display(missing_compare)
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>train_missing_%</th><th>test_missing_%</th></tr></thead><tbody><tr><th>Company_ID</th><td>95.08</td><td>96.41</td></tr><tr><th>Agent_ID</th><td>17.61</td><td>17.61</td></tr><tr><th>Registration_Days_Before</th><td>4.20</td><td>4.05</td></tr><tr><th>Requested_Lab_Config</th><td>2.74</td><td>3.01</td></tr><tr><th>Physical_Course_Kits</th><td>1.64</td><td>1.43</td></tr><tr><th>...</th><td>...</td><td>...</td></tr><tr><th>Payment_Terms</th><td>0.92</td><td>0.91</td></tr><tr><th>Origin_Country</th><td>0.88</td><td>1.01</td></tr><tr><th>Catering_Package</th><td>0.64</td><td>0.70</td></tr><tr><th>Daily_Tuition_Cost</th><td>0.12</td><td>0.01</td></tr><tr><th>Students_Count</th><td>0.01</td><td>0.00</td></tr></tbody></table><p>12 rows × 2 columns</p></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>train_missing_%</th>
+      <th>test_missing_%</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Company_ID</th>
+      <td>95.08</td>
+      <td>96.41</td>
+    </tr>
+    <tr>
+      <th>Agent_ID</th>
+      <td>17.61</td>
+      <td>17.61</td>
+    </tr>
+    <tr>
+      <th>Registration_Days_Before</th>
+      <td>4.20</td>
+      <td>4.05</td>
+    </tr>
+    <tr>
+      <th>Requested_Lab_Config</th>
+      <td>2.74</td>
+      <td>3.01</td>
+    </tr>
+    <tr>
+      <th>Physical_Course_Kits</th>
+      <td>1.64</td>
+      <td>1.43</td>
+    </tr>
+    <tr>
+      <th>Enrollment_Type</th>
+      <td>1.13</td>
+      <td>1.12</td>
+    </tr>
+    <tr>
+      <th>Submission_Source</th>
+      <td>0.95</td>
+      <td>0.94</td>
+    </tr>
+    <tr>
+      <th>Payment_Terms</th>
+      <td>0.92</td>
+      <td>0.91</td>
+    </tr>
+    <tr>
+      <th>Origin_Country</th>
+      <td>0.88</td>
+      <td>1.01</td>
+    </tr>
+    <tr>
+      <th>Catering_Package</th>
+      <td>0.64</td>
+      <td>0.70</td>
+    </tr>
+    <tr>
+      <th>Daily_Tuition_Cost</th>
+      <td>0.12</td>
+      <td>0.01</td>
+    </tr>
+    <tr>
+      <th>Students_Count</th>
+      <td>0.01</td>
+      <td>0.00</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Most train/test missingness rates are close. We next check whether the presence of a value is associated with the target.
@@ -308,7 +921,118 @@ display(summarize_missingness())
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>is_missing</th><th>count</th><th>drop_rate_%</th></tr></thead><tbody><tr><th>0</th><td>Company_ID</td><td>False</td><td>3120</td><td>21.2</td></tr><tr><th>1</th><td>Company_ID</td><td>True</td><td>60344</td><td>42.5</td></tr><tr><th>2</th><td>Agent_ID</td><td>False</td><td>52291</td><td>43.1</td></tr><tr><th>3</th><td>Agent_ID</td><td>True</td><td>11173</td><td>33.5</td></tr><tr><th>4</th><td>Registration_Days_Before</td><td>False</td><td>60798</td><td>41.4</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td><td>...</td></tr><tr><th>7</th><td>Physical_Course_Kits</td><td>True</td><td>1040</td><td>39.3</td></tr><tr><th>8</th><td>Daily_Tuition_Cost</td><td>False</td><td>63385</td><td>41.4</td></tr><tr><th>9</th><td>Daily_Tuition_Cost</td><td>True</td><td>79</td><td>51.9</td></tr><tr><th>10</th><td>Payment_Terms</td><td>False</td><td>62877</td><td>41.5</td></tr><tr><th>11</th><td>Payment_Terms</td><td>True</td><td>587</td><td>35.4</td></tr></tbody></table><p>12 rows × 4 columns</p></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>column</th>
+      <th>is_missing</th>
+      <th>count</th>
+      <th>drop_rate_%</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Company_ID</td>
+      <td>False</td>
+      <td>3120</td>
+      <td>21.2</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Company_ID</td>
+      <td>True</td>
+      <td>60344</td>
+      <td>42.5</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Agent_ID</td>
+      <td>False</td>
+      <td>52291</td>
+      <td>43.1</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Agent_ID</td>
+      <td>True</td>
+      <td>11173</td>
+      <td>33.5</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Registration_Days_Before</td>
+      <td>False</td>
+      <td>60798</td>
+      <td>41.4</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>Registration_Days_Before</td>
+      <td>True</td>
+      <td>2666</td>
+      <td>41.5</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>Physical_Course_Kits</td>
+      <td>False</td>
+      <td>62424</td>
+      <td>41.5</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>Physical_Course_Kits</td>
+      <td>True</td>
+      <td>1040</td>
+      <td>39.3</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>Daily_Tuition_Cost</td>
+      <td>False</td>
+      <td>63385</td>
+      <td>41.4</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>Daily_Tuition_Cost</td>
+      <td>True</td>
+      <td>79</td>
+      <td>51.9</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>Payment_Terms</td>
+      <td>False</td>
+      <td>62877</td>
+      <td>41.5</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>Payment_Terms</td>
+      <td>True</td>
+      <td>587</td>
+      <td>35.4</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Rows without a `Company_ID` have a noticeably higher drop rate, and `Agent_ID` presence also separates groups. This motivates explicit presence flags instead of replacing missing identifiers with a typical value.
@@ -534,7 +1258,93 @@ display(cardinality_change)
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>raw_unique</th><th>clean_unique</th><th>collapsed</th></tr></thead><tbody><tr><th>Origin_Country</th><td>721</td><td>153</td><td>568</td></tr><tr><th>Client_Category</th><td>505</td><td>7</td><td>498</td></tr><tr><th>Submission_Source</th><td>328</td><td>4</td><td>324</td></tr><tr><th>Catering_Package</th><td>321</td><td>4</td><td>317</td></tr><tr><th>Enrollment_Type</th><td>298</td><td>4</td><td>294</td></tr><tr><th>Lanyard_Color</th><td>240</td><td>5</td><td>235</td></tr><tr><th>Payment_Terms</th><td>236</td><td>3</td><td>233</td></tr><tr><th>Welcome_Gift_Type</th><td>4</td><td>4</td><td>0</td></tr><tr><th>Requested_Lab_Config</th><td>8</td><td>8</td><td>0</td></tr><tr><th>Assigned_Lab_Config</th><td>9</td><td>9</td><td>0</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>raw_unique</th>
+      <th>clean_unique</th>
+      <th>collapsed</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Origin_Country</th>
+      <td>721</td>
+      <td>153</td>
+      <td>568</td>
+    </tr>
+    <tr>
+      <th>Client_Category</th>
+      <td>505</td>
+      <td>7</td>
+      <td>498</td>
+    </tr>
+    <tr>
+      <th>Submission_Source</th>
+      <td>328</td>
+      <td>4</td>
+      <td>324</td>
+    </tr>
+    <tr>
+      <th>Catering_Package</th>
+      <td>321</td>
+      <td>4</td>
+      <td>317</td>
+    </tr>
+    <tr>
+      <th>Enrollment_Type</th>
+      <td>298</td>
+      <td>4</td>
+      <td>294</td>
+    </tr>
+    <tr>
+      <th>Lanyard_Color</th>
+      <td>240</td>
+      <td>5</td>
+      <td>235</td>
+    </tr>
+    <tr>
+      <th>Payment_Terms</th>
+      <td>236</td>
+      <td>3</td>
+      <td>233</td>
+    </tr>
+    <tr>
+      <th>Welcome_Gift_Type</th>
+      <td>4</td>
+      <td>4</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>Requested_Lab_Config</th>
+      <td>8</td>
+      <td>8</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>Assigned_Lab_Config</th>
+      <td>9</td>
+      <td>9</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 The before/after table confirms that most of the apparent variety was formatting noise: `Payment_Terms` falls from 236 raw labels to 3 cleaned levels, and `Client_Category` from 505 to 7. Columns that were already consistent remain unchanged.
@@ -588,7 +1398,7 @@ plot_categorical_overview()
 
 
     
-![png](notebook_files/notebook_30_0.png)
+![svg](notebook_files/notebook_29_0.svg)
     
 
 
@@ -673,12 +1483,116 @@ display(
 
 
     
-![png](notebook_files/notebook_33_0.png)
+![svg](notebook_files/notebook_32_0.svg)
     
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>drop_rate_pct</th><th>lift_pp</th></tr><tr><th>Origin_Country</th><th></th><th></th><th></th></tr></thead><tbody><tr><th>prt</th><td>26429</td><td>63.78</td><td>22.34</td></tr><tr><th>fra</th><td>6961</td><td>17.28</td><td>-24.16</td></tr><tr><th>deu</th><td>4400</td><td>16.70</td><td>-24.73</td></tr><tr><th>esp</th><td>3896</td><td>27.31</td><td>-14.13</td></tr><tr><th>gbr</th><td>3514</td><td>27.80</td><td>-13.64</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td></tr><tr><th>bel</th><td>1324</td><td>19.18</td><td>-22.25</td></tr><tr><th>nld</th><td>1222</td><td>19.97</td><td>-21.47</td></tr><tr><th>usa</th><td>1072</td><td>22.39</td><td>-19.05</td></tr><tr><th>chn</th><td>1054</td><td>42.79</td><td>1.35</td></tr><tr><th>che</th><td>935</td><td>22.78</td><td>-18.66</td></tr></tbody></table><p>12 rows × 3 columns</p></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>count</th>
+      <th>drop_rate_pct</th>
+      <th>lift_pp</th>
+    </tr>
+    <tr>
+      <th>Origin_Country</th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>prt</th>
+      <td>26429</td>
+      <td>63.78</td>
+      <td>22.34</td>
+    </tr>
+    <tr>
+      <th>fra</th>
+      <td>6961</td>
+      <td>17.28</td>
+      <td>-24.16</td>
+    </tr>
+    <tr>
+      <th>deu</th>
+      <td>4400</td>
+      <td>16.70</td>
+      <td>-24.73</td>
+    </tr>
+    <tr>
+      <th>esp</th>
+      <td>3896</td>
+      <td>27.31</td>
+      <td>-14.13</td>
+    </tr>
+    <tr>
+      <th>gbr</th>
+      <td>3514</td>
+      <td>27.80</td>
+      <td>-13.64</td>
+    </tr>
+    <tr>
+      <th>ita</th>
+      <td>2726</td>
+      <td>35.88</td>
+      <td>-5.56</td>
+    </tr>
+    <tr>
+      <th>bra</th>
+      <td>1402</td>
+      <td>38.02</td>
+      <td>-3.42</td>
+    </tr>
+    <tr>
+      <th>bel</th>
+      <td>1324</td>
+      <td>19.18</td>
+      <td>-22.25</td>
+    </tr>
+    <tr>
+      <th>nld</th>
+      <td>1222</td>
+      <td>19.97</td>
+      <td>-21.47</td>
+    </tr>
+    <tr>
+      <th>usa</th>
+      <td>1072</td>
+      <td>22.39</td>
+      <td>-19.05</td>
+    </tr>
+    <tr>
+      <th>chn</th>
+      <td>1054</td>
+      <td>42.79</td>
+      <td>1.35</td>
+    </tr>
+    <tr>
+      <th>che</th>
+      <td>935</td>
+      <td>22.78</td>
+      <td>-18.66</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Portugal contains 26,429 registrations and has a 63.8% drop rate, making it both the largest country group and the clearest geographic difference. We use it to investigate whether country overlaps with agents, channels, or other parts of the acquisition process.
@@ -702,7 +1616,47 @@ display(portugal_summary[["count", "drop_rate_pct"]].round(1))
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>drop_rate_pct</th></tr><tr><th>country_group</th><th></th><th></th></tr></thead><tbody><tr><th>Other countries</th><td>37035</td><td>25.5</td></tr><tr><th>Portugal</th><td>26429</td><td>63.8</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>count</th>
+      <th>drop_rate_pct</th>
+    </tr>
+    <tr>
+      <th>country_group</th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Other countries</th>
+      <td>37035</td>
+      <td>25.5</td>
+    </tr>
+    <tr>
+      <th>Portugal</th>
+      <td>26429</td>
+      <td>63.8</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Compared with all other countries, Portugal remains clearly different. We next inspect the identifier fields as categories, not numbers, to see whether they show related structure.
@@ -735,12 +1689,47 @@ display(company_presence)
 
 
     
-![png](notebook_files/notebook_37_0.png)
+![svg](notebook_files/notebook_36_0.svg)
     
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>drop_rate</th></tr></thead><tbody><tr><th>no company_id</th><td>60344</td><td>0.424848</td></tr><tr><th>has company_id</th><td>3120</td><td>0.212179</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>count</th>
+      <th>drop_rate</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>no company_id</th>
+      <td>60344</td>
+      <td>0.424848</td>
+    </tr>
+    <tr>
+      <th>has company_id</th>
+      <td>3120</td>
+      <td>0.212179</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Frequent agents have different drop rates, while registrations with a `Company_ID` drop less often (21.2% versus 42.5%). These relationships may overlap with geography, so we perform a small check: does knowing the agent improve country prediction over always guessing the most common country?
@@ -772,7 +1761,42 @@ display(
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>check</th><th>accuracy</th></tr></thead><tbody><tr><th>0</th><td>majority country baseline</td><td>0.391</td></tr><tr><th>1</th><td>agent modal country</td><td>0.421</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>check</th>
+      <th>accuracy</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>majority country baseline</td>
+      <td>0.391</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>agent modal country</td>
+      <td>0.421</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Agent-based prediction raises country accuracy from 0.391 to 0.421, indicating modest overlap between the two fields. Both are included using the compact representation introduced during preparation.
@@ -811,7 +1835,207 @@ display(numeric_summary(train_raw, num_cols))
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>missing_%</th><th>corr_target</th><th>mean</th><th>median</th><th>std</th><th>min</th><th>max</th><th>skew</th></tr></thead><tbody><tr><th>5</th><td>Registration_Days_Before</td><td>4.2</td><td>0.351</td><td>102.89</td><td>65.0</td><td>109.18</td><td>0.0</td><td>629.0</td><td>1.50</td></tr><tr><th>8</th><td>Pre_Course_Supports_Tickets</td><td>0.0</td><td>-0.301</td><td>0.51</td><td>0.0</td><td>0.76</td><td>0.0</td><td>5.0</td><td>1.47</td></tr><tr><th>6</th><td>Prev_Course_Dropouts</td><td>0.0</td><td>0.199</td><td>0.10</td><td>0.0</td><td>0.45</td><td>0.0</td><td>21.0</td><td>15.70</td></tr><tr><th>11</th><td>Registration_Changes</td><td>0.0</td><td>-0.148</td><td>0.18</td><td>0.0</td><td>0.59</td><td>0.0</td><td>21.0</td><td>7.36</td></tr><tr><th>9</th><td>Physical_Course_Kits</td><td>1.6</td><td>-0.138</td><td>0.03</td><td>0.0</td><td>0.16</td><td>0.0</td><td>3.0</td><td>6.00</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr><tr><th>4</th><td>Theory_Hours</td><td>0.0</td><td>0.045</td><td>2.16</td><td>2.0</td><td>1.47</td><td>0.0</td><td>41.0</td><td>3.35</td></tr><tr><th>2</th><td>Observers_Count</td><td>0.0</td><td>-0.031</td><td>0.01</td><td>0.0</td><td>0.09</td><td>0.0</td><td>10.0</td><td>45.38</td></tr><tr><th>13</th><td>Daily_Tuition_Cost</td><td>0.1</td><td>-0.024</td><td>98.85</td><td>94.5</td><td>41.86</td><td>0.0</td><td>5400.0</td><td>32.55</td></tr><tr><th>3</th><td>Practical_Hours</td><td>0.0</td><td>0.005</td><td>6.61</td><td>1.0</td><td>215.50</td><td>-5.0</td><td>10000.0</td><td>40.45</td></tr><tr><th>1</th><td>Students_Count</td><td>0.0</td><td>0.000</td><td>8.75</td><td>0.0</td><td>294.24</td><td>0.0</td><td>9999.0</td><td>33.92</td></tr></tbody></table><p>14 rows × 9 columns</p></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>column</th>
+      <th>missing_%</th>
+      <th>corr_target</th>
+      <th>mean</th>
+      <th>median</th>
+      <th>std</th>
+      <th>min</th>
+      <th>max</th>
+      <th>skew</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>5</th>
+      <td>Registration_Days_Before</td>
+      <td>4.2</td>
+      <td>0.351</td>
+      <td>102.89</td>
+      <td>65.0</td>
+      <td>109.18</td>
+      <td>0.0</td>
+      <td>629.0</td>
+      <td>1.50</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>Pre_Course_Supports_Tickets</td>
+      <td>0.0</td>
+      <td>-0.301</td>
+      <td>0.51</td>
+      <td>0.0</td>
+      <td>0.76</td>
+      <td>0.0</td>
+      <td>5.0</td>
+      <td>1.47</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>Prev_Course_Dropouts</td>
+      <td>0.0</td>
+      <td>0.199</td>
+      <td>0.10</td>
+      <td>0.0</td>
+      <td>0.45</td>
+      <td>0.0</td>
+      <td>21.0</td>
+      <td>15.70</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>Registration_Changes</td>
+      <td>0.0</td>
+      <td>-0.148</td>
+      <td>0.18</td>
+      <td>0.0</td>
+      <td>0.59</td>
+      <td>0.0</td>
+      <td>21.0</td>
+      <td>7.36</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>Physical_Course_Kits</td>
+      <td>1.6</td>
+      <td>-0.138</td>
+      <td>0.03</td>
+      <td>0.0</td>
+      <td>0.16</td>
+      <td>0.0</td>
+      <td>3.0</td>
+      <td>6.00</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>Waiting_List_Days</td>
+      <td>0.0</td>
+      <td>0.068</td>
+      <td>3.98</td>
+      <td>0.0</td>
+      <td>23.20</td>
+      <td>0.0</td>
+      <td>391.0</td>
+      <td>9.26</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>Returning_Client</td>
+      <td>0.0</td>
+      <td>-0.059</td>
+      <td>0.03</td>
+      <td>0.0</td>
+      <td>0.16</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>5.82</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>Professionals_Count</td>
+      <td>0.0</td>
+      <td>0.057</td>
+      <td>1.84</td>
+      <td>2.0</td>
+      <td>0.51</td>
+      <td>0.0</td>
+      <td>4.0</td>
+      <td>-0.47</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>Prev_Course_Attended</td>
+      <td>0.0</td>
+      <td>-0.052</td>
+      <td>0.12</td>
+      <td>0.0</td>
+      <td>1.54</td>
+      <td>0.0</td>
+      <td>61.0</td>
+      <td>21.96</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Theory_Hours</td>
+      <td>0.0</td>
+      <td>0.045</td>
+      <td>2.16</td>
+      <td>2.0</td>
+      <td>1.47</td>
+      <td>0.0</td>
+      <td>41.0</td>
+      <td>3.35</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Observers_Count</td>
+      <td>0.0</td>
+      <td>-0.031</td>
+      <td>0.01</td>
+      <td>0.0</td>
+      <td>0.09</td>
+      <td>0.0</td>
+      <td>10.0</td>
+      <td>45.38</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>Daily_Tuition_Cost</td>
+      <td>0.1</td>
+      <td>-0.024</td>
+      <td>98.85</td>
+      <td>94.5</td>
+      <td>41.86</td>
+      <td>0.0</td>
+      <td>5400.0</td>
+      <td>32.55</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Practical_Hours</td>
+      <td>0.0</td>
+      <td>0.005</td>
+      <td>6.61</td>
+      <td>1.0</td>
+      <td>215.50</td>
+      <td>-5.0</td>
+      <td>10000.0</td>
+      <td>40.45</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Students_Count</td>
+      <td>0.0</td>
+      <td>0.000</td>
+      <td>8.75</td>
+      <td>0.0</td>
+      <td>294.24</td>
+      <td>0.0</td>
+      <td>9999.0</td>
+      <td>33.92</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 The maximum values reveal several likely data errors: `Students_Count` reaches 9999, and `Practical_Hours` contains both negative values and values up to 10000. We leave the raw values unchanged for this first inspection and decide how to handle them in the outlier section.
@@ -830,7 +2054,7 @@ plt.show()
 
 
     
-![png](notebook_files/notebook_44_0.png)
+![svg](notebook_files/notebook_43_0.svg)
     
 
 
@@ -870,7 +2094,7 @@ plot_numeric_bins()
 
 
     
-![png](notebook_files/notebook_47_0.png)
+![svg](notebook_files/notebook_46_0.svg)
     
 
 
@@ -927,11 +2151,153 @@ display(sus_report(test_raw, num_cols))
 ```
 
     Suspect columns — TRAIN
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>column</th>
+      <th>min</th>
+      <th>max</th>
+      <th>q99</th>
+      <th>why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Students_Count</td>
+      <td>0.0</td>
+      <td>9999.0</td>
+      <td>2.0</td>
+      <td>max=9999 &gt;&gt; q99=2</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Practical_Hours</td>
+      <td>-5.0</td>
+      <td>10000.0</td>
+      <td>3.0</td>
+      <td>negative values; max=10000 &gt;&gt; q99=3</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Prev_Course_Dropouts</td>
+      <td>0.0</td>
+      <td>21.0</td>
+      <td>1.0</td>
+      <td>max=21 &gt;&gt; q99=1</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Prev_Course_Attended</td>
+      <td>0.0</td>
+      <td>61.0</td>
+      <td>3.0</td>
+      <td>max=61 &gt;&gt; q99=3</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Registration_Changes</td>
+      <td>0.0</td>
+      <td>21.0</td>
+      <td>2.0</td>
+      <td>max=21 &gt;&gt; q99=2</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>Daily_Tuition_Cost</td>
+      <td>0.0</td>
+      <td>5400.0</td>
+      <td>209.7</td>
+      <td>max=5400 &gt;&gt; q99=209.7</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
     Suspect columns — TEST
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>min</th><th>max</th><th>q99</th><th>why</th></tr></thead><tbody><tr><th>0</th><td>Students_Count</td><td>0.0</td><td>9999.0</td><td>2.0</td><td>max=9999 &gt;&gt; q99=2</td></tr><tr><th>1</th><td>Practical_Hours</td><td>-5.0</td><td>10000.0</td><td>3.0</td><td>negative values; max=10000 &gt;&gt; q99=3</td></tr><tr><th>2</th><td>Prev_Course_Dropouts</td><td>0.0</td><td>21.0</td><td>1.0</td><td>max=21 &gt;&gt; q99=1</td></tr><tr><th>3</th><td>Prev_Course_Attended</td><td>0.0</td><td>61.0</td><td>3.0</td><td>max=61 &gt;&gt; q99=3</td></tr><tr><th>4</th><td>Registration_Changes</td><td>0.0</td><td>21.0</td><td>2.0</td><td>max=21 &gt;&gt; q99=2</td></tr><tr><th>5</th><td>Daily_Tuition_Cost</td><td>0.0</td><td>5400.0</td><td>209.7</td><td>max=5400 &gt;&gt; q99=209.7</td></tr></tbody></table><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>min</th><th>max</th><th>q99</th><th>why</th></tr></thead><tbody><tr><th>0</th><td>Students_Count</td><td>0.0</td><td>9999.0</td><td>2.0</td><td>max=9999 &gt;&gt; q99=2</td></tr><tr><th>1</th><td>Practical_Hours</td><td>-5.0</td><td>10000.0</td><td>2.0</td><td>negative values; max=10000 &gt;&gt; q99=2</td></tr><tr><th>2</th><td>Prev_Course_Attended</td><td>0.0</td><td>72.0</td><td>3.0</td><td>max=72 &gt;&gt; q99=3</td></tr><tr><th>3</th><td>Waiting_List_Days</td><td>0.0</td><td>183.0</td><td>0.0</td><td>max=183 &gt;&gt; q99=0</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>column</th>
+      <th>min</th>
+      <th>max</th>
+      <th>q99</th>
+      <th>why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Students_Count</td>
+      <td>0.0</td>
+      <td>9999.0</td>
+      <td>2.0</td>
+      <td>max=9999 &gt;&gt; q99=2</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Practical_Hours</td>
+      <td>-5.0</td>
+      <td>10000.0</td>
+      <td>2.0</td>
+      <td>negative values; max=10000 &gt;&gt; q99=2</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Prev_Course_Attended</td>
+      <td>0.0</td>
+      <td>72.0</td>
+      <td>3.0</td>
+      <td>max=72 &gt;&gt; q99=3</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Waiting_List_Days</td>
+      <td>0.0</td>
+      <td>183.0</td>
+      <td>0.0</td>
+      <td>max=183 &gt;&gt; q99=0</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 The test set introduces no new forms of corruption, suggesting the same cleaning policy can be safely shared. Comparing the maximum values to the 99th percentile helps identify columns with extreme outliers:
@@ -1022,7 +2388,7 @@ plot_tail_checks()
 
 
     
-![png](notebook_files/notebook_54_0.png)
+![svg](notebook_files/notebook_53_0.svg)
     
 
 
@@ -1113,13 +2479,77 @@ plot_cap_effects()
 ```
 
 
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>column</th>
+      <th>raw_train_min</th>
+      <th>raw_train_max</th>
+      <th>problem</th>
+      <th>action</th>
+      <th>train_rows_affected</th>
+      <th>test_rows_affected</th>
+      <th>reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Students_Count</td>
+      <td>0.0</td>
+      <td>9999.0</td>
+      <td>9999 placeholder</td>
+      <td>clip to &lt;= 10</td>
+      <td>55</td>
+      <td>12</td>
+      <td>repeated 9999 values are isolated placeholders...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Practical_Hours</td>
+      <td>-5.0</td>
+      <td>10000.0</td>
+      <td>negative values and 10000</td>
+      <td>clip to [0, 12]</td>
+      <td>121</td>
+      <td>23</td>
+      <td>course hours cannot be negative; 12 covers a l...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Daily_Tuition_Cost</td>
+      <td>0.0</td>
+      <td>5400.0</td>
+      <td>5400 value</td>
+      <td>clip to &lt;= 600</td>
+      <td>1</td>
+      <td>0</td>
+      <td>5400 is far beyond the valid fee range; 600 ke...</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
     
-![png](notebook_files/notebook_56_0.png)
+![svg](notebook_files/notebook_55_1.svg)
     
-
-
-
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>raw_train_min</th><th>raw_train_max</th><th>problem</th><th>action</th><th>train_rows_affected</th><th>test_rows_affected</th><th>reason</th></tr></thead><tbody><tr><th>0</th><td>Students_Count</td><td>0.0</td><td>9999.0</td><td>9999 placeholder</td><td>clip to &lt;= 10</td><td>55</td><td>12</td><td>repeated 9999 values are isolated placeholders beyond the observed support</td></tr><tr><th>1</th><td>Practical_Hours</td><td>-5.0</td><td>10000.0</td><td>negative values and 10000</td><td>clip to [0, 12]</td><td>121</td><td>23</td><td>course hours cannot be negative; 12 covers a long practical day</td></tr><tr><th>2</th><td>Daily_Tuition_Cost</td><td>0.0</td><td>5400.0</td><td>5400 value</td><td>clip to &lt;= 600</td><td>1</td><td>0</td><td>5400 is far beyond the valid fee range; 600 keeps the high-cost tail</td></tr></tbody></table></div>
 
 
 The before/after distributions show that the caps remove isolated invalid tails while
@@ -1298,7 +2728,17 @@ display(X_all[cat_cols].nunique(dropna=False).sort_values(ascending=False))
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>0</th></tr></thead><tbody><tr><th>Agent_ID</th><td>204</td></tr><tr><th>Origin_Country</th><td>154</td></tr><tr><th>Requested_Lab_Config</th><td>9</td></tr><tr><th>Client_Category</th><td>8</td></tr><tr><th>Catering_Package</th><td>5</td></tr><tr><th>Enrollment_Type</th><td>5</td></tr><tr><th>Lanyard_Color</th><td>5</td></tr><tr><th>Submission_Source</th><td>5</td></tr><tr><th>Welcome_Gift_Type</th><td>4</td></tr><tr><th>Payment_Terms</th><td>4</td></tr></tbody></table></div>
+    Agent_ID                204
+    Origin_Country          154
+    Requested_Lab_Config      9
+    Client_Category           8
+    Catering_Package          5
+    Enrollment_Type           5
+    Lanyard_Color             5
+    Submission_Source         5
+    Welcome_Gift_Type         4
+    Payment_Terms             4
+    dtype: int64
 
 
 The tree/native-categorical path contains 42 columns. A naive one-hot expansion of the same fields would create about 435 columns, mostly from agent and country, so this representation avoids 393 sparse dummy columns. The linear and neural baselines use one-hot encoding with rare levels grouped into `other`.
@@ -1675,12 +3115,60 @@ pred_mlp = selected_predictions['mlp']
 
 
     
-![png](notebook_files/notebook_75_0.png)
+![svg](notebook_files/notebook_74_0.svg)
     
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>family</th><th>x</th><th>train_AUC</th><th>val_AUC</th></tr></thead><tbody><tr><th>0</th><td>Logistic Regression</td><td>0.001</td><td>0.9217</td><td>0.8805</td></tr><tr><th>7</th><td>MLP neural network</td><td>10.000</td><td>0.9645</td><td>0.8762</td></tr><tr><th>15</th><td>Gradient-boosted trees (XGBoost)</td><td>6.000</td><td>0.9715</td><td>0.9135</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>family</th>
+      <th>x</th>
+      <th>train_AUC</th>
+      <th>val_AUC</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Logistic Regression</td>
+      <td>0.001</td>
+      <td>0.9217</td>
+      <td>0.8805</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>MLP neural network</td>
+      <td>10.000</td>
+      <td>0.9645</td>
+      <td>0.8762</td>
+    </tr>
+    <tr>
+      <th>15</th>
+      <td>Gradient-boosted trees (XGBoost)</td>
+      <td>6.000</td>
+      <td>0.9715</td>
+      <td>0.9135</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Logistic Regression performs best with strong regularization (`C=0.001`); increasing `C` improves training fit slightly but reduces holdout AUC. The MLP performs best at `alpha=0.1`, after which its training/validation gap grows. XGBoost holdout AUC rises through depth 6 and then levels off while training AUC continues upward, so we keep depth 6 as the best trade-off in this sweep.
@@ -1795,12 +3283,53 @@ pred_xgb = budget_predictions[(0.03, 700)]
 
 
     
-![png](notebook_files/notebook_78_0.png)
+![svg](notebook_files/notebook_77_0.svg)
     
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>learning_rate</th><th>n_trees</th><th>train_AUC</th><th>val_AUC</th></tr></thead><tbody><tr><th>10</th><td>0.03</td><td>700</td><td>0.9770</td><td>0.9135</td></tr><tr><th>2</th><td>0.10</td><td>200</td><td>0.9756</td><td>0.9125</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>learning_rate</th>
+      <th>n_trees</th>
+      <th>train_AUC</th>
+      <th>val_AUC</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>10</th>
+      <td>0.03</td>
+      <td>700</td>
+      <td>0.9770</td>
+      <td>0.9135</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>0.10</td>
+      <td>200</td>
+      <td>0.9756</td>
+      <td>0.9125</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 At learning rate 0.1, validation AUC peaks around 200 trees and then declines while training AUC keeps rising. At 0.03, improvement is slower but the holdout reaches a slightly higher plateau around 700 trees. We choose `learning_rate=0.03` and `n_estimators=700` for XGBoost.
@@ -1913,7 +3442,57 @@ display(blend_check)
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>model</th><th>chrono_AUC</th><th>delta_vs_XGBoost</th></tr></thead><tbody><tr><th>0</th><td>Rank-average blend (LGBM+XGB+Cat)</td><td>0.915618</td><td>0.0021</td></tr><tr><th>1</th><td>XGBoost (tuned)</td><td>0.913536</td><td>0.0000</td></tr><tr><th>2</th><td>LightGBM (fixed setting)</td><td>0.913464</td><td>-0.0001</td></tr><tr><th>3</th><td>CatBoost (fixed setting)</td><td>0.913025</td><td>-0.0005</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>model</th>
+      <th>chrono_AUC</th>
+      <th>delta_vs_XGBoost</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Rank-average blend (LGBM+XGB+Cat)</td>
+      <td>0.915618</td>
+      <td>0.0021</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>XGBoost (tuned)</td>
+      <td>0.913536</td>
+      <td>0.0000</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>LightGBM (fixed setting)</td>
+      <td>0.913464</td>
+      <td>-0.0001</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>CatBoost (fixed setting)</td>
+      <td>0.913025</td>
+      <td>-0.0005</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 All three boosters perform similarly on this holdout. Adding the fixed LightGBM and CatBoost rankings raises AUC from 0.9135 for tuned XGBoost to 0.9156 for the rank-average blend, which we carry forward as the boosted-tree candidate.
@@ -1946,7 +3525,45 @@ display(ablation)
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>configuration</th><th>AUC</th><th>validation</th></tr></thead><tbody><tr><th>0</th><td>Rank-average blend, no time index</td><td>0.912226</td><td>chrono</td></tr><tr><th>1</th><td>Rank-average blend, + time index</td><td>0.915618</td><td>chrono</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>configuration</th>
+      <th>AUC</th>
+      <th>validation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Rank-average blend, no time index</td>
+      <td>0.912226</td>
+      <td>chrono</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Rank-average blend, + time index</td>
+      <td>0.915618</td>
+      <td>chrono</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 The table tests the time index on the boosted-tree blend using the chronological holdout.
@@ -1998,7 +3615,7 @@ plot_evaluation_curves()
 
 
     
-![png](notebook_files/notebook_87_0.png)
+![svg](notebook_files/notebook_86_0.svg)
     
 
 
@@ -2068,12 +3685,72 @@ display(evaluation_metrics)
 
 
     
-![png](notebook_files/notebook_90_0.png)
+![svg](notebook_files/notebook_89_0.svg)
     
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>ROC-AUC</th><th>accuracy</th><th>precision (dropped)</th><th>recall (dropped)</th><th>F1 (dropped)</th></tr><tr><th>model</th><th></th><th></th><th></th><th></th><th></th></tr></thead><tbody><tr><th>Logistic Regression</th><td>0.881</td><td>0.799</td><td>0.773</td><td>0.737</td><td>0.754</td></tr><tr><th>MLP neural network</th><td>0.876</td><td>0.790</td><td>0.744</td><td>0.762</td><td>0.753</td></tr><tr><th>Boosted-tree rank blend</th><td>0.916</td><td>0.810</td><td>0.732</td><td>0.865</td><td>0.793</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ROC-AUC</th>
+      <th>accuracy</th>
+      <th>precision (dropped)</th>
+      <th>recall (dropped)</th>
+      <th>F1 (dropped)</th>
+    </tr>
+    <tr>
+      <th>model</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Logistic Regression</th>
+      <td>0.881</td>
+      <td>0.799</td>
+      <td>0.773</td>
+      <td>0.737</td>
+      <td>0.754</td>
+    </tr>
+    <tr>
+      <th>MLP neural network</th>
+      <td>0.876</td>
+      <td>0.790</td>
+      <td>0.744</td>
+      <td>0.762</td>
+      <td>0.753</td>
+    </tr>
+    <tr>
+      <th>Boosted-tree rank blend</th>
+      <td>0.916</td>
+      <td>0.810</td>
+      <td>0.732</td>
+      <td>0.865</td>
+      <td>0.793</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 ## 8.2 Model Family Comparisons
@@ -2117,7 +3794,7 @@ print(f"share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%")
 
 
     
-![png](notebook_files/notebook_93_0.png)
+![svg](notebook_files/notebook_92_0.svg)
     
 
 
@@ -2216,18 +3893,143 @@ display(top)
 
 
     
-![png](notebook_files/notebook_98_0.png)
+![svg](notebook_files/notebook_97_0.svg)
     
 
 
 
     
-![png](notebook_files/notebook_98_1.png)
+![svg](notebook_files/notebook_97_1.svg)
     
 
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>feature</th><th>mean_abs_shap</th></tr></thead><tbody><tr><th>0</th><td>Payment_Terms</td><td>1.237425</td></tr><tr><th>1</th><td>Origin_Country</td><td>0.669338</td></tr><tr><th>2</th><td>days_since_epoch</td><td>0.530472</td></tr><tr><th>3</th><td>Agent_ID</td><td>0.504151</td></tr><tr><th>4</th><td>tickets_per_participant</td><td>0.355377</td></tr><tr><th>...</th><td>...</td><td>...</td></tr><tr><th>15</th><td>Agent_ID_freq</td><td>0.083634</td></tr><tr><th>16</th><td>start_week</td><td>0.083600</td></tr><tr><th>17</th><td>cost_x_days</td><td>0.069765</td></tr><tr><th>18</th><td>Catering_Package</td><td>0.042550</td></tr><tr><th>19</th><td>kits_per_participant</td><td>0.040752</td></tr></tbody></table><p>20 rows × 2 columns</p></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>feature</th>
+      <th>mean_abs_shap</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Payment_Terms</td>
+      <td>1.237425</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Origin_Country</td>
+      <td>0.669338</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>days_since_epoch</td>
+      <td>0.530472</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Agent_ID</td>
+      <td>0.504151</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>tickets_per_participant</td>
+      <td>0.355377</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>Registration_Days_Before</td>
+      <td>0.338935</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>Pre_Course_Supports_Tickets</td>
+      <td>0.248548</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>Enrollment_Type</td>
+      <td>0.233831</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>Client_Category</td>
+      <td>0.225936</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>Origin_Country_freq</td>
+      <td>0.200234</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>got_requested_lab</td>
+      <td>0.176595</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>Registration_Changes</td>
+      <td>0.120067</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>prev_drop_rate</td>
+      <td>0.107810</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>Physical_Course_Kits</td>
+      <td>0.106446</td>
+    </tr>
+    <tr>
+      <th>14</th>
+      <td>Daily_Tuition_Cost</td>
+      <td>0.086305</td>
+    </tr>
+    <tr>
+      <th>15</th>
+      <td>Agent_ID_freq</td>
+      <td>0.083634</td>
+    </tr>
+    <tr>
+      <th>16</th>
+      <td>start_week</td>
+      <td>0.083600</td>
+    </tr>
+    <tr>
+      <th>17</th>
+      <td>cost_x_days</td>
+      <td>0.069765</td>
+    </tr>
+    <tr>
+      <th>18</th>
+      <td>Catering_Package</td>
+      <td>0.042550</td>
+    </tr>
+    <tr>
+      <th>19</th>
+      <td>kits_per_participant</td>
+      <td>0.040752</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 The strongest XGBoost contributions broadly match the earlier exploration: `Payment_Terms`, `Origin_Country`, the time index, `Agent_ID`, registration lead time, and support-related features appear near the top. Raw country and agent identity contribute more than their frequency encodings, while the engineered ratios add smaller supporting signals.
@@ -2261,7 +4063,45 @@ display(payment_check)
 ```
 
 
-<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>model</th><th>chrono_AUC</th><th>delta_vs_with_payment</th></tr></thead><tbody><tr><th>0</th><td>Rank-average blend</td><td>0.915618</td><td>0.000000</td></tr><tr><th>1</th><td>Rank-average blend, no Payment_Terms</td><td>0.910071</td><td>-0.005546</td></tr></tbody></table></div>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>model</th>
+      <th>chrono_AUC</th>
+      <th>delta_vs_with_payment</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Rank-average blend</td>
+      <td>0.915618</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Rank-average blend, no Payment_Terms</td>
+      <td>0.910071</td>
+      <td>-0.005546</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
 Removing `Payment_Terms` changes chronological AUC from 0.9156 to 0.9101. The field's exact recording time is still worth confirming with the data owner.
@@ -2330,7 +4170,7 @@ except Exception as e:
 
 
     
-![png](notebook_files/notebook_103_0.png)
+![svg](notebook_files/notebook_102_0.svg)
     
 
 
@@ -2365,7 +4205,7 @@ plt.show()
 
 
     
-![png](notebook_files/notebook_105_1.png)
+![svg](notebook_files/notebook_104_1.svg)
     
 
 

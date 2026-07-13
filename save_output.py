@@ -44,11 +44,6 @@ def wait_for_stable_file(
     raise TimeoutError(f"{path} did not stabilize after {timeout:.1f}s")
 
 
-def is_marimo_py(path: Path) -> bool:
-    text = path.read_text(errors="ignore")
-    return "import marimo" in text and "app = marimo.App" in text
-
-
 def clean_output(
     md_file: Path, stem: str, output_md_parent: Path, support_dir: Path
 ) -> None:
@@ -121,91 +116,21 @@ def export_ipynb(ipynb_file: Path, output_dir: Path, assets_dir: Path) -> Path:
     return output_md
 
 
-def export_html(py_file: Path, output_html: Path) -> None:
-    print(f"Exporting marimo notebook {py_file.name} to HTML...")
-    run([
-        "marimo",
-        "export",
-        "html",
-        str(py_file),
-        "-o",
-        str(output_html),
-        "-f",
-    ])
-
-
-def run_export_pipeline(
-    py_file: Path,
-    ipynb_file: Path,
-    output_dir: Path,
-    assets_dir: Path,
-    export_html_flag: bool,
-) -> None:
-    output_md = output_dir / f"{ipynb_file.stem}.md"
-    output_html = output_dir / f"{py_file.stem}.html"
-
-    if export_html_flag:
-        needs_export = (
-            not ipynb_file.exists()
-            or not output_md.exists()
-            or not output_html.exists()
-            or (py_file.exists() and py_file.stat().st_mtime > ipynb_file.stat().st_mtime)
-        )
-        if needs_export:
-            print("Notebook has changed or outputs are missing. Triggering export...")
-            # 1. Export and run the marimo notebook to ipynb to save outputs
-            print(f"Running marimo export ipynb on {py_file}...")
-            run([
-                "marimo",
-                "export",
-                "ipynb",
-                str(py_file),
-                "-o",
-                str(ipynb_file),
-                "--include-outputs",
-                "-f",
-            ])
-            # 2. Export ipynb to markdown with tables converted to markdown format
-            print("Converting exported ipynb to Markdown...")
-            export_ipynb(ipynb_file, output_dir, assets_dir)
-            # 3. Export to HTML using standard marimo export
-            print("Converting exported notebook to HTML...")
-            export_html(py_file, output_html)
-            print("[HTML Mode] Notebook outputs successfully updated.")
-        else:
-            print("Notebook outputs are already up-to-date. No export needed.")
-    else:
-        needs_md_export = (
-            not output_md.exists()
-            or (ipynb_file.exists() and ipynb_file.stat().st_mtime > output_md.stat().st_mtime)
-        )
-        if needs_md_export:
-            if not ipynb_file.exists():
-                raise FileNotFoundError(
-                    f"Jupyter notebook {ipynb_file} does not exist. Please run with --html to export it from marimo first."
-                )
-            print(f"Exporting {ipynb_file} -> Markdown...")
-            export_ipynb(ipynb_file, output_dir, assets_dir)
-            print("[Default Mode] Markdown output successfully updated.")
-        else:
-            print("Markdown output is already up-to-date. No export needed.")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sync marimo .py notebooks with .ipynb and export to docs/ folder."
+        description="Convert a pre-run Jupyter notebook to Markdown in docs/ and clean tables."
     )
     parser.add_argument(
         "file",
         nargs="?",
-        default=None,
-        help="Path to .ipynb or marimo .py file (default: notebook.ipynb / notebook.py)",
+        default="notebook.ipynb",
+        help="Path to the .ipynb file (default: notebook.ipynb)",
     )
     parser.add_argument(
         "--output-dir",
         "-o",
         default="docs",
-        help="Directory to save the markdown and html files (default: 'docs')",
+        help="Directory to save the markdown file (default: 'docs')",
     )
     parser.add_argument(
         "--assets-dir",
@@ -213,45 +138,24 @@ def main() -> None:
         default="docs",
         help="Directory to save assets/images (default: 'docs')",
     )
-    parser.add_argument(
-        "--html",
-        action="store_true",
-        help="Export HTML in addition to Markdown, but only if notebook has changed",
-    )
     args = parser.parse_args()
 
+    ipynb_file = Path(args.file)
     output_dir = Path(args.output_dir)
     assets_dir = Path(args.assets_dir)
 
-    target_file = Path(args.file) if args.file is not None else None
-
-    # Resolve py and ipynb files
-    if target_file is not None:
-        if target_file.suffix == ".py":
-            py_file = target_file
-            ipynb_file = target_file.with_suffix(".ipynb")
-        elif target_file.suffix == ".ipynb":
-            ipynb_file = target_file
-            py_file = target_file.with_suffix(".py")
-        else:
-            raise ValueError("Expected a .ipynb or .py file.")
-    else:
-        py_file = Path("notebook.py")
-        ipynb_file = Path("notebook.ipynb")
+    if not ipynb_file.exists():
+        print(f"error: source notebook {ipynb_file} does not exist.", file=sys.stderr)
+        sys.exit(1)
 
     try:
-        run_export_pipeline(
-            py_file=py_file,
-            ipynb_file=ipynb_file,
-            output_dir=output_dir,
-            assets_dir=assets_dir,
-            export_html_flag=args.html,
-        )
+        print(f"Exporting {ipynb_file} -> Markdown inside {output_dir}...")
+        export_ipynb(ipynb_file, output_dir, assets_dir)
+        print("Export and table formatting successfully completed.")
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-
