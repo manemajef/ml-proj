@@ -1,3 +1,7 @@
+```python
+import marimo as mo
+```
+
 # Group 27 — Course-Drop Prediction (Nova Academy)
 
 **Submitters:** Rotem David Semah (ID: `211396593`) · Ron Drach (ID: `213915499`)
@@ -6,10 +10,20 @@
 
 This notebook follows the project from understanding the data through preparation, modelling, evaluation, and interpretation.
 
+> **About the notebook's**
+>
+> The notebook was developed as a `marimo` notebook and exported to Jupyter format for submission.Some code patterns may look wierd (such as wrappers functions for ploting etc) but that ensures compatibility with both `jupyter` and `marimo` format.
+>
+>Additionaly you may notice expensive functions (such as shap, and hyper tuners) are decorated with `@cache` which as the name suggest - caches the the expensive claulations to keep the notebook runable :)
+
 
 ```python
+from functools import wraps
+from inspect import getsource
 import warnings
 from pathlib import Path
+from textwrap import dedent
+from joblib import dump, hash as joblib_hash, load
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -33,30 +47,39 @@ from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from xgboost import XGBClassifier
-
 from IPython.display import display
+
+def cache(fn):
+    cache_dir = Path('.cache/joblib') / fn.__name__
+    source_hash = joblib_hash(dedent(getsource(fn)))
+
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        path = cache_dir / f'{joblib_hash((source_hash, args, kwargs))}.joblib'
+        if path.exists():
+            return load(path)
+        result = fn(*args, **kwargs)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        dump(result, path)
+        return result
+
+    return wrapped
 
 warnings.filterwarnings('ignore')
 sns.set_theme(style='whitegrid')
 plt.rcParams['figure.dpi'] = 120
 plt.rcParams['savefig.dpi'] = 220
 plt.rcParams['svg.fonttype'] = 'path'
+pd.set_option('display.max_columns', None)
 
 TRAIN_PATH = 'data/Train_Data.csv'
 TEST_PATH = 'data/Test_Data_No_Target.csv'
 TARGET = 'Dropped_Course'
 SEED = 42
-pd.set_option('display.max_columns', None)  # noqa: B018
 
-
-# pragma: no cover
 def load_raw(path: str) -> pd.DataFrame:
     return pd.read_csv(path, parse_dates=["Course_Start_Date"])
 ```
-
-    /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-      from .autonotebook import tqdm as notebook_tqdm
-
 
 # 1. Business understanding
 
@@ -95,9 +118,12 @@ display(data_dictionary)
 # The CSV parser reads these ID fields as numbers because their non-missing
 # values look numeric. They are labels, not measurable quantities, so from
 # this point onward we keep them as strings.
-for _df in (train_raw, test_raw):
-    for _col in ("Agent_ID", "Company_ID"):
-        _df[_col] = _df[_col].astype("string")
+def cast_id_columns(df):
+    for col in ("Agent_ID", "Company_ID"):
+        df[col] = df[col].astype("string")
+
+for df in (train_raw, test_raw):
+    cast_id_columns(df)
 ```
 
     train: 63,464 rows x 29 cols
@@ -105,41 +131,7 @@ for _df in (train_raw, test_raw):
 
 
 
-
-
-| Unnamed: 0                  | dtype          |   n_missing |   missing_% |   n_unique |   n_zero | most_frequent             |
-|:----------------------------|:---------------|------------:|------------:|-----------:|---------:|:--------------------------|
-| Client_ID                   | int64          |           0 |        0    |      63464 |        0 | 1                         |
-| Professionals_Count         | int64          |           0 |        0    |          5 |      338 | 2.0                       |
-| Students_Count              | float64        |           4 |        0.01 |          5 |    59578 | 0.0                       |
-| Observers_Count             | int64          |           0 |        0    |          5 |    63149 | 0.0                       |
-| Course_Start_Date           | datetime64[ns] |           0 |        0    |        666 |        0 | 2015-10-16 00:00:00       |
-| Practical_Hours             | int64          |           0 |        0    |         18 |    30671 | 0.0                       |
-| Theory_Hours                | int64          |           0 |        0    |         29 |     4045 | 2.0                       |
-| Registration_Days_Before    | float64        |        2666 |        4.2  |        423 |     2610 | 0.0                       |
-| Origin_Country              | object         |         557 |        0.88 |        721 |        0 | PRT                       |
-| Catering_Package            | object         |         407 |        0.64 |        321 |        0 | Standard (Coffee Only)    |
-| Welcome_Gift_Type           | object         |           0 |        0    |          4 |        0 | Branded Notebook          |
-| Requested_Lab_Config        | object         |        1736 |        2.74 |          8 |        0 | Standard PC (Windows)     |
-| Assigned_Lab_Config         | object         |           0 |        0    |          9 |        0 | Standard PC (Windows)     |
-| Prev_Course_Dropouts        | int64          |           0 |        0    |         10 |    58184 | 0.0                       |
-| Prev_Course_Attended        | int64          |           0 |        0    |         62 |    62188 | 0.0                       |
-| Pre_Course_Supports_Tickets | int64          |           0 |        0    |          6 |    39830 | 0.0                       |
-| Physical_Course_Kits        | float64        |        1040 |        1.64 |          4 |    60790 | 0.0                       |
-| Waiting_List_Days           | int64          |           0 |        0    |        107 |    60089 | 0.0                       |
-| Registration_Changes        | int64          |           0 |        0    |         19 |    55478 | 0.0                       |
-| Enrollment_Type             | object         |         719 |        1.13 |        298 |        0 | General Admission         |
-| Lanyard_Color               | object         |           0 |        0    |        240 |        0 | Blue                      |
-| Client_Category             | object         |           0 |        0    |        505 |        0 | SaaS & Software Houses    |
-| Submission_Source           | object         |         605 |        0.95 |        328 |        0 | B2B Platforms & Resellers |
-| Returning_Client            | int64          |           0 |        0    |          2 |    61742 | 0.0                       |
-| Agent_ID                    | float64        |       11173 |       17.61 |        203 |        0 | 184.0                     |
-| Company_ID                  | float64        |       60344 |       95.08 |        184 |        0 | 5181.0                    |
-| Payment_Terms               | object         |         587 |        0.92 |        236 |        0 | Pay Upon Start            |
-| Daily_Tuition_Cost          | float64        |          79 |        0.12 |       4780 |     1079 | 62.0                      |
-| Dropped_Course              | int64          |           0 |        0    |          2 |    37165 | 0.0                       |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>dtype</th><th>n_missing</th><th>missing_%</th><th>n_unique</th><th>n_zero</th><th>most_frequent</th></tr></thead><tbody><tr><th>Client_ID</th><td>int64</td><td>0</td><td>0.00</td><td>63464</td><td>0</td><td>1</td></tr><tr><th>Professionals_Count</th><td>int64</td><td>0</td><td>0.00</td><td>5</td><td>338</td><td>2.0</td></tr><tr><th>Students_Count</th><td>float64</td><td>4</td><td>0.01</td><td>5</td><td>59578</td><td>0.0</td></tr><tr><th>Observers_Count</th><td>int64</td><td>0</td><td>0.00</td><td>5</td><td>63149</td><td>0.0</td></tr><tr><th>Course_Start_Date</th><td>datetime64[us]</td><td>0</td><td>0.00</td><td>666</td><td>0</td><td>2015-10-16 00:00:00</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr><tr><th>Agent_ID</th><td>float64</td><td>11173</td><td>17.61</td><td>203</td><td>0</td><td>184.0</td></tr><tr><th>Company_ID</th><td>float64</td><td>60344</td><td>95.08</td><td>184</td><td>0</td><td>5181.0</td></tr><tr><th>Payment_Terms</th><td>str</td><td>587</td><td>0.92</td><td>236</td><td>0</td><td>Pay Upon Start</td></tr><tr><th>Daily_Tuition_Cost</th><td>float64</td><td>79</td><td>0.12</td><td>4780</td><td>1079</td><td>62.0</td></tr><tr><th>Dropped_Course</th><td>int64</td><td>0</td><td>0.00</td><td>2</td><td>37165</td><td>0.0</td></tr></tbody></table><p>29 rows × 6 columns</p></div>
 
 
 **What the dictionary tells us.**
@@ -155,23 +147,7 @@ train_raw.describe()
 ```
 
 
-
-
-
-
-| Unnamed: 0   |   Client_ID |   Professionals_Count |   Students_Count |   Observers_Count | Course_Start_Date             |   Practical_Hours |   Theory_Hours |   Registration_Days_Before |   Prev_Course_Dropouts |   Prev_Course_Attended |   Pre_Course_Supports_Tickets |   Physical_Course_Kits |   Waiting_List_Days |   Registration_Changes |   Returning_Client |   Daily_Tuition_Cost |   Dropped_Course |
-|:-------------|------------:|----------------------:|-----------------:|------------------:|:------------------------------|------------------:|---------------:|---------------------------:|-----------------------:|-----------------------:|------------------------------:|-----------------------:|--------------------:|-----------------------:|-------------------:|---------------------:|-----------------:|
-| count        |     63464   |            63464      |       63460      |        63464      | 63464                         |        63464      |     63464      |                  60798     |             63464      |             63464      |                    63464      |             62424      |          63464      |             63464      |         63464      |           63385      |       63464      |
-| mean         |     39761.8 |                1.8352 |           8.7517 |            0.0053 | 2016-06-23 05:17:23.287533056 |            6.6091 |         2.1644 |                    102.894 |                 0.096  |                 0.123  |                        0.5133 |                 0.0262 |              3.9837 |                 0.18   |             0.0271 |              98.848  |           0.4144 |
-| min          |         1   |                0      |           0      |            0      | 2015-07-01 00:00:00           |           -5      |         0      |                      0     |                 0      |                 0      |                        0      |                 0      |              0      |                 0      |             0      |               0      |           0      |
-| 25%          |     19959.8 |                2      |           0      |            0      | 2016-02-13 00:00:00           |            0      |         1      |                     19     |                 0      |                 0      |                        0      |                 0      |              0      |                 0      |             0      |              75      |           0      |
-| 50%          |     39819.5 |                2      |           0      |            0      | 2016-07-01 00:00:00           |            1      |         2      |                     65     |                 0      |                 0      |                        0      |                 0      |              0      |                 0      |             0      |              94.5    |           0      |
-| 75%          |     59570.2 |                2      |           0      |            0      | 2016-11-11 00:00:00           |            1      |         3      |                    150     |                 0      |                 0      |                        1      |                 0      |              0      |                 0      |             0      |             117      |           1      |
-| max          |     79330   |                4      |        9999      |           10      | 2017-04-26 00:00:00           |        10000      |        41      |                    629     |                21      |                61      |                        5      |                 3      |            391      |                21      |             1      |            5400      |           1      |
-| std          |     22879   |                0.5086 |         294.239  |            0.0897 | nan                           |          215.503  |         1.4699 |                    109.179 |                 0.4485 |                 1.5352 |                        0.7636 |                 0.1602 |             23.1955 |                 0.5926 |             0.1625 |              41.8554 |           0.4926 |
-
-
-
+<table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>Client_ID</th><th>Professionals_Count</th><th>Students_Count</th><th>Observers_Count</th><th>Course_Start_Date</th><th>Practical_Hours</th><th>Theory_Hours</th><th>Registration_Days_Before</th><th>Prev_Course_Dropouts</th><th>Prev_Course_Attended</th><th>Pre_Course_Supports_Tickets</th><th>Physical_Course_Kits</th><th>Waiting_List_Days</th><th>Registration_Changes</th><th>Returning_Client</th><th>Daily_Tuition_Cost</th><th>Dropped_Course</th></tr></thead><tbody><tr><th>count</th><td>63464.000000</td><td>63464.000000</td><td>63460.000000</td><td>63464.000000</td><td>63464</td><td>63464.000000</td><td>63464.000000</td><td>60798.000000</td><td>63464.000000</td><td>63464.000000</td><td>63464.000000</td><td>62424.000000</td><td>63464.000000</td><td>63464.000000</td><td>63464.000000</td><td>63385.000000</td><td>63464.000000</td></tr><tr><th>mean</th><td>39761.752616</td><td>1.835214</td><td>8.751718</td><td>0.005326</td><td>2016-06-23 05:17:23.287533</td><td>6.609054</td><td>2.164392</td><td>102.894470</td><td>0.095991</td><td>0.122967</td><td>0.513330</td><td>0.026224</td><td>3.983676</td><td>0.180039</td><td>0.027133</td><td>98.847963</td><td>0.414392</td></tr><tr><th>min</th><td>1.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>2015-07-01 00:00:00</td><td>-5.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td></tr><tr><th>25%</th><td>19959.750000</td><td>2.000000</td><td>0.000000</td><td>0.000000</td><td>2016-02-13 00:00:00</td><td>0.000000</td><td>1.000000</td><td>19.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>75.000000</td><td>0.000000</td></tr><tr><th>50%</th><td>39819.500000</td><td>2.000000</td><td>0.000000</td><td>0.000000</td><td>2016-07-01 00:00:00</td><td>1.000000</td><td>2.000000</td><td>65.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>94.500000</td><td>0.000000</td></tr><tr><th>75%</th><td>59570.250000</td><td>2.000000</td><td>0.000000</td><td>0.000000</td><td>2016-11-11 00:00:00</td><td>1.000000</td><td>3.000000</td><td>150.000000</td><td>0.000000</td><td>0.000000</td><td>1.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>117.000000</td><td>1.000000</td></tr><tr><th>max</th><td>79330.000000</td><td>4.000000</td><td>9999.000000</td><td>10.000000</td><td>2017-04-26 00:00:00</td><td>10000.000000</td><td>41.000000</td><td>629.000000</td><td>21.000000</td><td>61.000000</td><td>5.000000</td><td>3.000000</td><td>391.000000</td><td>21.000000</td><td>1.000000</td><td>5400.000000</td><td>1.000000</td></tr><tr><th>std</th><td>22878.980699</td><td>0.508607</td><td>294.238584</td><td>0.089662</td><td>NaN</td><td>215.502929</td><td>1.469854</td><td>109.178824</td><td>0.448526</td><td>1.535201</td><td>0.763563</td><td>0.160202</td><td>23.195495</td><td>0.592577</td><td>0.162474</td><td>41.855391</td><td>0.492621</td></tr></tbody></table>
 
 
 ## 2.1 Target balance
@@ -182,32 +158,32 @@ We first check whether one target class is rare enough to require special treatm
 ```python
 target_counts = train_raw[TARGET].value_counts().sort_index()
 target_rate = train_raw[TARGET].value_counts(normalize=True).sort_index()
-balance = pd.DataFrame({'count': target_counts, 'rate_%': (target_rate * 100).round(1)})
+balance = pd.DataFrame({
+    'count': target_counts,
+    'rate_%': (target_rate * 100).round(1),
+})
 balance.index = ['0 = completed', '1 = dropped']
 display(balance)
-_ax = target_rate.mul(100).plot.bar(color=['#4c72b0', '#c44e52'], figsize=(5, 3.5))
-_ax.set_xticklabels(['completed (0)', 'dropped (1)'], rotation=0)
-_ax.set_ylabel('share of orders (%)')
-_ax.set_title('Target balance — Dropped_Course')
-plt.tight_layout()
-plt.show()
+
+def plot_target_balance():
+    ax = target_rate.mul(100).plot.bar(color=['#4c72b0', '#c44e52'])
+    ax.set_xticklabels(['completed (0)', 'dropped (1)'], rotation=0)
+    ax.set_ylabel('share of orders (%)')
+    ax.set_title('Target balance — Dropped_Course')
+    plt.tight_layout()
+    plt.show()
+
+plot_target_balance()
 ```
 
 
-
-
-| Unnamed: 0    |   count |   rate_% |
-|:--------------|--------:|---------:|
-| 0 = completed |   37165 |     58.6 |
-| 1 = dropped   |   26299 |     41.4 |
-
-
-
-
-
     
-![svg](notebook_files/notebook_8_1.svg)
+![png](notebook_files/notebook_10_0.png)
     
+
+
+
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>rate_%</th></tr></thead><tbody><tr><th>0 = completed</th><td>37165</td><td>58.6</td></tr><tr><th>1 = dropped</th><td>26299</td><td>41.4</td></tr></tbody></table></div>
 
 
 The classes are reasonably balanced: about 59% completed and 41% dropped
@@ -232,18 +208,34 @@ print(f'test  dates: {test_start.date()} -> {test_end.date()}')
 monthly = (
     train_raw.set_index('Course_Start_Date').resample('MS')[TARGET].mean().mul(100)
 )
-_ax = monthly.plot(marker='o', figsize=(12, 4))
-_ax.axhline(
-    train_raw[TARGET].mean() * 100, ls='--', color='grey', label='train average'
-)
-_ax.axvline(train_end, ls='--', color='green', label=f'train ends ({train_end.date()})')
-_ax.axvline(test_end, ls=':', color='red', label=f'test ends ({test_end.date()})')
-_ax.set_xlim(train_raw['Course_Start_Date'].min(), test_end)
-_ax.set_ylabel('drop rate (%)')
-_ax.set_title('Drop rate over time — training period and the hidden test horizon')
-_ax.legend()
-plt.tight_layout()
-plt.show()
+
+def plot_monthly_drop_rate():
+    ax = monthly.plot(marker='o', figsize=(12, 4))
+    ax.axhline(
+        train_raw[TARGET].mean() * 100,
+        ls='--',
+        color='grey',
+        label='train average',
+    )
+    ax.axvline(
+        train_end,
+        ls='--',
+        color='green',
+        label=f'train ends ({train_end.date()})',
+    )
+    ax.axvline(
+        test_end, ls=':', color='red', label=f'test ends ({test_end.date()})'
+    )
+    ax.set_xlim(train_raw['Course_Start_Date'].min(), test_end)
+    ax.set_ylabel('drop rate (%)')
+    ax.set_title(
+        'Drop rate over time — training period and the hidden test horizon'
+    )
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+plot_monthly_drop_rate()
 ```
 
     train dates: 2015-07-01 -> 2017-04-26
@@ -252,7 +244,7 @@ plt.show()
 
 
     
-![svg](notebook_files/notebook_12_1.svg)
+![png](notebook_files/notebook_14_1.png)
     
 
 
@@ -271,30 +263,14 @@ missing_compare = pd.DataFrame({
     "test_missing_%": test_raw.isna().mean().mul(100).round(2),
 })
 missing_compare = missing_compare[
-    (missing_compare["train_missing_%"] > 0) | (missing_compare["test_missing_%"] > 0)
+    (missing_compare["train_missing_%"] > 0)
+    | (missing_compare["test_missing_%"] > 0)
 ].sort_values("train_missing_%", ascending=False)
 display(missing_compare)
 ```
 
 
-
-
-| Unnamed: 0               |   train_missing_% |   test_missing_% |
-|:-------------------------|------------------:|-----------------:|
-| Company_ID               |             95.08 |            96.41 |
-| Agent_ID                 |             17.61 |            17.61 |
-| Registration_Days_Before |              4.2  |             4.05 |
-| Requested_Lab_Config     |              2.74 |             3.01 |
-| Physical_Course_Kits     |              1.64 |             1.43 |
-| Enrollment_Type          |              1.13 |             1.12 |
-| Submission_Source        |              0.95 |             0.94 |
-| Payment_Terms            |              0.92 |             0.91 |
-| Origin_Country           |              0.88 |             1.01 |
-| Catering_Package         |              0.64 |             0.7  |
-| Daily_Tuition_Cost       |              0.12 |             0.01 |
-| Students_Count           |              0.01 |             0    |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>train_missing_%</th><th>test_missing_%</th></tr></thead><tbody><tr><th>Company_ID</th><td>95.08</td><td>96.41</td></tr><tr><th>Agent_ID</th><td>17.61</td><td>17.61</td></tr><tr><th>Registration_Days_Before</th><td>4.20</td><td>4.05</td></tr><tr><th>Requested_Lab_Config</th><td>2.74</td><td>3.01</td></tr><tr><th>Physical_Course_Kits</th><td>1.64</td><td>1.43</td></tr><tr><th>...</th><td>...</td><td>...</td></tr><tr><th>Payment_Terms</th><td>0.92</td><td>0.91</td></tr><tr><th>Origin_Country</th><td>0.88</td><td>1.01</td></tr><tr><th>Catering_Package</th><td>0.64</td><td>0.70</td></tr><tr><th>Daily_Tuition_Cost</th><td>0.12</td><td>0.01</td></tr><tr><th>Students_Count</th><td>0.01</td><td>0.00</td></tr></tbody></table><p>12 rows × 2 columns</p></div>
 
 
 Most train/test missingness rates are close. We next check whether the presence of a value is associated with the target.
@@ -309,43 +285,30 @@ missingness_cols = [
     'Daily_Tuition_Cost',
     'Payment_Terms',
 ]
-rows = []
-for _col in missingness_cols:
-    stats = (
-        train_raw
-        .assign(is_missing=train_raw[_col].isna())
-        .groupby('is_missing')[TARGET]
-        .agg(count='size', drop_rate='mean')
-    )
-    for is_missing, r in stats.iterrows():
-        rows.append({
-            'column': _col,
-            'is_missing': is_missing,
-            'count': int(r['count']),
-            'drop_rate_%': round(r['drop_rate'] * 100, 1),
-        })
-display(pd.DataFrame(rows))
+
+def summarize_missingness():
+    rows = []
+    for col in missingness_cols:
+        stats = (
+            train_raw
+            .assign(is_missing=train_raw[col].isna())
+            .groupby('is_missing')[TARGET]
+            .agg(count='size', drop_rate='mean')
+        )
+        for is_missing, row in stats.iterrows():
+            rows.append({
+                'column': col,
+                'is_missing': is_missing,
+                'count': int(row['count']),
+                'drop_rate_%': round(row['drop_rate'] * 100, 1),
+            })
+    return pd.DataFrame(rows)
+
+display(summarize_missingness())
 ```
 
 
-
-
-|   Unnamed: 0 | column                   | is_missing   |   count |   drop_rate_% |
-|-------------:|:-------------------------|:-------------|--------:|--------------:|
-|            0 | Company_ID               | False        |    3120 |          21.2 |
-|            1 | Company_ID               | True         |   60344 |          42.5 |
-|            2 | Agent_ID                 | False        |   52291 |          43.1 |
-|            3 | Agent_ID                 | True         |   11173 |          33.5 |
-|            4 | Registration_Days_Before | False        |   60798 |          41.4 |
-|            5 | Registration_Days_Before | True         |    2666 |          41.5 |
-|            6 | Physical_Course_Kits     | False        |   62424 |          41.5 |
-|            7 | Physical_Course_Kits     | True         |    1040 |          39.3 |
-|            8 | Daily_Tuition_Cost       | False        |   63385 |          41.4 |
-|            9 | Daily_Tuition_Cost       | True         |      79 |          51.9 |
-|           10 | Payment_Terms            | False        |   62877 |          41.5 |
-|           11 | Payment_Terms            | True         |     587 |          35.4 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>is_missing</th><th>count</th><th>drop_rate_%</th></tr></thead><tbody><tr><th>0</th><td>Company_ID</td><td>False</td><td>3120</td><td>21.2</td></tr><tr><th>1</th><td>Company_ID</td><td>True</td><td>60344</td><td>42.5</td></tr><tr><th>2</th><td>Agent_ID</td><td>False</td><td>52291</td><td>43.1</td></tr><tr><th>3</th><td>Agent_ID</td><td>True</td><td>11173</td><td>33.5</td></tr><tr><th>4</th><td>Registration_Days_Before</td><td>False</td><td>60798</td><td>41.4</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td><td>...</td></tr><tr><th>7</th><td>Physical_Course_Kits</td><td>True</td><td>1040</td><td>39.3</td></tr><tr><th>8</th><td>Daily_Tuition_Cost</td><td>False</td><td>63385</td><td>41.4</td></tr><tr><th>9</th><td>Daily_Tuition_Cost</td><td>True</td><td>79</td><td>51.9</td></tr><tr><th>10</th><td>Payment_Terms</td><td>False</td><td>62877</td><td>41.5</td></tr><tr><th>11</th><td>Payment_Terms</td><td>True</td><td>587</td><td>35.4</td></tr></tbody></table><p>12 rows × 4 columns</p></div>
 
 
 Rows without a `Company_ID` have a noticeably higher drop rate, and `Agent_ID` presence also separates groups. This motivates explicit presence flags instead of replacing missing identifiers with a typical value.
@@ -358,33 +321,29 @@ Several text columns have far more distinct values than their meanings suggest: 
 ```python
 TEXT_COLS = list(train_raw.select_dtypes(include=['object']).columns)
 
-
 def count_unique_vals(df, col):
     return df[col].nunique()
-
 
 def most_common_cats(df, col, n=15):
     return df[col].value_counts(normalize=True).head(n)
 
-
 N_COUNT = 8
-for _col in TEXT_COLS:
-    top_values = most_common_cats(train_raw, _col, N_COUNT)
-    cats = [f'{value!r}: ({share * 100:.1f}%)' for value, share in top_values.items()]
-    # N_COUNT = 15
-    # for col in TEXT_COLS:
-    #     top_values = most_common_cats(train_raw, col)
-    cats_str = '\n'.join((' | '.join(cats[i : i + 3]) for i in range(0, len(cats), 3)))
-    #     print(f"""
-    # {'=' * 80}
-    # Column: {col}
-    # Unique values: {count_unique_vals(train_raw, col)}
-    # Top {len(top_values)} categories:
-    # {",   ".join(f"{value}: ({share * 100:.1f}%)" for value, share in top_values.items())}
-    # """)
-    print(
-        f"\n{'=' * 80}\n\nColumn: {_col}\nUnique values: {count_unique_vals(train_raw, _col)}\n\nTop {len(top_values)} categories:\n\n{cats_str}\n"
-    )
+
+def print_category_summaries():
+    for col in TEXT_COLS:
+        top_values = most_common_cats(train_raw, col, N_COUNT)
+        cats = [
+            f'{value!r}: ({share * 100:.1f}%)'
+            for value, share in top_values.items()
+        ]
+        cats_str = '\n'.join(
+            (' | '.join(cats[i : i + 3]) for i in range(0, len(cats), 3))
+        )
+        print(
+            f"\n{'=' * 80}\n\nColumn: {col}\nUnique values: {count_unique_vals(train_raw, col)}\n\nTop {len(top_values)} categories:\n\n{cats_str}\n"
+        )
+
+print_category_summaries()
 ```
 
     
@@ -529,7 +488,6 @@ COMMON_NANS = {
 }
 COUNTRY_ALIASES = {'cn': 'chn'}
 
-
 def canonicalize(s: pd.Series) -> pd.Series:
     """Map dirty categorical text to its canonical form: lowercase, injected
     punctuation stripped, single-spaced. No NaN masking — that is normalize_cats' job."""
@@ -549,13 +507,12 @@ We normalize case, surrounding whitespace, repeated spaces, and injected punctua
 ```python
 CAT_COLS = TEXT_COLS + ['Agent_ID', 'Company_ID']
 
-
 def normalize_cats(df: pd.DataFrame) -> pd.DataFrame:
     """Canonicalise every categorical, then map junk placeholders to NaN."""
     df = df.copy()
-    for _col in CAT_COLS:
-        s = canonicalize(df[_col])
-        df[_col] = s.mask(s.isin(COMMON_NANS))
+    for col in CAT_COLS:
+        s = canonicalize(df[col])
+        df[col] = s.mask(s.isin(COMMON_NANS))
     df['Origin_Country'] = df['Origin_Country'].replace(COUNTRY_ALIASES)
     return df
 ```
@@ -577,22 +534,7 @@ display(cardinality_change)
 ```
 
 
-
-
-| Unnamed: 0           |   raw_unique |   clean_unique |   collapsed |
-|:---------------------|-------------:|---------------:|------------:|
-| Origin_Country       |          721 |            153 |         568 |
-| Client_Category      |          505 |              7 |         498 |
-| Submission_Source    |          328 |              4 |         324 |
-| Catering_Package     |          321 |              4 |         317 |
-| Enrollment_Type      |          298 |              4 |         294 |
-| Lanyard_Color        |          240 |              5 |         235 |
-| Payment_Terms        |          236 |              3 |         233 |
-| Welcome_Gift_Type    |            4 |              4 |           0 |
-| Requested_Lab_Config |            8 |              8 |           0 |
-| Assigned_Lab_Config  |            9 |              9 |           0 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>raw_unique</th><th>clean_unique</th><th>collapsed</th></tr></thead><tbody><tr><th>Origin_Country</th><td>721</td><td>153</td><td>568</td></tr><tr><th>Client_Category</th><td>505</td><td>7</td><td>498</td></tr><tr><th>Submission_Source</th><td>328</td><td>4</td><td>324</td></tr><tr><th>Catering_Package</th><td>321</td><td>4</td><td>317</td></tr><tr><th>Enrollment_Type</th><td>298</td><td>4</td><td>294</td></tr><tr><th>Lanyard_Color</th><td>240</td><td>5</td><td>235</td></tr><tr><th>Payment_Terms</th><td>236</td><td>3</td><td>233</td></tr><tr><th>Welcome_Gift_Type</th><td>4</td><td>4</td><td>0</td></tr><tr><th>Requested_Lab_Config</th><td>8</td><td>8</td><td>0</td></tr><tr><th>Assigned_Lab_Config</th><td>9</td><td>9</td><td>0</td></tr></tbody></table></div>
 
 
 The before/after table confirms that most of the apparent variety was formatting noise: `Payment_Terms` falls from 236 raw labels to 3 cleaned levels, and `Client_Category` from 505 to 7. Columns that were already consistent remain unchanged.
@@ -604,7 +546,9 @@ We start with business fields that have only a few cleaned levels, where a direc
 
 ```python
 def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
-    stats = df.groupby(col, dropna=False)[TARGET].agg(drop_rate='mean', count='size')
+    stats = df.groupby(col, dropna=False)[TARGET].agg(
+        drop_rate='mean', count='size'
+    )
     stats = (
         stats[stats['count'] >= min_count]
         .sort_values('count', ascending=False)
@@ -613,7 +557,7 @@ def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
     )
     labels = [f"{i} (n={int(r['count'])})" for i, r in stats.iterrows()]
     if ax is None:
-        _, ax = plt.subplots(figsize=(9, 4))
+        fig, ax = plt.subplots(figsize=(9, 4))
     ax.barh(labels, stats['drop_rate'] * 100, color='#4c72b0')
     overall = df[TARGET].mean() * 100
     ax.axvline(overall, ls='--', color='red', label=f'mean ({overall:.1f}%)')
@@ -622,27 +566,29 @@ def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
     ax.legend()
     return stats
 
+def plot_categorical_overview():
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+    plot_dropout_by_category(
+        clean_train, 'Payment_Terms', min_count=20, top_n=5, ax=axes[0, 0]
+    )
+    plot_dropout_by_category(
+        clean_train, 'Client_Category', min_count=100, top_n=8, ax=axes[0, 1]
+    )
+    plot_dropout_by_category(
+        clean_train, 'Submission_Source', min_count=100, top_n=6, ax=axes[1, 0]
+    )
+    plot_dropout_by_category(
+        clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=axes[1, 1]
+    )
+    plt.tight_layout()
+    plt.show()
 
-_fig, _axes = plt.subplots(2, 2, figsize=(14, 9))
-plot_dropout_by_category(
-    clean_train, 'Payment_Terms', min_count=20, top_n=5, ax=_axes[0, 0]
-)
-plot_dropout_by_category(
-    clean_train, 'Client_Category', min_count=100, top_n=8, ax=_axes[0, 1]
-)
-plot_dropout_by_category(
-    clean_train, 'Submission_Source', min_count=100, top_n=6, ax=_axes[1, 0]
-)
-plot_dropout_by_category(
-    clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=_axes[1, 1]
-)
-plt.tight_layout()
-plt.show()
+plot_categorical_overview()
 ```
 
 
     
-![svg](notebook_files/notebook_28_0.svg)
+![png](notebook_files/notebook_30_0.png)
     
 
 
@@ -668,17 +614,21 @@ country_stats = (
         lift_pp=lambda d: (d['drop_rate'] - overall_drop) * 100,
     )
 )
-top_by_size = country_stats.sort_values('count', ascending=False).head(country_top_n)
+top_by_size = country_stats.sort_values('count', ascending=False).head(
+    country_top_n
+)
 extreme_by_lift = (
     country_stats[country_stats['count'] >= country_min_n]
     .iloc[
         lambda d: (
-            d['lift_pp'].abs().sort_values(ascending=False).index.map(d.index.get_loc)
+            d['lift_pp']
+            .abs()
+            .sort_values(ascending=False)
+            .index.map(d.index.get_loc)
         )
     ]
     .head(country_top_n)
 )
-
 
 def plot_country_dropout(stats, title, ax):
     stats = stats.sort_values('drop_rate_pct')
@@ -699,17 +649,20 @@ def plot_country_dropout(stats, title, ax):
     ax.set_title(title)
     ax.legend()
 
+def plot_country_overview():
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    plot_country_dropout(
+        top_by_size, f'Drop rate by largest {country_top_n} countries', axes[0]
+    )
+    plot_country_dropout(
+        extreme_by_lift,
+        f'Most unusual country drop rates (n >= {country_min_n})',
+        axes[1],
+    )
+    plt.tight_layout()
+    plt.show()
 
-_fig, _axes = plt.subplots(1, 2, figsize=(15, 6))
-plot_country_dropout(
-    top_by_size, f'Drop rate by largest {country_top_n} countries', _axes[0]
-)
-# Pick countries whose drop rate is farthest from the overall mean, after filtering tiny countries.
-plot_country_dropout(
-    extreme_by_lift, f'Most unusual country drop rates (n >= {country_min_n})', _axes[1]
-)
-plt.tight_layout()
-plt.show()
+plot_country_overview()
 display(
     country_stats
     .sort_values('count', ascending=False)
@@ -720,36 +673,21 @@ display(
 
 
     
-![svg](notebook_files/notebook_31_0.svg)
+![png](notebook_files/notebook_33_0.png)
     
 
 
 
-
-
-| ('Unnamed: 0_level_0', 'Origin_Country')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate_pct', 'Unnamed: 2_level_1') |   ('lift_pp', 'Unnamed: 3_level_1') |
-|:-------------------------------------------|----------------------------------:|------------------------------------------:|------------------------------------:|
-| prt                                        |                             26429 |                                     63.78 |                               22.34 |
-| fra                                        |                              6961 |                                     17.28 |                              -24.16 |
-| deu                                        |                              4400 |                                     16.7  |                              -24.73 |
-| esp                                        |                              3896 |                                     27.31 |                              -14.13 |
-| gbr                                        |                              3514 |                                     27.8  |                              -13.64 |
-| ita                                        |                              2726 |                                     35.88 |                               -5.56 |
-| bra                                        |                              1402 |                                     38.02 |                               -3.42 |
-| bel                                        |                              1324 |                                     19.18 |                              -22.25 |
-| nld                                        |                              1222 |                                     19.97 |                              -21.47 |
-| usa                                        |                              1072 |                                     22.39 |                              -19.05 |
-| chn                                        |                              1054 |                                     42.79 |                                1.35 |
-| che                                        |                               935 |                                     22.78 |                              -18.66 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>drop_rate_pct</th><th>lift_pp</th></tr><tr><th>Origin_Country</th><th></th><th></th><th></th></tr></thead><tbody><tr><th>prt</th><td>26429</td><td>63.78</td><td>22.34</td></tr><tr><th>fra</th><td>6961</td><td>17.28</td><td>-24.16</td></tr><tr><th>deu</th><td>4400</td><td>16.70</td><td>-24.73</td></tr><tr><th>esp</th><td>3896</td><td>27.31</td><td>-14.13</td></tr><tr><th>gbr</th><td>3514</td><td>27.80</td><td>-13.64</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td></tr><tr><th>bel</th><td>1324</td><td>19.18</td><td>-22.25</td></tr><tr><th>nld</th><td>1222</td><td>19.97</td><td>-21.47</td></tr><tr><th>usa</th><td>1072</td><td>22.39</td><td>-19.05</td></tr><tr><th>chn</th><td>1054</td><td>42.79</td><td>1.35</td></tr><tr><th>che</th><td>935</td><td>22.78</td><td>-18.66</td></tr></tbody></table><p>12 rows × 3 columns</p></div>
 
 
 Portugal contains 26,429 registrations and has a 63.8% drop rate, making it both the largest country group and the clearest geographic difference. We use it to investigate whether country overlaps with agents, channels, or other parts of the acquisition process.
 
 
 ```python
-is_portugal = clean_train["Origin_Country"].eq("prt").fillna(False).to_numpy(dtype=bool)
+is_portugal = (
+    clean_train["Origin_Country"].eq("prt").fillna(False).to_numpy(dtype=bool)
+)
 country_group = np.where(is_portugal, "Portugal", "Other countries")
 
 portugal_summary = (
@@ -764,53 +702,45 @@ display(portugal_summary[["count", "drop_rate_pct"]].round(1))
 ```
 
 
-
-
-| ('Unnamed: 0_level_0', 'country_group')   |   ('count', 'Unnamed: 1_level_1') |   ('drop_rate_pct', 'Unnamed: 2_level_1') |
-|:------------------------------------------|----------------------------------:|------------------------------------------:|
-| Other countries                           |                             37035 |                                      25.5 |
-| Portugal                                  |                             26429 |                                      63.8 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>drop_rate_pct</th></tr><tr><th>country_group</th><th></th><th></th></tr></thead><tbody><tr><th>Other countries</th><td>37035</td><td>25.5</td></tr><tr><th>Portugal</th><td>26429</td><td>63.8</td></tr></tbody></table></div>
 
 
 Compared with all other countries, Portugal remains clearly different. We next inspect the identifier fields as categories, not numbers, to see whether they show related structure.
 
 
 ```python
-_fig, _axes = plt.subplots(1, 2, figsize=(15, 6))
-plot_dropout_by_category(clean_train, 'Agent_ID', min_count=150, top_n=12, ax=_axes[0])
 company_presence = train_raw.groupby(train_raw['Company_ID'].notna())[TARGET].agg(
     count='size', drop_rate='mean'
 )
 company_presence.index = ['no company_id', 'has company_id']
-_axes[1].bar(
-    company_presence.index,
-    company_presence['drop_rate'] * 100,
-    color=['#c44e52', '#55a868'],
-)
-_axes[1].set_ylabel('drop rate (%)')
-_axes[1].set_title('Drop rate by Company_ID presence')
-plt.tight_layout()
-plt.show()
+
+def plot_agent_company_overview():
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    plot_dropout_by_category(
+        clean_train, 'Agent_ID', min_count=150, top_n=12, ax=axes[0]
+    )
+    axes[1].bar(
+        company_presence.index,
+        company_presence['drop_rate'] * 100,
+        color=['#c44e52', '#55a868'],
+    )
+    axes[1].set_ylabel('drop rate (%)')
+    axes[1].set_title('Drop rate by Company_ID presence')
+    plt.tight_layout()
+    plt.show()
+
+plot_agent_company_overview()
 display(company_presence)
 ```
 
 
     
-![svg](notebook_files/notebook_35_0.svg)
+![png](notebook_files/notebook_37_0.png)
     
 
 
 
-
-
-| Unnamed: 0     |   count |   drop_rate |
-|:---------------|--------:|------------:|
-| no company_id  |   60344 |      0.4248 |
-| has company_id |    3120 |      0.2122 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>count</th><th>drop_rate</th></tr></thead><tbody><tr><th>no company_id</th><td>60344</td><td>0.424848</td></tr><tr><th>has company_id</th><td>3120</td><td>0.212179</td></tr></tbody></table></div>
 
 
 Frequent agents have different drop rates, while registrations with a `Company_ID` drop less often (21.2% versus 42.5%). These relationships may overlap with geography, so we perform a small check: does knowing the agent improve country prediction over always guessing the most common country?
@@ -842,14 +772,7 @@ display(
 ```
 
 
-
-
-|   Unnamed: 0 | check                     |   accuracy |
-|-------------:|:--------------------------|-----------:|
-|            0 | majority country baseline |      0.391 |
-|            1 | agent modal country       |      0.421 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>check</th><th>accuracy</th></tr></thead><tbody><tr><th>0</th><td>majority country baseline</td><td>0.391</td></tr><tr><th>1</th><td>agent modal country</td><td>0.421</td></tr></tbody></table></div>
 
 
 Agent-based prediction raises country accuracy from 0.391 to 0.421, indicating modest overlap between the two fields. Both are included using the compact representation introduced during preparation.
@@ -866,7 +789,6 @@ num_cols = [
     for c in train_raw.select_dtypes(include=["int64", "float64"]).columns
     if c not in ID_LIKE + [TARGET]
 ]
-
 
 def numeric_summary(df, cols):
     rows = []
@@ -885,31 +807,11 @@ def numeric_summary(df, cols):
         })
     return pd.DataFrame(rows).sort_values("corr_target", key=abs, ascending=False)
 
-
 display(numeric_summary(train_raw, num_cols))
 ```
 
 
-
-
-|   Unnamed: 0 | column                      |   missing_% |   corr_target |   mean |   median |    std |   min |   max |   skew |
-|-------------:|:----------------------------|------------:|--------------:|-------:|---------:|-------:|------:|------:|-------:|
-|            5 | Registration_Days_Before    |         4.2 |         0.351 | 102.89 |     65   | 109.18 |     0 |   629 |   1.5  |
-|            8 | Pre_Course_Supports_Tickets |         0   |        -0.301 |   0.51 |      0   |   0.76 |     0 |     5 |   1.47 |
-|            6 | Prev_Course_Dropouts        |         0   |         0.199 |   0.1  |      0   |   0.45 |     0 |    21 |  15.7  |
-|           11 | Registration_Changes        |         0   |        -0.148 |   0.18 |      0   |   0.59 |     0 |    21 |   7.36 |
-|            9 | Physical_Course_Kits        |         1.6 |        -0.138 |   0.03 |      0   |   0.16 |     0 |     3 |   6    |
-|           10 | Waiting_List_Days           |         0   |         0.068 |   3.98 |      0   |  23.2  |     0 |   391 |   9.26 |
-|           12 | Returning_Client            |         0   |        -0.059 |   0.03 |      0   |   0.16 |     0 |     1 |   5.82 |
-|            0 | Professionals_Count         |         0   |         0.057 |   1.84 |      2   |   0.51 |     0 |     4 |  -0.47 |
-|            7 | Prev_Course_Attended        |         0   |        -0.052 |   0.12 |      0   |   1.54 |     0 |    61 |  21.96 |
-|            4 | Theory_Hours                |         0   |         0.045 |   2.16 |      2   |   1.47 |     0 |    41 |   3.35 |
-|            2 | Observers_Count             |         0   |        -0.031 |   0.01 |      0   |   0.09 |     0 |    10 |  45.38 |
-|           13 | Daily_Tuition_Cost          |         0.1 |        -0.024 |  98.85 |     94.5 |  41.86 |     0 |  5400 |  32.55 |
-|            3 | Practical_Hours             |         0   |         0.005 |   6.61 |      1   | 215.5  |    -5 | 10000 |  40.45 |
-|            1 | Students_Count              |         0   |         0     |   8.75 |      0   | 294.24 |     0 |  9999 |  33.92 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>missing_%</th><th>corr_target</th><th>mean</th><th>median</th><th>std</th><th>min</th><th>max</th><th>skew</th></tr></thead><tbody><tr><th>5</th><td>Registration_Days_Before</td><td>4.2</td><td>0.351</td><td>102.89</td><td>65.0</td><td>109.18</td><td>0.0</td><td>629.0</td><td>1.50</td></tr><tr><th>8</th><td>Pre_Course_Supports_Tickets</td><td>0.0</td><td>-0.301</td><td>0.51</td><td>0.0</td><td>0.76</td><td>0.0</td><td>5.0</td><td>1.47</td></tr><tr><th>6</th><td>Prev_Course_Dropouts</td><td>0.0</td><td>0.199</td><td>0.10</td><td>0.0</td><td>0.45</td><td>0.0</td><td>21.0</td><td>15.70</td></tr><tr><th>11</th><td>Registration_Changes</td><td>0.0</td><td>-0.148</td><td>0.18</td><td>0.0</td><td>0.59</td><td>0.0</td><td>21.0</td><td>7.36</td></tr><tr><th>9</th><td>Physical_Course_Kits</td><td>1.6</td><td>-0.138</td><td>0.03</td><td>0.0</td><td>0.16</td><td>0.0</td><td>3.0</td><td>6.00</td></tr><tr><th>...</th><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr><tr><th>4</th><td>Theory_Hours</td><td>0.0</td><td>0.045</td><td>2.16</td><td>2.0</td><td>1.47</td><td>0.0</td><td>41.0</td><td>3.35</td></tr><tr><th>2</th><td>Observers_Count</td><td>0.0</td><td>-0.031</td><td>0.01</td><td>0.0</td><td>0.09</td><td>0.0</td><td>10.0</td><td>45.38</td></tr><tr><th>13</th><td>Daily_Tuition_Cost</td><td>0.1</td><td>-0.024</td><td>98.85</td><td>94.5</td><td>41.86</td><td>0.0</td><td>5400.0</td><td>32.55</td></tr><tr><th>3</th><td>Practical_Hours</td><td>0.0</td><td>0.005</td><td>6.61</td><td>1.0</td><td>215.50</td><td>-5.0</td><td>10000.0</td><td>40.45</td></tr><tr><th>1</th><td>Students_Count</td><td>0.0</td><td>0.000</td><td>8.75</td><td>0.0</td><td>294.24</td><td>0.0</td><td>9999.0</td><td>33.92</td></tr></tbody></table><p>14 rows × 9 columns</p></div>
 
 
 The maximum values reveal several likely data errors: `Students_Count` reaches 9999, and `Practical_Hours` contains both negative values and values up to 10000. We leave the raw values unchanged for this first inspection and decide how to handle them in the outlier section.
@@ -928,7 +830,7 @@ plt.show()
 
 
     
-![svg](notebook_files/notebook_42_0.svg)
+![png](notebook_files/notebook_44_0.png)
     
 
 
@@ -945,7 +847,7 @@ def plot_dropout_by_bins(df, col, bins=8, ax=None):
     tmp['bin'] = pd.qcut(tmp[col], q=bins, duplicates='drop')
     stats = tmp.groupby('bin', observed=True)[TARGET].mean().mul(100)
     if ax is None:
-        _, ax = plt.subplots(figsize=(9, 4))
+        fig, ax = plt.subplots(figsize=(9, 4))
     stats.plot.bar(ax=ax, color='#4c72b0')
     ax.axhline(df[TARGET].mean() * 100, ls='--', color='red', label='mean')
     ax.set_ylabel('drop rate (%)')
@@ -954,17 +856,21 @@ def plot_dropout_by_bins(df, col, bins=8, ax=None):
     ax.tick_params(axis='x', labelrotation=45)
     return stats
 
+def plot_numeric_bins():
+    fig, axes = plt.subplots(1, 2, figsize=(15, 4.5))
+    plot_dropout_by_bins(train_raw, 'Registration_Days_Before', bins=8, ax=axes[0])
+    plot_dropout_by_bins(
+        train_raw, 'Pre_Course_Supports_Tickets', bins=6, ax=axes[1]
+    )
+    plt.tight_layout()
+    plt.show()
 
-_fig, _axes = plt.subplots(1, 2, figsize=(15, 4.5))
-plot_dropout_by_bins(train_raw, 'Registration_Days_Before', bins=8, ax=_axes[0])
-plot_dropout_by_bins(train_raw, 'Pre_Course_Supports_Tickets', bins=6, ax=_axes[1])
-plt.tight_layout()
-plt.show()
+plot_numeric_bins()
 ```
 
 
     
-![svg](notebook_files/notebook_45_0.svg)
+![png](notebook_files/notebook_47_0.png)
     
 
 
@@ -1014,7 +920,6 @@ def sus_report(df, cols, max_mult=10):
             })
     return pd.DataFrame(out)
 
-
 print("Suspect columns — TRAIN")
 display(sus_report(train_raw, num_cols))
 print("Suspect columns — TEST")
@@ -1022,105 +927,112 @@ display(sus_report(test_raw, num_cols))
 ```
 
     Suspect columns — TRAIN
-
-
-
-
-
-|   Unnamed: 0 | column               |   min |   max |   q99 | why                                 |
-|-------------:|:---------------------|------:|------:|------:|:------------------------------------|
-|            0 | Students_Count       |     0 |  9999 |   2   | max=9999 >> q99=2                   |
-|            1 | Practical_Hours      |    -5 | 10000 |   3   | negative values; max=10000 >> q99=3 |
-|            2 | Prev_Course_Dropouts |     0 |    21 |   1   | max=21 >> q99=1                     |
-|            3 | Prev_Course_Attended |     0 |    61 |   3   | max=61 >> q99=3                     |
-|            4 | Registration_Changes |     0 |    21 |   2   | max=21 >> q99=2                     |
-|            5 | Daily_Tuition_Cost   |     0 |  5400 | 209.7 | max=5400 >> q99=209.7               |
-
-
-
-
     Suspect columns — TEST
 
 
 
-
-
-|   Unnamed: 0 | column               |   min |   max |   q99 | why                                 |
-|-------------:|:---------------------|------:|------:|------:|:------------------------------------|
-|            0 | Students_Count       |     0 |  9999 |     2 | max=9999 >> q99=2                   |
-|            1 | Practical_Hours      |    -5 | 10000 |     2 | negative values; max=10000 >> q99=2 |
-|            2 | Prev_Course_Attended |     0 |    72 |     3 | max=72 >> q99=3                     |
-|            3 | Waiting_List_Days    |     0 |   183 |     0 | max=183 >> q99=0                    |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>min</th><th>max</th><th>q99</th><th>why</th></tr></thead><tbody><tr><th>0</th><td>Students_Count</td><td>0.0</td><td>9999.0</td><td>2.0</td><td>max=9999 &gt;&gt; q99=2</td></tr><tr><th>1</th><td>Practical_Hours</td><td>-5.0</td><td>10000.0</td><td>3.0</td><td>negative values; max=10000 &gt;&gt; q99=3</td></tr><tr><th>2</th><td>Prev_Course_Dropouts</td><td>0.0</td><td>21.0</td><td>1.0</td><td>max=21 &gt;&gt; q99=1</td></tr><tr><th>3</th><td>Prev_Course_Attended</td><td>0.0</td><td>61.0</td><td>3.0</td><td>max=61 &gt;&gt; q99=3</td></tr><tr><th>4</th><td>Registration_Changes</td><td>0.0</td><td>21.0</td><td>2.0</td><td>max=21 &gt;&gt; q99=2</td></tr><tr><th>5</th><td>Daily_Tuition_Cost</td><td>0.0</td><td>5400.0</td><td>209.7</td><td>max=5400 &gt;&gt; q99=209.7</td></tr></tbody></table><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>min</th><th>max</th><th>q99</th><th>why</th></tr></thead><tbody><tr><th>0</th><td>Students_Count</td><td>0.0</td><td>9999.0</td><td>2.0</td><td>max=9999 &gt;&gt; q99=2</td></tr><tr><th>1</th><td>Practical_Hours</td><td>-5.0</td><td>10000.0</td><td>2.0</td><td>negative values; max=10000 &gt;&gt; q99=2</td></tr><tr><th>2</th><td>Prev_Course_Attended</td><td>0.0</td><td>72.0</td><td>3.0</td><td>max=72 &gt;&gt; q99=3</td></tr><tr><th>3</th><td>Waiting_List_Days</td><td>0.0</td><td>183.0</td><td>0.0</td><td>max=183 &gt;&gt; q99=0</td></tr></tbody></table></div>
 
 
 The test set introduces no new forms of corruption, suggesting the same cleaning policy can be safely shared. Comparing the maximum values to the 99th percentile helps identify columns with extreme outliers:
 
 
 ```python
-TAIL_CHECK_COLS = ['Students_Count', 'Practical_Hours', 'Daily_Tuition_Cost']
-tail_long = []
-for split, df in [('train', train_raw), ('test', test_raw)]:
-    for _col in TAIL_CHECK_COLS:
-        s = df[_col].dropna().rename('value').to_frame()
-        s['split'] = split
-        s['column'] = _col
-        tail_long.append(s)
-tail_long = pd.concat(tail_long, ignore_index=True)
-_fig, _axes = plt.subplots(1, len(TAIL_CHECK_COLS), figsize=(15, 4), sharey=False)
-for _ax, _col in zip(_axes, TAIL_CHECK_COLS):
-    _sub = tail_long[tail_long['column'] == _col]
-    sns.boxplot(
-        data=_sub,
-        x='split',
-        y='value',
-        hue='split',
-        order=['train', 'test'],
-        palette=['#4c72b0', '#dd8452'],
-        showfliers=True,
-        ax=_ax,
-        legend=False,
+import math
+
+TAIL_CHECK_COLS = [
+    "Students_Count",
+    "Practical_Hours",
+    "Daily_Tuition_Cost",
+    "Prev_Course_Attended",
+    "Waiting_List_Days",
+    "Registration_Changes",
+]
+
+def build_tail_data():
+    frames = []
+    for split, df in [("train", train_raw), ("test", test_raw)]:
+        for col in TAIL_CHECK_COLS:
+            frame = df[col].dropna().rename("value").to_frame()
+            frame["split"] = split
+            frame["column"] = col
+            frames.append(frame)
+    return pd.concat(frames, ignore_index=True)
+
+tail_long = build_tail_data()
+
+def plot_tail_checks():
+    n_cols = min(3, len(TAIL_CHECK_COLS))
+    n_rows = math.ceil(len(TAIL_CHECK_COLS) / n_cols)
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(5 * n_cols, 4.6 * n_rows),
+        sharey=False,
+        squeeze=False,
     )
-    for xpos, split in enumerate(['train', 'test']):
-        split_values = _sub.loc[_sub['split'] == split, 'value']
-        max_value = split_values.max()
-        n_at_max = int((split_values == max_value).sum())
-        _ax.annotate(
-            f'max={max_value:g}\nn={n_at_max}',
-            xy=(xpos, max_value),
-            xytext=(0, 7),
-            textcoords='offset points',
-            fontsize=8,
-            ha='center',
+    axes = axes.ravel()
+    for ax, col in zip(axes, TAIL_CHECK_COLS):
+        subset = tail_long[tail_long["column"] == col]
+        sns.boxplot(
+            data=subset,
+            x="split",
+            y="value",
+            hue="split",
+            order=["train", "test"],
+            palette=["#4c72b0", "#dd8452"],
+            showfliers=True,
+            ax=ax,
+            legend=False,
         )
-    positive = _sub.loc[_sub['value'] > 0, 'value']
-    if not positive.empty:
-        _ax.set_yscale('log')
-        _ax.set_ylim(bottom=max(positive.min() * 0.7, 0.1))
-    _ax.set_title(_col)
-    _ax.set_xlabel('')
-    _ax.set_ylabel('raw value (log scale)')
-_fig.suptitle('Raw tail check for candidate capped columns')
-plt.tight_layout(rect=[0, 0, 1, 0.9])
-plt.show()
+        for xpos, split in enumerate(["train", "test"]):
+            split_values = subset.loc[subset["split"] == split, "value"]
+            max_value = split_values.max()
+            n_at_max = int((split_values == max_value).sum())
+            ax.annotate(
+                f"max={max_value:g}\nn={n_at_max}",
+                xy=(xpos, max_value),
+                xytext=(0, 7),
+                textcoords="offset points",
+                fontsize=8,
+                ha="center",
+            )
+        positive = subset.loc[subset["value"] > 0, "value"]
+        if not positive.empty:
+            ax.set_yscale("log")
+            ax.set_ylim(bottom=max(positive.min() * 0.7, 0.1))
+        ax.set_title(col.replace("_", " "))
+        ax.set_xlabel("")
+        ax.set_ylabel("Raw value (log scale)")
+        ax.grid(axis="y", linestyle=":", alpha=0.3)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+    for ax in axes[len(TAIL_CHECK_COLS) :]:
+        ax.set_visible(False)
+    fig.suptitle(
+        "Raw tail check for candidate capped columns",
+        fontsize=15,
+        y=1.01,
+    )
+    fig.tight_layout()
+    plt.show()
+
+plot_tail_checks()
 ```
 
 
     
-![svg](notebook_files/notebook_52_0.svg)
+![png](notebook_files/notebook_54_0.png)
     
 
 
-We only alter values that look like data-entry errors, rather than applying a statistical rule to every rare observation. Keeping the rows preserves their other information, while clipping prevents the obvious placeholders from dominating a feature.
-
-Based on the suspect-column screen and the boxplots, we apply three caps:
+As seen in the box-plots,  top 3 (student count, practical hours and tuition) justify a  cap. We therefore apply:
 
 - `Students_Count <= 10`: the values beyond the observed low-count support are repeated `9999` placeholders in both train and test. The cap keeps those rows as large groups without treating 9999 as a real count.
 - `Practical_Hours` in `[0, 12]`: negative values are impossible, and `5000`/`10000` are clear placeholders. A 12-hour upper bound still allows a long practical day and prevents corrupted placeholder values from distorting the feature space.
 - `Daily_Tuition_Cost <= 600`: train has a single `5400` value, while the test maximum is 510. A cap of 600 leaves the observed test range untouched and prevents one corrupted training value from dominating cost calculations.
 
-Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) have long but plausible tails, so we leave them unchanged and restrict clipping to the three apparent data-entry errors above.
+Other flagged count columns (`Prev_Course_Dropouts`, `Prev_Course_Attended`, `Registration_Changes`, and test-side `Waiting_List_Days`) have long but plausible tails (as seen in the box-plots), so we leave them unchanged and restrict clipping to the three apparent data-entry errors above.
 
 
 ```python
@@ -1145,7 +1057,6 @@ CAP_RULES = {
     },
 }
 
-
 def apply_cap(s, lower=None, upper=None):
     if lower is not None:
         s = s.clip(lower=lower)
@@ -1153,62 +1064,62 @@ def apply_cap(s, lower=None, upper=None):
         s = s.clip(upper=upper)
     return s
 
+def build_cap_summary():
+    rows = []
+    for col, rule in CAP_RULES.items():
+        lo, hi = (rule['lower'], rule['upper'])
+        train_changed = (
+            train_raw[col].notna()
+            & apply_cap(train_raw[col], lo, hi).ne(train_raw[col])
+        ).sum()
+        test_changed = (
+            test_raw[col].notna()
+            & apply_cap(test_raw[col], lo, hi).ne(test_raw[col])
+        ).sum()
+        action = f'clip to [{lo}, {hi}]' if lo is not None else f'clip to <= {hi}'
+        rows.append({
+            'column': col,
+            'raw_train_min': train_raw[col].min(),
+            'raw_train_max': train_raw[col].max(),
+            'problem': rule['problem'],
+            'action': action,
+            'train_rows_affected': int(train_changed),
+            'test_rows_affected': int(test_changed),
+            'reason': rule['reason'],
+        })
+    return pd.DataFrame(rows)
 
-cap_rows = []
-for _col, rule in CAP_RULES.items():
-    lo, hi = (rule['lower'], rule['upper'])
-    train_changed = (
-        train_raw[_col].notna() & apply_cap(train_raw[_col], lo, hi).ne(train_raw[_col])
-    ).sum()
-    test_changed = (
-        test_raw[_col].notna() & apply_cap(test_raw[_col], lo, hi).ne(test_raw[_col])
-    ).sum()
-    action = f'clip to [{lo}, {hi}]' if lo is not None else f'clip to <= {hi}'
-    cap_rows.append({
-        'column': _col,
-        'raw_train_min': train_raw[_col].min(),
-        'raw_train_max': train_raw[_col].max(),
-        'problem': rule['problem'],
-        'action': action,
-        'train_rows_affected': int(train_changed),
-        'test_rows_affected': int(test_changed),
-        'reason': rule['reason'],
-    })
-display(pd.DataFrame(cap_rows))
-_fig, _axes = plt.subplots(2, 3, figsize=(14, 6), sharey='row')
-for j, (_col, rule) in enumerate(CAP_RULES.items()):
-    before = train_raw[_col].dropna()
-    after = apply_cap(train_raw[_col], rule['lower'], rule['upper']).dropna()
-    _axes[0, j].hist(before, bins=50, color='#c44e52')
-    _axes[0, j].set_yscale('log')
-    _axes[0, j].set_title(f'{_col}: raw')
-    _axes[0, j].set_xlabel(f'max={before.max():g}')
-    _axes[1, j].hist(after, bins=30, color='#55a868')
-    _axes[1, j].set_yscale('log')
-    _axes[1, j].set_title(f'{_col}: clipped')
-    _axes[1, j].set_xlabel(f'max={after.max():g}')
-_axes[0, 0].set_ylabel('count (log)')
-_axes[1, 0].set_ylabel('count (log)')
-plt.tight_layout()
-plt.show()
+display(build_cap_summary())
+
+def plot_cap_effects():
+    fig, axes = plt.subplots(2, 3, figsize=(14, 6), sharey='row')
+    for j, (col, rule) in enumerate(CAP_RULES.items()):
+        before = train_raw[col].dropna()
+        after = apply_cap(train_raw[col], rule['lower'], rule['upper']).dropna()
+        axes[0, j].hist(before, bins=50, color='#c44e52')
+        axes[0, j].set_yscale('log')
+        axes[0, j].set_title(f'{col}: raw')
+        axes[0, j].set_xlabel(f'max={before.max():g}')
+        axes[1, j].hist(after, bins=30, color='#55a868')
+        axes[1, j].set_yscale('log')
+        axes[1, j].set_title(f'{col}: clipped')
+        axes[1, j].set_xlabel(f'max={after.max():g}')
+    axes[0, 0].set_ylabel('count (log)')
+    axes[1, 0].set_ylabel('count (log)')
+    plt.tight_layout()
+    plt.show()
+
+plot_cap_effects()
 ```
 
 
-
-
-|   Unnamed: 0 | column             |   raw_train_min |   raw_train_max | problem                   | action          |   train_rows_affected |   test_rows_affected | reason                                            |
-|-------------:|:-------------------|----------------:|----------------:|:--------------------------|:----------------|----------------------:|---------------------:|:--------------------------------------------------|
-|            0 | Students_Count     |               0 |            9999 | 9999 placeholder          | clip to <= 10   |                    55 |                   12 | repeated 9999 values are isolated placeholders... |
-|            1 | Practical_Hours    |              -5 |           10000 | negative values and 10000 | clip to [0, 12] |                   121 |                   23 | course hours cannot be negative; 12 covers a l... |
-|            2 | Daily_Tuition_Cost |               0 |            5400 | 5400 value                | clip to <= 600  |                     1 |                    0 | 5400 is far beyond the valid fee range; 600 ke... |
-
-
-
-
-
     
-![svg](notebook_files/notebook_54_1.svg)
+![png](notebook_files/notebook_56_0.png)
     
+
+
+
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>column</th><th>raw_train_min</th><th>raw_train_max</th><th>problem</th><th>action</th><th>train_rows_affected</th><th>test_rows_affected</th><th>reason</th></tr></thead><tbody><tr><th>0</th><td>Students_Count</td><td>0.0</td><td>9999.0</td><td>9999 placeholder</td><td>clip to &lt;= 10</td><td>55</td><td>12</td><td>repeated 9999 values are isolated placeholders beyond the observed support</td></tr><tr><th>1</th><td>Practical_Hours</td><td>-5.0</td><td>10000.0</td><td>negative values and 10000</td><td>clip to [0, 12]</td><td>121</td><td>23</td><td>course hours cannot be negative; 12 covers a long practical day</td></tr><tr><th>2</th><td>Daily_Tuition_Cost</td><td>0.0</td><td>5400.0</td><td>5400 value</td><td>clip to &lt;= 600</td><td>1</td><td>0</td><td>5400 is far beyond the valid fee range; 600 keeps the high-cost tail</td></tr></tbody></table></div>
 
 
 The before/after distributions show that the caps remove isolated invalid tails while
@@ -1223,7 +1134,9 @@ numerator/denominator pair.
 impossible = train_raw[
     train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]
 ]
-print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
+print(
+    f"rows where historical dropouts exceed historical attended: {len(impossible)}"
+)
 ```
 
     rows where historical dropouts exceed historical attended: 4985
@@ -1245,16 +1158,16 @@ Based on the EDA findings and domain questions, we create features that expose r
 
 ## 5.1 The engineered features and their rationale
 
-| Raw signal | Engineered feature(s) | Reason for testing it |
-| --- | --- | --- |
-| `Course_Start_Date` | `start_month`, `start_week`, `start_dow`, `days_since_epoch` | Month/week represent possible yearly seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1. |
-| Participant counts | `total_participants`, `prof_share` | Total size and professional share describe group composition more directly than three separate counts. |
-| Practical/theory hours | `total_hours`, `practical_share` | Total duration and hands-on share distinguish courses with the same raw hour count but different structure. |
-| Client history | `prev_drop_rate = dropouts / (attended + 1)` | Combines previous dropouts and attendance into one history signal; the `+1` handles clients with no attended courses. |
-| Tuition cost and hours | `cost_x_days` | Combines price and course length so the model can consider their interaction. |
-| Requested vs assigned lab | `got_requested_lab` | Captures whether the assigned lab configuration matches the original request. |
-| Missing company/agent IDs | `has_company_id`, `has_agent_id` | Preserves the presence differences observed in Section 3.2 even when a raw identifier is removed. |
-| Agent/company/country IDs | frequency encodings and native categories | Retains identity and commonness information while avoiding a wide dummy matrix. |
+| Raw signal                | Engineered feature(s)                                        | Reason for testing it                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Course_Start_Date`       | `start_month`, `start_week`, `start_dow`, `days_since_epoch` | Month/week represent possible yearly seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1. |
+| Participant counts        | `total_participants`, `prof_share`                           | Total size and professional share describe group composition more directly than three separate counts.                                                               |
+| Practical/theory hours    | `total_hours`, `practical_share`                             | Total duration and hands-on share distinguish courses with the same raw hour count but different structure.                                                          |
+| Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Combines previous dropouts and attendance into one history signal; the `+1` handles clients with no attended courses.                                                |
+| Tuition cost and hours    | `cost_x_days`                                                | Combines price and course length so the model can consider their interaction.                                                                                        |
+| Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the assigned lab configuration matches the original request.                                                                                        |
+| Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves the presence differences observed in Section 3.2 even when a raw identifier is removed.                                                                    |
+| Agent/company/country IDs | frequency encodings and native categories                    | Retains identity and commonness information while avoiding a wide dummy matrix.                                                                                      |
 
 ## 5.2 Dimensionality
 
@@ -1270,13 +1183,11 @@ def make_freq_maps(*dfs):
     """Label-free frequency of each ID value across the supplied frames."""
     combined = pd.concat([normalize_cats(d) for d in dfs], ignore_index=True)
     return {
-        _col: combined[_col].value_counts(normalize=True)
-        for _col in ('Agent_ID', 'Company_ID', 'Origin_Country')
+        col: combined[col].value_counts(normalize=True)
+        for col in ('Agent_ID', 'Company_ID', 'Origin_Country')
     }
 
-
 freq_maps = make_freq_maps(train_raw, test_raw)
-
 
 def build_features(
     df: pd.DataFrame, freq_maps: dict, add_time: bool = True
@@ -1325,20 +1236,22 @@ def build_features(
     out['prev_drop_rate'] = df['Prev_Course_Dropouts'] / (
         df['Prev_Course_Attended'] + 1
     )
-    out['kits_per_participant'] = df['Physical_Course_Kits'] / total.replace(0, np.nan)
-    out['tickets_per_participant'] = df['Pre_Course_Supports_Tickets'] / total.replace(
+    out['kits_per_participant'] = df['Physical_Course_Kits'] / total.replace(
         0, np.nan
     )
+    out['tickets_per_participant'] = df[
+        'Pre_Course_Supports_Tickets'
+    ] / total.replace(0, np.nan)
     out['got_requested_lab'] = (
         df['Requested_Lab_Config'] == df['Assigned_Lab_Config']
     ).astype(float)
     out['has_company_id'] = df['Company_ID'].notna().astype(int)
     out['has_agent_id'] = df['Agent_ID'].notna().astype(int)
-    for _col in ('Agent_ID', 'Company_ID', 'Origin_Country'):
-        out[f'{_col}_freq'] = (
-            df[_col].map(freq_maps[_col]).fillna(0).astype(float)
+    for col in ('Agent_ID', 'Company_ID', 'Origin_Country'):
+        out[f'{col}_freq'] = (
+            df[col].map(freq_maps[col]).fillna(0).astype(float)
         )  # group composition & ratios
-    for _col in (
+    for col in (
         'Origin_Country',
         'Catering_Package',
         'Welcome_Gift_Type',
@@ -1350,20 +1263,18 @@ def build_features(
         'Payment_Terms',
         'Agent_ID',
     ):
-        out[_col] = df[_col].fillna('missing').astype('category')
+        out[col] = df[col].fillna('missing').astype('category')
     return out
-
 
 def align_categories(train_X, *others):
     """Give every frame identical category levels so the boosters agree."""
-    for _col in train_X.select_dtypes('category').columns:
-        cats = train_X[_col].cat.categories
+    for col in train_X.select_dtypes('category').columns:
+        cats = train_X[col].cat.categories
         for o in others:
-            cats = cats.union(o[_col].cat.categories)
-        train_X[_col] = train_X[_col].cat.set_categories(cats)
+            cats = cats.union(o[col].cat.categories)
+        train_X[col] = train_X[col].cat.set_categories(cats)
         for o in others:
-            o[_col] = o[_col].cat.set_categories(cats)
-
+            o[col] = o[col].cat.set_categories(cats)
 
 X_all = build_features(train_raw, freq_maps)
 cat_cols = X_all.select_dtypes('category').columns
@@ -1376,9 +1287,7 @@ print(f'estimated dims after naive one-hot        : {onehot_dim}')
 print(f'dummy columns avoided                     : {onehot_dim - native_dim}')
 print('\ncategory cardinalities:')
 # Dimensionality comparison: native categorical vs a naive one-hot expansion.
-display(
-    X_all[cat_cols].nunique(dropna=False).sort_values(ascending=False)
-)
+display(X_all[cat_cols].nunique(dropna=False).sort_values(ascending=False))
 ```
 
     features with native categorical handling : 42
@@ -1389,17 +1298,7 @@ display(
 
 
 
-    Agent_ID                204
-    Origin_Country          154
-    Requested_Lab_Config      9
-    Client_Category           8
-    Catering_Package          5
-    Enrollment_Type           5
-    Lanyard_Color             5
-    Submission_Source         5
-    Welcome_Gift_Type         4
-    Payment_Terms             4
-    dtype: int64
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>0</th></tr></thead><tbody><tr><th>Agent_ID</th><td>204</td></tr><tr><th>Origin_Country</th><td>154</td></tr><tr><th>Requested_Lab_Config</th><td>9</td></tr><tr><th>Client_Category</th><td>8</td></tr><tr><th>Catering_Package</th><td>5</td></tr><tr><th>Enrollment_Type</th><td>5</td></tr><tr><th>Lanyard_Color</th><td>5</td></tr><tr><th>Submission_Source</th><td>5</td></tr><tr><th>Welcome_Gift_Type</th><td>4</td></tr><tr><th>Payment_Terms</th><td>4</td></tr></tbody></table></div>
 
 
 The tree/native-categorical path contains 42 columns. A naive one-hot expansion of the same fields would create about 435 columns, mostly from agent and country, so this representation avoids 393 sparse dummy columns. The linear and neural baselines use one-hot encoding with rare levels grouped into `other`.
@@ -1414,9 +1313,9 @@ We train a classifier to tell **test rows from train rows** using the features (
 
 
 ```python
-def adversarial_validation():
-    tr = load_raw(TRAIN_PATH).drop(columns=[TARGET])
-    te = load_raw(TEST_PATH)
+@cache
+def adversarial_validation(tr, te, target, seed):
+    tr = tr.drop(columns=[target])
     combined = pd.concat(
         [tr.assign(is_test=0), te.assign(is_test=1)], ignore_index=True
     )
@@ -1428,7 +1327,7 @@ def adversarial_validation():
     X = X.fillna(-1)
 
     Xtr, Xva, ytr, yva = train_test_split(
-        X, y, test_size=0.25, random_state=SEED, stratify=y
+        X, y, test_size=0.25, random_state=seed, stratify=y
     )
     m = XGBClassifier(
         n_estimators=300,
@@ -1437,25 +1336,28 @@ def adversarial_validation():
         subsample=0.9,
         colsample_bytree=0.9,
         eval_metric="logloss",
-        random_state=SEED,
+        random_state=seed,
         n_jobs=-1,
     )
     m.fit(Xtr, ytr)
     a = roc_auc_score(yva, m.predict_proba(Xva)[:, 1])
-    print(
-        f"adversarial AUC (train vs test): {a:.3f}  (0.5=identical, 1.0=trivially separable)"
-    )
     top = (
         pd
         .Series(m.feature_importances_, index=X.columns)
         .sort_values(ascending=False)
         .head(8)
     )
-    print("\ntop drift drivers:")
-    print(top)
+    return a, top
 
-
-adversarial_validation()
+adversarial_auc, drift_drivers = adversarial_validation(
+    load_raw(TRAIN_PATH), load_raw(TEST_PATH), TARGET, SEED
+)
+print(
+    f"adversarial AUC (train vs test): {adversarial_auc:.3f}  "
+    "(0.5=identical, 1.0=trivially separable)"
+)
+print("\ntop drift drivers:")
+print(drift_drivers)
 ```
 
     adversarial AUC (train vs test): 0.935  (0.5=identical, 1.0=trivially separable)
@@ -1540,13 +1442,11 @@ def get_xgb(**kw):
     p.update(kw)
     return XGBClassifier(**p)
 
-
 def fit_predict_xgb_pair(X_tr, y_tr, X_va, sample_weight=None, **model_params):
     """Fit XGBoost and return P(drop) on train and validation."""
     m = get_xgb(**model_params)
     m.fit(X_tr, y_tr, sample_weight=sample_weight)
     return m.predict_proba(X_tr)[:, 1], m.predict_proba(X_va)[:, 1]
-
 
 def fit_predict_xgb(X_tr, y_tr, X_va, sample_weight=None, **model_params):
     """Fit XGBoost and return P(drop) on validation."""
@@ -1555,8 +1455,9 @@ def fit_predict_xgb(X_tr, y_tr, X_va, sample_weight=None, **model_params):
     )
     return pred_va
 
-
-def encode_for_continuous_models(X_tr: pd.DataFrame, X_va: pd.DataFrame, min_count=30):
+def encode_for_continuous_models(
+    X_tr: pd.DataFrame, X_va: pd.DataFrame, min_count=30
+):
     """Bounded one-hot + median imputation for the LR/MLP baselines."""
     Xt, Xv = X_tr.copy(), X_va.copy()
     cat_cols = list(Xt.select_dtypes("category").columns)
@@ -1603,68 +1504,92 @@ scaler = StandardScaler()
 Xtr_scaled = scaler.fit_transform(Xtr_enc)
 Xva_scaled = scaler.transform(Xva_enc)
 
+@cache
+def hyper_tune(
+    X_train_scaled,
+    X_valid_scaled,
+    X_train_tree,
+    X_valid_tree,
+    y_train,
+    y_valid,
+    seed,
+):
+    def loss_auc(train_predictions, valid_predictions):
+        return {
+            'train_logloss': log_loss(y_train, train_predictions),
+            'val_logloss': log_loss(y_valid, valid_predictions),
+            'train_AUC': roc_auc_score(y_train, train_predictions),
+            'val_AUC': roc_auc_score(y_valid, valid_predictions),
+        }
 
-def loss_auc(p_tr, p_va):
-    """Train/validation metrics helper."""
-    return {
-        'train_logloss': log_loss(y_tr, p_tr),
-        'val_logloss': log_loss(y_va, p_va),
-        'train_AUC': roc_auc_score(y_tr, p_tr),
-        'val_AUC': roc_auc_score(y_va, p_va),
-    }
+    def fit_xgb_pair(depth):
+        model = XGBClassifier(
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=depth,
+            min_child_weight=5,
+            subsample=0.9,
+            colsample_bytree=0.8,
+            reg_lambda=1.0,
+            enable_categorical=True,
+            tree_method='hist',
+            eval_metric='auc',
+            random_state=seed,
+            n_jobs=-1,
+        )
+        model.fit(X_train_tree, y_train)
+        return (
+            model.predict_proba(X_train_tree)[:, 1],
+            model.predict_proba(X_valid_tree)[:, 1],
+        )
 
+    tuning_rows = []
+    selected_predictions = {}
+    for C in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0):
+        model = LogisticRegression(C=C, max_iter=2000).fit(X_train_scaled, y_train)
+        train_predictions = model.predict_proba(X_train_scaled)[:, 1]
+        valid_predictions = model.predict_proba(X_valid_scaled)[:, 1]
+        tuning_rows.append({
+            'family': 'Logistic Regression',
+            'axis': 'C  (less regularisation →)',
+            'x': C,
+            **loss_auc(train_predictions, valid_predictions),
+        })
+        if np.isclose(C, 0.001):
+            selected_predictions['lr'] = valid_predictions
+    for alpha in (1.0, 0.1, 0.01, 0.001, 0.0001):
+        model = MLPClassifier(
+            hidden_layer_sizes=(64, 32),
+            alpha=alpha,
+            learning_rate_init=0.001,
+            max_iter=150,
+            early_stopping=True,
+            n_iter_no_change=10,
+            random_state=seed,
+        ).fit(X_train_scaled, y_train)
+        train_predictions = model.predict_proba(X_train_scaled)[:, 1]
+        valid_predictions = model.predict_proba(X_valid_scaled)[:, 1]
+        tuning_rows.append({
+            'family': 'MLP neural network',
+            'axis': '1 / alpha  (less regularisation →)',
+            'x': 1.0 / alpha,
+            **loss_auc(train_predictions, valid_predictions),
+        })
+        if np.isclose(alpha, 0.1):
+            selected_predictions['mlp'] = valid_predictions
+    for depth in (2, 3, 4, 5, 6, 8, 10):
+        train_predictions, valid_predictions = fit_xgb_pair(depth)
+        tuning_rows.append({
+            'family': 'Gradient-boosted trees (XGBoost)',
+            'axis': 'max_depth  (more capacity →)',
+            'x': depth,
+            **loss_auc(train_predictions, valid_predictions),
+        })
+    return tuning_rows, selected_predictions
 
-tuning_rows = []
-selected_predictions = {}
-for C in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0):
-    m = LogisticRegression(C=C, max_iter=2000).fit(Xtr_scaled, y_tr)
-    p_tr = m.predict_proba(Xtr_scaled)[:, 1]
-    p_va = m.predict_proba(Xva_scaled)[:, 1]
-    tuning_rows.append({
-        'family': 'Logistic Regression',
-        'axis': 'C  (less regularisation →)',
-        'x': C,
-        **loss_auc(p_tr, p_va),
-    })
-    if np.isclose(C, 0.001):
-        selected_predictions['lr'] = p_va
-for alpha in (1.0, 0.1, 0.01, 0.001, 0.0001):
-    m = MLPClassifier(
-        hidden_layer_sizes=(64, 32),
-        alpha=alpha,
-        learning_rate_init=0.001,
-        max_iter=150,
-        early_stopping=True,
-        n_iter_no_change=10,
-        random_state=SEED,
-    ).fit(Xtr_scaled, y_tr)
-    p_tr = m.predict_proba(Xtr_scaled)[:, 1]
-    p_va = m.predict_proba(Xva_scaled)[:, 1]
-    tuning_rows.append({
-        'family': 'MLP neural network',
-        'axis': '1 / alpha  (less regularisation →)',
-        'x': 1.0 / alpha,
-        **loss_auc(p_tr, p_va),
-    })
-    if np.isclose(alpha, 0.1):
-        selected_predictions['mlp'] = p_va
-for depth in (2, 3, 4, 5, 6, 8, 10):
-    _p_tr, _p_va = fit_predict_xgb_pair(
-        Xtr_t,
-        y_tr,
-        Xva_t,
-        n_estimators=300,
-        learning_rate=0.05,
-        max_depth=depth,
-        min_child_weight=5,
-        reg_lambda=1.0,
-    )
-    tuning_rows.append({
-        'family': 'Gradient-boosted trees (XGBoost)',
-        'axis': 'max_depth  (more capacity →)',
-        'x': depth,
-        **loss_auc(_p_tr, _p_va),
-    })
+tuning_rows, selected_predictions = hyper_tune(
+    Xtr_scaled, Xva_scaled, Xtr_t, Xva_t, y_tr, y_va, SEED
+)
 # Linear baseline: inverse-regularisation C (higher C -> less regularisation).
 tuning = pd.DataFrame(tuning_rows)
 selected_x = {
@@ -1675,59 +1600,68 @@ selected_x = {
 tuning['selected'] = tuning.apply(
     lambda r: bool(np.isclose(r['x'], selected_x[r['family']])), axis=1
 )
-_fig, _axes = plt.subplots(1, 3, figsize=(17, 5))
-for i, (_ax, family) in enumerate(zip(_axes, selected_x)):
-    d = tuning[tuning['family'] == family].sort_values('x')
-    _ax.plot(
-        d['x'],
-        d['train_AUC'],
-        color='#2b5c8f',
-        linestyle='--',
-        marker='o',
-        alpha=0.7,
-        label='train AUC',
+
+def plot_tuning_curves():
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+    for i, (ax, family) in enumerate(zip(axes, selected_x)):
+        data = tuning[tuning['family'] == family].sort_values('x')
+        ax.plot(
+            data['x'],
+            data['train_AUC'],
+            color='#2b5c8f',
+            linestyle='--',
+            marker='o',
+            alpha=0.7,
+            label='train AUC',
+        )
+        ax.plot(
+            data['x'],
+            data['val_AUC'],
+            color='#1b9e77',
+            linestyle='-',
+            marker='s',
+            linewidth=2,
+            label='val AUC',
+        )
+        star = data[data['selected']].iloc[0]
+        ax.scatter(
+            star['x'],
+            star['val_AUC'],
+            marker='*',
+            s=250,
+            color='#ffd700',
+            edgecolor='black',
+            linewidths=1.5,
+            zorder=10,
+            label='selected setting',
+        )
+        ax.set_title(family, fontsize=12, pad=12, fontweight='bold')
+        ax.set_xlabel(data['axis'].iloc[0], fontsize=10)
+        if i == 0:
+            ax.set_ylabel('ROC-AUC Score', fontsize=10)
+        if family != 'Gradient-boosted trees (XGBoost)':
+            ax.set_xscale('log')
+        ax.grid(True, linestyle=':', alpha=0.6)
+        loc = 'center right' if family == 'Logistic Regression' else 'lower left'
+        if family == 'Gradient-boosted trees (XGBoost)':
+            loc = 'lower right'
+        ax.legend(
+            loc=loc,
+            fontsize=8,
+            frameon=True,
+            facecolor='white',
+            framealpha=0.9,
+        )
+    fig.suptitle(
+        'Focused tuning: training vs validation ROC-AUC',
+        fontsize=14,
+        fontweight='bold',
+        y=1.02,
     )
-    _ax.plot(
-        d['x'],
-        d['val_AUC'],
-        color='#1b9e77',
-        linestyle='-',
-        marker='s',
-        linewidth=2,
-        label='val AUC',
-    )
-    star = d[d['selected']].iloc[0]
-    _ax.scatter(
-        star['x'],
-        star['val_AUC'],
-        marker='*',
-        s=250,
-        color='#ffd700',
-        edgecolor='black',
-        linewidths=1.5,
-        zorder=10,
-        label='selected setting',
-    )
-    _ax.set_title(family, fontsize=12, pad=12, fontweight='bold')
-    # Neural net: L2 penalty alpha; plot 1/alpha so "more capacity" points right.
-    _ax.set_xlabel(d['axis'].iloc[0], fontsize=10)
-    if i == 0:
-        _ax.set_ylabel('ROC-AUC Score', fontsize=10)
-    if family != 'Gradient-boosted trees (XGBoost)':
-        _ax.set_xscale('log')
-    _ax.grid(True, linestyle=':', alpha=0.6)
-    loc = 'center right' if family == 'Logistic Regression' else 'lower left'
-    if family == 'Gradient-boosted trees (XGBoost)':
-        loc = 'lower right'
-    _ax.legend(loc=loc, fontsize=8, frameon=True, facecolor='white', framealpha=0.9)
-_fig.suptitle(
-    'Focused tuning: training vs validation ROC-AUC',
-    fontsize=14,
-    fontweight='bold',
-    y=1.02,
-)
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
+
+plot_tuning_curves()
 selected_tuning = tuning.loc[
     tuning['selected'], ['family', 'x', 'train_AUC', 'val_AUC']
 ].copy()
@@ -1741,29 +1675,21 @@ pred_mlp = selected_predictions['mlp']
 
 
     
-![svg](notebook_files/notebook_73_0.svg)
+![png](notebook_files/notebook_75_0.png)
     
 
 
 
-
-
-|   Unnamed: 0 | family                           |      x |   train_AUC |   val_AUC |
-|-------------:|:---------------------------------|-------:|------------:|----------:|
-|            0 | Logistic Regression              |  0.001 |      0.9217 |    0.8805 |
-|            7 | MLP neural network               | 10     |      0.9645 |    0.8762 |
-|           15 | Gradient-boosted trees (XGBoost) |  6     |      0.9715 |    0.9135 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>family</th><th>x</th><th>train_AUC</th><th>val_AUC</th></tr></thead><tbody><tr><th>0</th><td>Logistic Regression</td><td>0.001</td><td>0.9217</td><td>0.8805</td></tr><tr><th>7</th><td>MLP neural network</td><td>10.000</td><td>0.9645</td><td>0.8762</td></tr><tr><th>15</th><td>Gradient-boosted trees (XGBoost)</td><td>6.000</td><td>0.9715</td><td>0.9135</td></tr></tbody></table></div>
 
 
 Logistic Regression performs best with strong regularization (`C=0.001`); increasing `C` improves training fit slightly but reduces holdout AUC. The MLP performs best at `alpha=0.1`, after which its training/validation gap grows. XGBoost holdout AUC rises through depth 6 and then levels off while training AUC continues upward, so we keep depth 6 as the best trade-off in this sweep.
 
-The selected settings reach validation AUC 0.8805 for Logistic Regression, 0.8762 for MLP, and 0.9135 for XGBoost. XGBoost's advantage indicates that thresholds, categories, and interactions matter for this problem, so the remaining experiments focus on boosted trees.
+The selected settings reach validation AUC 0.8805 for Logistic Regression, 0.8762 for MLP, and 0.9135 for XGBoost. XGBoost's advantage indicates that thresholds, categories, and interactions matter for this problem.
 
 ## 7.3 Improving the gradient model
 
-After choosing XGBoost, we first tune its boosting budget. We then test whether adding two fixed-configuration boosted-tree implementations improves the ranking further.
+Because XGBoost achieved the highest AUC in the first sweep, we further tune it. We first tune its boosting budget, then test whether adding two fixed-configuration boosted-tree implementations improves the ranking further.
 
 ### (a) Boosting budget: number of trees × learning rate
 
@@ -1771,101 +1697,110 @@ The number of trees and the learning rate interact directly. Consistent with our
 
 
 ```python
-budget_rows = []
-budget_predictions = {}
-for lr_rate in (0.1, 0.03):
-    for n in (50, 100, 200, 400, 700, 1000):
-        _p_tr, _p_va = fit_predict_xgb_pair(
-            Xtr_t,
-            y_tr,
-            Xva_t,
-            n_estimators=n,
-            learning_rate=lr_rate,
-            max_depth=6,
-            min_child_weight=5,
-            reg_lambda=1.0,
-        )
-        budget_predictions[(lr_rate, n)] = _p_va
-        budget_rows.append({
-            'learning_rate': lr_rate,
-            'n_trees': n,
-            'train_logloss': log_loss(y_tr, _p_tr),
-            'val_logloss': log_loss(y_va, _p_va),
-            'train_AUC': roc_auc_score(y_tr, _p_tr),
-            'val_AUC': roc_auc_score(y_va, _p_va),
-        })
+@cache
+def run_budget_sweep(X_train, X_valid, y_train, y_valid, seed):
+    budget_rows = []
+    budget_predictions = {}
+    for lr_rate in (0.1, 0.03):
+        for n in (50, 100, 200, 400, 700, 1000):
+            model = XGBClassifier(
+                n_estimators=n,
+                learning_rate=lr_rate,
+                max_depth=6,
+                min_child_weight=5,
+                subsample=0.9,
+                colsample_bytree=0.8,
+                reg_lambda=1.0,
+                enable_categorical=True,
+                tree_method='hist',
+                eval_metric='auc',
+                random_state=seed,
+                n_jobs=-1,
+            )
+            model.fit(X_train, y_train)
+            train_predictions = model.predict_proba(X_train)[:, 1]
+            valid_predictions = model.predict_proba(X_valid)[:, 1]
+            budget_predictions[(lr_rate, n)] = valid_predictions
+            budget_rows.append({
+                'learning_rate': lr_rate,
+                'n_trees': n,
+                'train_logloss': log_loss(y_train, train_predictions),
+                'val_logloss': log_loss(y_valid, valid_predictions),
+                'train_AUC': roc_auc_score(y_train, train_predictions),
+                'val_AUC': roc_auc_score(y_valid, valid_predictions),
+            })
+    return budget_rows, budget_predictions
+
+budget_rows, budget_predictions = run_budget_sweep(Xtr_t, Xva_t, y_tr, y_va, SEED)
 budget = pd.DataFrame(budget_rows)
-_fig, _axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-for _ax, (lr_rate, _sub) in zip(_axes, budget.groupby('learning_rate')):
-    _sub = _sub.sort_values('n_trees')
-    _ax.plot(
-        _sub['n_trees'],
-        _sub['train_AUC'],
-        marker='o',
-        ls='--',
-        color='#2b5c8f',
-        label='train AUC',
+
+def plot_budget_curves():
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    for ax, (lr_rate, subset) in zip(axes, budget.groupby('learning_rate')):
+        subset = subset.sort_values('n_trees')
+        ax.plot(
+            subset['n_trees'],
+            subset['train_AUC'],
+            marker='o',
+            ls='--',
+            color='#2b5c8f',
+            label='train AUC',
+        )
+        ax.plot(
+            subset['n_trees'],
+            subset['val_AUC'],
+            marker='o',
+            color='#d95f02',
+            linewidth=2,
+            label='val AUC',
+        )
+        best_row = subset.loc[subset['val_AUC'].idxmax()]
+        ax.scatter(
+            best_row['n_trees'],
+            best_row['val_AUC'],
+            marker='*',
+            s=250,
+            color='#ffd700',
+            edgecolor='black',
+            linewidths=1.5,
+            zorder=10,
+            label=f"best AUC ({int(best_row['n_trees'])} trees)",
+        )
+        ax.set_xlabel('number of trees (n_estimators)', fontsize=10)
+        if ax == axes[0]:
+            ax.set_ylabel('ROC-AUC Score', fontsize=10)
+        ax.set_title(f'Learning Rate = {lr_rate}', fontsize=12, fontweight='bold')
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.legend(fontsize=9, loc='lower right')
+    fig.suptitle(
+        'Boosting budget: ROC-AUC vs number of trees, by learning rate (star = best AUC)',
+        fontsize=14,
+        fontweight='bold',
+        y=1.02,
     )
-    _ax.plot(
-        _sub['n_trees'],
-        _sub['val_AUC'],
-        marker='o',
-        color='#d95f02',
-        linewidth=2,
-        label='val AUC',
-    )
-    best_row = _sub.loc[_sub['val_AUC'].idxmax()]
-    _ax.scatter(
-        best_row['n_trees'],
-        best_row['val_AUC'],
-        marker='*',
-        s=250,
-        color='#ffd700',
-        edgecolor='black',
-        linewidths=1.5,
-        zorder=10,
-        label=f"best AUC ({int(best_row['n_trees'])} trees)",
-    )
-    _ax.set_xlabel('number of trees (n_estimators)', fontsize=10)
-    if _ax == _axes[0]:
-        _ax.set_ylabel('ROC-AUC Score', fontsize=10)
-    _ax.set_title(f'Learning Rate = {lr_rate}', fontsize=12, fontweight='bold')
-    _ax.grid(True, linestyle=':', alpha=0.6)
-    _ax.legend(fontsize=9, loc='lower right')
-_fig.suptitle(
-    'Boosting budget: ROC-AUC vs number of trees, by learning rate (star = best AUC)',
-    fontsize=14,
-    fontweight='bold',
-    y=1.02,
-)
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
+
+plot_budget_curves()
 budget_best = budget.loc[
     budget.groupby('learning_rate')['val_AUC'].idxmax(),
     ['learning_rate', 'n_trees', 'train_AUC', 'val_AUC'],
 ].copy()
-budget_best[['train_AUC', 'val_AUC']] = budget_best[
-    ['train_AUC', 'val_AUC']
-].round(4)
+budget_best[['train_AUC', 'val_AUC']] = budget_best[['train_AUC', 'val_AUC']].round(
+    4
+)
 display(budget_best)
 pred_xgb = budget_predictions[(0.03, 700)]
 ```
 
 
     
-![svg](notebook_files/notebook_76_0.svg)
+![png](notebook_files/notebook_78_0.png)
     
 
 
 
-
-
-|   Unnamed: 0 |   learning_rate |   n_trees |   train_AUC |   val_AUC |
-|-------------:|----------------:|----------:|------------:|----------:|
-|           10 |            0.03 |       700 |      0.977  |    0.9135 |
-|            2 |            0.1  |       200 |      0.9756 |    0.9125 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>learning_rate</th><th>n_trees</th><th>train_AUC</th><th>val_AUC</th></tr></thead><tbody><tr><th>10</th><td>0.03</td><td>700</td><td>0.9770</td><td>0.9135</td></tr><tr><th>2</th><td>0.10</td><td>200</td><td>0.9756</td><td>0.9125</td></tr></tbody></table></div>
 
 
 At learning rate 0.1, validation AUC peaks around 200 trees and then declines while training AUC keeps rising. At 0.03, improvement is slower but the holdout reaches a slightly higher plateau around 700 trees. We choose `learning_rate=0.03` and `n_estimators=700` for XGBoost.
@@ -1878,53 +1813,46 @@ We use rank averaging because ROC-AUC depends on ordering. Each model's predicti
 
 
 ```python
-def get_lgbm(**kw):
-    params = dict(
-        n_estimators=700,
-        learning_rate=0.03,
-        num_leaves=63,
-        min_child_samples=40,
-        subsample=0.9,
-        subsample_freq=1,
-        colsample_bytree=0.8,
-        reg_lambda=1.0,
-        random_state=SEED,
-        n_jobs=-1,
-        verbosity=-1,
-    )
-    params.update(kw)
-    return LGBMClassifier(**params)
-
-
-def get_cat(**kw):
-    params = dict(
-        iterations=1200,
-        learning_rate=0.05,
-        depth=6,
-        l2_leaf_reg=3.0,
-        random_seed=SEED,
-        verbose=False,
-        eval_metric="AUC",
-    )
-    params.update(kw)
-    return CatBoostClassifier(**params)
-
-
-def fit_predict(name, X_tr, y_train, X_val, sample_weight=None):
+@cache
+def fit_predict(name, X_tr, y_train, X_val, seed, sample_weight=None):
     """Fit one boosted-tree implementation and return P(drop) on X_val."""
     if name == "cat":
         cat_idx = [
-            i for i, c in enumerate(X_tr.columns) if str(X_tr[c].dtype) == "category"
+            i
+            for i, c in enumerate(X_tr.columns)
+            if str(X_tr[c].dtype) == "category"
         ]
         X_tr2, X_val2 = X_tr.copy(), X_val.copy()
         for c in X_tr2.columns[cat_idx]:
             X_tr2[c] = X_tr2[c].astype(str)
             X_val2[c] = X_val2[c].astype(str)
-        model = get_cat(cat_features=cat_idx)
+        model = CatBoostClassifier(
+            iterations=1200,
+            learning_rate=0.05,
+            depth=6,
+            l2_leaf_reg=3.0,
+            random_seed=seed,
+            verbose=False,
+            allow_writing_files=False,
+            eval_metric='AUC',
+            cat_features=cat_idx,
+        )
         model.fit(X_tr2, y_train, sample_weight=sample_weight)
         return model.predict_proba(X_val2)[:, 1]
     if name == "lgbm":
-        model = get_lgbm()
+        model = LGBMClassifier(
+            n_estimators=700,
+            learning_rate=0.03,
+            num_leaves=63,
+            min_child_samples=40,
+            subsample=0.9,
+            subsample_freq=1,
+            colsample_bytree=0.8,
+            reg_lambda=1.0,
+            random_state=seed,
+            n_jobs=-1,
+            verbosity=-1,
+        )
         model.fit(
             X_tr,
             y_train,
@@ -1932,22 +1860,31 @@ def fit_predict(name, X_tr, y_train, X_val, sample_weight=None):
             categorical_feature=X_tr.select_dtypes("category").columns.tolist(),
         )
         return model.predict_proba(X_val)[:, 1]
-    model = get_xgb()
+    model = XGBClassifier(
+        n_estimators=700,
+        learning_rate=0.03,
+        max_depth=6,
+        min_child_weight=5,
+        subsample=0.9,
+        colsample_bytree=0.8,
+        reg_lambda=1.0,
+        enable_categorical=True,
+        tree_method='hist',
+        eval_metric='auc',
+        random_state=seed,
+        n_jobs=-1,
+    )
     model.fit(X_tr, y_train, sample_weight=sample_weight)
     return model.predict_proba(X_val)[:, 1]
 
-
 def rank_avg(predictions):
     """Average percentile ranks; optimized for ordering, not calibration."""
-    return np.mean(
-        [rankdata(pred) / len(pred) for pred in predictions], axis=0
-    )
-
+    return np.mean([rankdata(pred) / len(pred) for pred in predictions], axis=0)
 
 pred_t = {
-    "lgbm": fit_predict("lgbm", Xtr_t, y_tr, Xva_t),
+    "lgbm": fit_predict("lgbm", Xtr_t, y_tr, Xva_t, SEED),
     "xgb": pred_xgb,
-    "cat": fit_predict("cat", Xtr_t, y_tr, Xva_t),
+    "cat": fit_predict("cat", Xtr_t, y_tr, Xva_t, SEED),
 }
 blend_t = rank_avg(list(pred_t.values()))
 
@@ -1976,194 +1913,189 @@ display(blend_check)
 ```
 
 
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>model</th><th>chrono_AUC</th><th>delta_vs_XGBoost</th></tr></thead><tbody><tr><th>0</th><td>Rank-average blend (LGBM+XGB+Cat)</td><td>0.915618</td><td>0.0021</td></tr><tr><th>1</th><td>XGBoost (tuned)</td><td>0.913536</td><td>0.0000</td></tr><tr><th>2</th><td>LightGBM (fixed setting)</td><td>0.913464</td><td>-0.0001</td></tr><tr><th>3</th><td>CatBoost (fixed setting)</td><td>0.913025</td><td>-0.0005</td></tr></tbody></table></div>
 
 
-|   Unnamed: 0 | model                             |   chrono_AUC |   delta_vs_XGBoost |
-|-------------:|:----------------------------------|-------------:|-------------------:|
-|            0 | Rank-average blend (LGBM+XGB+Cat) |       0.9156 |             0.0021 |
-|            1 | XGBoost (tuned)                   |       0.9135 |             0      |
-|            2 | LightGBM (fixed setting)          |       0.9135 |            -0.0001 |
-|            3 | CatBoost (fixed setting)          |       0.913  |            -0.0005 |
-
-
-
-
-All three boosters perform similarly on this holdout. Adding the fixed LightGBM and CatBoost rankings raises AUC from 0.9135 for tuned XGBoost to 0.9156 for the rank-average blend, so we select the blend as the final ranking model.
+All three boosters perform similarly on this holdout. Adding the fixed LightGBM and CatBoost rankings raises AUC from 0.9135 for tuned XGBoost to 0.9156 for the rank-average blend, which we carry forward as the boosted-tree candidate.
 
 ## 7.4 Returning to the time-index hypothesis
 
-EDA suggested that the long-term time position might help. Now that the rank-average blend is selected, we test `days_since_epoch` on that full blend. We also compare recency weighting and a random split using the same three-model combination.
+EDA suggested that the long-term time position might help. We test `days_since_epoch` on the rank-average blend.
 
 Trees cannot extrapolate a linear trend beyond the observed range, but the index can still separate older and more recent training regimes. Whether that helps is an empirical question answered by the chronological holdout below.
 
 
 ```python
 model_names = ("lgbm", "xgb", "cat")
-pred_blend_no_time = rank_avg(
-    [fit_predict(name, Xtr_n, y_tr, Xva_n) for name in model_names]
-)
-
-# rejected idea: down-weight old rows by a 1-year half-life
-age = (tr_raw["Course_Start_Date"].max() - tr_raw["Course_Start_Date"]).dt.days
-w = np.power(0.5, age / 365.0).values
-pred_blend_recency = rank_avg(
-    [
-        fit_predict(name, Xtr_t, y_tr, Xva_t, sample_weight=w)
-        for name in model_names
-    ]
-)
-
-# Diagnostic only: a random split mixes time periods and is optimistic for
-# the future-window task. Its frequency maps still use training rows only.
-tr_r, va_r = train_test_split(
-    train_raw, test_size=0.2, random_state=SEED, stratify=train_raw[TARGET]
-)
-fm_r = make_freq_maps(tr_r)
-Xtr_r = build_features(tr_r, fm_r)
-Xva_r = build_features(va_r, fm_r)
-align_categories(Xtr_r, Xva_r)
-pred_blend_random = rank_avg(
-    [
-        fit_predict(name, Xtr_r, tr_r[TARGET].values, Xva_r)
-        for name in model_names
-    ]
-)
+pred_blend_no_time = rank_avg([
+    fit_predict(name, Xtr_n, y_tr, Xva_n, SEED) for name in model_names
+])
 
 ablation = pd.DataFrame({
     "configuration": [
         "Rank-average blend, no time index",
         "Rank-average blend, + time index",
-        "Rank-average blend + recency weights",
-        "Rank-average blend, random split (diagnostic only)",
     ],
     "AUC": [
         roc_auc_score(y_va, pred_blend_no_time),
         roc_auc_score(y_va, blend_t),
-        roc_auc_score(y_va, pred_blend_recency),
-        roc_auc_score(va_r[TARGET].values, pred_blend_random),
     ],
-    "validation": ["chrono", "chrono", "chrono", "random"],
+    "validation": ["chrono", "chrono"],
 })
 display(ablation)
 ```
 
 
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>configuration</th><th>AUC</th><th>validation</th></tr></thead><tbody><tr><th>0</th><td>Rank-average blend, no time index</td><td>0.912226</td><td>chrono</td></tr><tr><th>1</th><td>Rank-average blend, + time index</td><td>0.915618</td><td>chrono</td></tr></tbody></table></div>
 
 
-|   Unnamed: 0 | configuration                                     |    AUC | validation   |
-|-------------:|:--------------------------------------------------|-------:|:-------------|
-|            0 | Rank-average blend, no time index                 | 0.9122 | chrono       |
-|            1 | Rank-average blend, + time index                  | 0.9156 | chrono       |
-|            2 | Rank-average blend + recency weights              | 0.9149 | chrono       |
-|            3 | Rank-average blend, random split (diagnostic o... | 0.962  | random       |
-
-
-
-
-The table tests the time index and recency weighting on the selected blend. The random split mixes periods and is included only to show why that validation design gives an optimistic estimate for the later test window.
+The table tests the time index on the boosted-tree blend using the chronological holdout.
 
 # 8. Model evaluation
 
-We use the selected rank-average score throughout the evaluation below.
+We compare the tuned Logistic Regression, MLP, and boosted-tree candidates on the chronological holdout.
 
 ## 8.1 ROC & precision–recall curves
 
 
 ```python
-_fig, _axes = plt.subplots(1, 2, figsize=(15, 5.5))
-for pred, name in [
-    (pred_lr, 'Logistic Regression'),
-    (pred_mlp, 'MLP'),
-    (pred_t['lgbm'], 'LightGBM'),
-    (pred_t['xgb'], 'XGBoost'),
-    (pred_t['cat'], 'CatBoost'),
-    (blend_t, 'Rank-average blend (selected)'),
-]:
-    fpr, tpr, _ = roc_curve(y_va, pred)
-    _axes[0].plot(
-        fpr,
-        tpr,
-        label=f'{name} (AUC={auc(fpr, tpr):.3f})',
-        lw=2.2 if name.startswith('Blend') else 1.2,
+def plot_evaluation_curves():
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5.5))
+    for predictions, name in [
+        (pred_lr, 'Logistic Regression'),
+        (pred_mlp, 'MLP'),
+        (blend_t, 'Boosted-tree rank blend'),
+    ]:
+        fpr, tpr, roc_thresholds = roc_curve(y_va, predictions)
+        axes[0].plot(
+            fpr,
+            tpr,
+            label=f'{name} (AUC={auc(fpr, tpr):.3f})',
+            lw=2,
+        )
+        precision, recall, pr_thresholds = precision_recall_curve(y_va, predictions)
+        axes[1].plot(
+            recall,
+            precision,
+            label=f'{name} (AP={average_precision_score(y_va, predictions):.3f})',
+            lw=2,
+        )
+    axes[0].plot([0, 1], [0, 1], 'k--', alpha=0.5)
+    axes[0].set(
+        xlabel='False Positive Rate',
+        ylabel='True Positive Rate',
+        title='ROC curve',
     )
-    prec, rec, _ = precision_recall_curve(y_va, pred)
-    _axes[1].plot(
-        rec,
-        prec,
-        label=f'{name} (AP={average_precision_score(y_va, pred):.3f})',
-        lw=2.2 if name.startswith('Blend') else 1.2,
-    )
-_axes[0].plot([0, 1], [0, 1], 'k--', alpha=0.5)
-_axes[0].set(
-    xlabel='False Positive Rate', ylabel='True Positive Rate', title='ROC curve'
-)
-_axes[0].legend(loc='lower right', fontsize=8)
-_axes[1].axhline(y_va.mean(), ls='--', color='grey', alpha=0.7)
-_axes[1].set(xlabel='Recall', ylabel='Precision', title='Precision–Recall curve')
-_axes[1].legend(loc='lower left', fontsize=8)
-plt.tight_layout()
-plt.show()
+    axes[0].legend(loc='lower right', fontsize=8)
+    axes[1].axhline(y_va.mean(), ls='--', color='grey', alpha=0.7)
+    axes[1].set(xlabel='Recall', ylabel='Precision', title='Precision–Recall curve')
+    axes[1].legend(loc='lower left', fontsize=8)
+    plt.tight_layout()
+    plt.show()
+
+plot_evaluation_curves()
 ```
 
 
     
-![svg](notebook_files/notebook_85_0.svg)
+![png](notebook_files/notebook_87_0.png)
     
 
 
-The blend has the best holdout AUC in this comparison, so it is the selected ranking score.
+The boosted-tree blend has the highest holdout AUC in this comparison. Threshold-based metrics are examined next.
 
-## 8.2 Confusion matrix & threshold metrics
+## 8.2 Confusion matrices & threshold metrics
 
-A confusion matrix requires a threshold, so we use 0.5 as a simple reference cutoff on the selected rank-average risk score. This is not a 50% cancellation probability: rank averaging preserves ordering but discards the individual models' probability scales. Nova Academy could later adjust the cutoff according to the relative cost of unnecessary follow-up and missed cancellations.
+A confusion matrix requires a threshold, so we use 0.5 as a simple reference cutoff for each candidate. For the rank-average blend, this is not a 50% cancellation probability: rank averaging preserves ordering but discards the individual models' probability scales. Nova Academy could later adjust the cutoff according to the relative cost of unnecessary follow-up and missed cancellations.
 
 
 ```python
-y_hat = (blend_t >= 0.5).astype(int)
-cm = confusion_matrix(y_va, y_hat)
-_fig, _ax = plt.subplots(figsize=(5, 4))
-sns.heatmap(
-    cm,
-    annot=True,
-    fmt=',d',
-    cmap='Blues',
-    cbar=False,
-    xticklabels=['pred completed', 'pred dropped'],
-    yticklabels=['true completed', 'true dropped'],
-    ax=_ax,
-)
-_ax.set_title('Confusion matrix — rank-average blend @ 0.5')
-plt.tight_layout()
-plt.show()
-print(
-    classification_report(y_va, y_hat, target_names=['completed', 'dropped'], digits=3)
-)
-print(f'AUC of selected rank-average score: {roc_auc_score(y_va, blend_t):.4f}')
+def evaluate_candidates():
+    candidates = [
+        ('Logistic Regression', pred_lr),
+        ('MLP neural network', pred_mlp),
+        ('Boosted-tree rank blend', blend_t),
+    ]
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+    metric_rows = []
+    for ax, (name, predictions) in zip(axes, candidates):
+        labels = (predictions >= 0.5).astype(int)
+        matrix = confusion_matrix(y_va, labels)
+        auc_score = roc_auc_score(y_va, predictions)
+        report = classification_report(
+            y_va,
+            labels,
+            target_names=['completed', 'dropped'],
+            output_dict=True,
+            zero_division=0,
+        )
+        sns.heatmap(
+            matrix,
+            annot=True,
+            fmt=',d',
+            cmap='Blues',
+            cbar=False,
+            square=True,
+            linewidths=0.5,
+            xticklabels=['pred completed', 'pred dropped'],
+            yticklabels=['true completed', 'true dropped'],
+            annot_kws={'fontsize': 12},
+            ax=ax,
+        )
+        ax.set_title(f'{name}\nROC-AUC={auc_score:.3f}', fontweight='bold')
+        ax.set_xlabel('Predicted class')
+        ax.set_ylabel('Actual class')
+        metric_rows.append({
+            'model': name,
+            'ROC-AUC': auc_score,
+            'accuracy': report['accuracy'],
+            'precision (dropped)': report['dropped']['precision'],
+            'recall (dropped)': report['dropped']['recall'],
+            'F1 (dropped)': report['dropped']['f1-score'],
+        })
+    fig.suptitle(
+        'Candidate-model confusion matrices at a 0.5 reference cutoff',
+        fontsize=14,
+        fontweight='bold',
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    plt.show()
+    return pd.DataFrame(metric_rows).set_index('model')
+
+evaluation_metrics = evaluate_candidates().round(3)
+display(evaluation_metrics)
 ```
 
 
     
-![svg](notebook_files/notebook_88_0.svg)
+![png](notebook_files/notebook_90_0.png)
     
 
 
-                  precision    recall  f1-score   support
-    
-       completed      0.887     0.770     0.825      6754
-         dropped      0.732     0.865     0.793      4888
-    
-        accuracy                          0.810     11642
-       macro avg      0.809     0.818     0.809     11642
-    weighted avg      0.822     0.810     0.811     11642
-    
-    AUC of selected rank-average score: 0.9156
+
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>ROC-AUC</th><th>accuracy</th><th>precision (dropped)</th><th>recall (dropped)</th><th>F1 (dropped)</th></tr><tr><th>model</th><th></th><th></th><th></th><th></th><th></th></tr></thead><tbody><tr><th>Logistic Regression</th><td>0.881</td><td>0.799</td><td>0.773</td><td>0.737</td><td>0.754</td></tr><tr><th>MLP neural network</th><td>0.876</td><td>0.790</td><td>0.744</td><td>0.762</td><td>0.753</td></tr><tr><th>Boosted-tree rank blend</th><td>0.916</td><td>0.810</td><td>0.732</td><td>0.865</td><td>0.793</td></tr></tbody></table></div>
 
 
-For the dropped class, recall is the share of actual cancellations that the blend flags, while precision is the share of its alerts that actually cancel. False positives consume follow-up resources; false negatives leave cancellations unflagged. Accuracy and F1 summarize this reference cutoff but will change if the cutoff moves.
+## 8.2 Model Family Comparisons
 
-We submit continuous scores because ROC-AUC evaluates the ordering of registrations across all possible thresholds.
+- Logistic Regression slightly outperformed the MLP, suggesting that non-linearity is not the primary limitation for continuous models on this dataset.
+- The Logistic Regression and MLP ROC and Precision–Recall curves largely overlap, indicating that the two models produce very similar rankings across most decision thresholds.
+- The blended gradient-boosted model consistently outperformed both the linear and neural-network models across the evaluated metrics.
 
-## 8.3 Registrations near the illustrative threshold
+### Interpreting the Confusion Matrices (0.5 Threshold)
+
+At the default decision threshold of 0.5, the three models exhibit different operating characteristics.
+
+- Higher recall: The boosted-tree model correctly identified more than 4.2k dropped courses, compared with approximately 3.6k–3.7k for the Logistic Regression and MLP models.
+- Fewer missed dropouts: The boosted-tree model produced 661 false negatives, compared with 1,162–1,287 for the other two models.
+- More false alarms: The boosted-tree model generated 1,551 false positives, compared with 1,058 for Logistic Regression and 1,281 for the MLP.
+
+Note that the boosted-tree model produces a continuous risk score, its false-positive/false-negative trade-off can be adjusted by selecting a different decision threshold. The confusion matrices therefore illustrate one operating point (0.5) rather than an inherent limitation of the model.
+
+## 8.3 Final Model Selection
+The blended boosted-tree model achieved the highest AUC. Since its operating point can be adjusted by selecting an appropriate decision threshold, we chose it as our final submission.
+
+## 8.4 Registrations near the illustrative threshold
 
 We inspect how many selected-blend scores fall near the 0.5 reference cutoff.
 
@@ -2185,7 +2117,7 @@ print(f"share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%")
 
 
     
-![svg](notebook_files/notebook_91_0.svg)
+![png](notebook_files/notebook_93_0.png)
     
 
 
@@ -2202,20 +2134,45 @@ We compute TreeSHAP values on a fixed validation sample of up to 10,000 rows to 
 
 
 ```python
-shap_model = get_xgb()
-shap_model.fit(Xtr_t, y_tr)
-print(
-    f"XGBoost+time chrono AUC: {roc_auc_score(y_va, shap_model.predict_proba(Xva_t)[:, 1]):.4f}"
-)
+@cache
+def compute_shap_analysis(X_train, X_valid, y_train, y_valid, seed):
+    shap_model = XGBClassifier(
+        n_estimators=700,
+        learning_rate=0.03,
+        max_depth=6,
+        min_child_weight=5,
+        subsample=0.9,
+        colsample_bytree=0.8,
+        reg_lambda=1.0,
+        enable_categorical=True,
+        tree_method='hist',
+        eval_metric='auc',
+        random_state=seed,
+        n_jobs=-1,
+    )
+    shap_model.fit(X_train, y_train)
+    valid_scores = shap_model.predict_proba(X_valid)[:, 1]
+    X_shap = X_valid.sample(min(10000, len(X_valid)), random_state=seed)
+    sample_scores = shap_model.predict_proba(X_shap)[:, 1]
+    explainer = shap.TreeExplainer(shap_model)
+    shap_values = explainer.shap_values(X_shap)
+    if isinstance(shap_values, list):
+        shap_values = shap_values[1]
+    shap_values = np.asarray(shap_values)
+    if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
+        shap_values = shap_values[:, :, 1]
+    return (
+        X_shap,
+        sample_scores,
+        explainer.expected_value,
+        shap_values,
+        roc_auc_score(y_valid, valid_scores),
+    )
 
-X_shap = Xva_t.sample(min(10000, len(Xva_t)), random_state=SEED)
-explainer = shap.TreeExplainer(shap_model)
-shap_values = explainer.shap_values(X_shap)
-if isinstance(shap_values, list):
-    shap_values = shap_values[1]
-shap_values = np.asarray(shap_values)
-if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
-    shap_values = shap_values[:, :, 1]
+X_shap, shap_scores, shap_base, shap_values, shap_auc = compute_shap_analysis(
+    Xtr_t, Xva_t, y_tr, y_va, SEED
+)
+print(f"XGBoost+time chrono AUC: {shap_auc:.4f}")
 ```
 
     XGBoost+time chrono AUC: 0.9135
@@ -2239,55 +2196,38 @@ importance = (
     .reset_index(drop=True)
 )
 top = importance.head(20)
-_ax = top.sort_values('mean_abs_shap').plot.barh(
-    x='feature', y='mean_abs_shap', legend=False, figsize=(8, 7), color='#4c72b0'
-)
-_ax.set_xlabel('mean |SHAP value|')
-_ax.set_title('Top 20 features by SHAP importance')
-plt.tight_layout()
-plt.show()
+
+def plot_shap_importance():
+    ax = top.sort_values('mean_abs_shap').plot.barh(
+        x='feature',
+        y='mean_abs_shap',
+        legend=False,
+        figsize=(8, 7),
+        color='#4c72b0',
+    )
+    ax.set_xlabel('mean |SHAP value|')
+    ax.set_title('Top 20 features by SHAP importance')
+    plt.tight_layout()
+    plt.show()
+
+plot_shap_importance()
 display(top)
 ```
 
 
     
-![svg](notebook_files/notebook_96_0.svg)
+![png](notebook_files/notebook_98_0.png)
     
 
 
 
     
-![svg](notebook_files/notebook_96_1.svg)
+![png](notebook_files/notebook_98_1.png)
     
 
 
 
-
-
-|   Unnamed: 0 | feature                     |   mean_abs_shap |
-|-------------:|:----------------------------|----------------:|
-|            0 | Payment_Terms               |          1.2374 |
-|            1 | Origin_Country              |          0.6693 |
-|            2 | days_since_epoch            |          0.5305 |
-|            3 | Agent_ID                    |          0.5042 |
-|            4 | tickets_per_participant     |          0.3554 |
-|            5 | Registration_Days_Before    |          0.3389 |
-|            6 | Pre_Course_Supports_Tickets |          0.2485 |
-|            7 | Enrollment_Type             |          0.2338 |
-|            8 | Client_Category             |          0.2259 |
-|            9 | Origin_Country_freq         |          0.2002 |
-|           10 | got_requested_lab           |          0.1766 |
-|           11 | Registration_Changes        |          0.1201 |
-|           12 | prev_drop_rate              |          0.1078 |
-|           13 | Physical_Course_Kits        |          0.1064 |
-|           14 | Daily_Tuition_Cost          |          0.0863 |
-|           15 | Agent_ID_freq               |          0.0836 |
-|           16 | start_week                  |          0.0836 |
-|           17 | cost_x_days                 |          0.0698 |
-|           18 | Catering_Package            |          0.0426 |
-|           19 | kits_per_participant        |          0.0408 |
-
-
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>feature</th><th>mean_abs_shap</th></tr></thead><tbody><tr><th>0</th><td>Payment_Terms</td><td>1.237425</td></tr><tr><th>1</th><td>Origin_Country</td><td>0.669338</td></tr><tr><th>2</th><td>days_since_epoch</td><td>0.530472</td></tr><tr><th>3</th><td>Agent_ID</td><td>0.504151</td></tr><tr><th>4</th><td>tickets_per_participant</td><td>0.355377</td></tr><tr><th>...</th><td>...</td><td>...</td></tr><tr><th>15</th><td>Agent_ID_freq</td><td>0.083634</td></tr><tr><th>16</th><td>start_week</td><td>0.083600</td></tr><tr><th>17</th><td>cost_x_days</td><td>0.069765</td></tr><tr><th>18</th><td>Catering_Package</td><td>0.042550</td></tr><tr><th>19</th><td>kits_per_participant</td><td>0.040752</td></tr></tbody></table><p>20 rows × 2 columns</p></div>
 
 
 The strongest XGBoost contributions broadly match the earlier exploration: `Payment_Terms`, `Origin_Country`, the time index, `Agent_ID`, registration lead time, and support-related features appear near the top. Raw country and agent identity contribute more than their frequency encodings, while the engineered ratios add smaller supporting signals.
@@ -2300,12 +2240,10 @@ EDA showed that prepaid, non-refundable registrations drop unexpectedly often, a
 ```python
 Xtr_no_payment = Xtr_t.drop(columns=["Payment_Terms"])
 Xva_no_payment = Xva_t.drop(columns=["Payment_Terms"])
-pred_blend_no_payment = rank_avg(
-    [
-        fit_predict(name, Xtr_no_payment, y_tr, Xva_no_payment)
-        for name in ("lgbm", "xgb", "cat")
-    ]
-)
+pred_blend_no_payment = rank_avg([
+    fit_predict(name, Xtr_no_payment, y_tr, Xva_no_payment, SEED)
+    for name in ("lgbm", "xgb", "cat")
+])
 payment_check = pd.DataFrame({
     "model": [
         "Rank-average blend",
@@ -2323,48 +2261,10 @@ display(payment_check)
 ```
 
 
+<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table border="1" class="dataframe"><thead><tr style="text-align: right;"><th></th><th>model</th><th>chrono_AUC</th><th>delta_vs_with_payment</th></tr></thead><tbody><tr><th>0</th><td>Rank-average blend</td><td>0.915618</td><td>0.000000</td></tr><tr><th>1</th><td>Rank-average blend, no Payment_Terms</td><td>0.910071</td><td>-0.005546</td></tr></tbody></table></div>
 
 
-|   Unnamed: 0 | model                                |   chrono_AUC |   delta_vs_with_payment |
-|-------------:|:-------------------------------------|-------------:|------------------------:|
-|            0 | Rank-average blend                   |       0.9156 |                  0      |
-|            1 | Rank-average blend, no Payment_Terms |       0.9101 |                 -0.0055 |
-
-
-
-
-
-```python
-auc_with_payment = payment_check.loc[
-    payment_check["model"] == "Rank-average blend", "chrono_AUC"
-].iloc[0]
-auc_without_payment = payment_check.loc[
-    payment_check["model"] == "Rank-average blend, no Payment_Terms", "chrono_AUC"
-].iloc[0]
-mo.md(f"""
-Removing `Payment_Terms` changes chronological AUC from {auc_with_payment:.4f} to {auc_without_payment:.4f}. The field's exact recording time is still worth confirming with the data owner.
-""")
-```
-
-
-    ---------------------------------------------------------------------------
-
-    NameError                                 Traceback (most recent call last)
-
-    Cell In[38], line 7
-          1 auc_with_payment = payment_check.loc[
-          2     payment_check["model"] == "Rank-average blend", "chrono_AUC"
-          3 ].iloc[0]
-          4 auc_without_payment = payment_check.loc[
-          5     payment_check["model"] == "Rank-average blend, no Payment_Terms", "chrono_AUC"
-          6 ].iloc[0]
-    ----> 7 mo.md(f"""
-          8 Removing `Payment_Terms` changes chronological AUC from {auc_with_payment:.4f} to {auc_without_payment:.4f}. The field's exact recording time is still worth confirming with the data owner.
-          9 """)
-
-
-    NameError: name 'mo' is not defined
-
+Removing `Payment_Terms` changes chronological AUC from 0.9156 to 0.9101. The field's exact recording time is still worth confirming with the data owner.
 
 ## 9.2 Direction of the strongest non-payment signal
 
@@ -2377,7 +2277,6 @@ top_feat = (
     if importance['feature'].iloc[0] == 'Payment_Terms'
     else importance['feature'].iloc[0]
 )
-
 
 def plot_shap_dependence_readable(feature, max_categories=15):
     col_idx = list(X_shap.columns).index(feature)
@@ -2408,17 +2307,20 @@ def plot_shap_dependence_readable(feature, max_categories=15):
         .sort_values('mean_shap')
     )
     fig_h = max(4, min(7, 0.32 * len(summary) + 1.2))
-    _fig, _ax = plt.subplots(figsize=(8, fig_h))
+    fig, ax = plt.subplots(figsize=(8, fig_h))
     sns.barplot(
-        data=summary.reset_index(), y='level', x='mean_shap', color='#4c72b0', ax=_ax
+        data=summary.reset_index(),
+        y='level',
+        x='mean_shap',
+        color='#4c72b0',
+        ax=ax,
     )
-    _ax.axvline(0, color='black', lw=1, alpha=0.5)
-    _ax.set_title(f'Mean SHAP by {feature} level (top {max_categories} + other)')
-    _ax.set_xlabel('mean SHAP contribution')
-    _ax.set_ylabel(feature)
+    ax.axvline(0, color='black', lw=1, alpha=0.5)
+    ax.set_title(f'Mean SHAP by {feature} level (top {max_categories} + other)')
+    ax.set_xlabel('mean SHAP contribution')
+    ax.set_ylabel(feature)
     plt.tight_layout()
     plt.show()
-
 
 try:
     plot_shap_dependence_readable(top_feat)
@@ -2428,7 +2330,7 @@ except Exception as e:
 
 
     
-![svg](notebook_files/notebook_101_0.svg)
+![png](notebook_files/notebook_103_0.png)
     
 
 
@@ -2438,23 +2340,22 @@ We choose one sampled XGBoost prediction near 0.5 and decompose it. The waterfal
 
 
 ```python
-sample_scores = shap_model.predict_proba(X_shap)[:, 1]
-borderline = np.where((sample_scores > 0.45) & (sample_scores < 0.55))[0]
+borderline = np.where((shap_scores > 0.45) & (shap_scores < 0.55))[0]
 idx = int(borderline[0]) if len(borderline) else 0
-base = explainer.expected_value
+base = shap_base
 if isinstance(base, (list, np.ndarray)):
     base = np.asarray(base).ravel()[-1]
 
 print(
-    f"explaining order at sample position {idx} — model P(drop)={sample_scores[idx]:.3f}"
+    f"explaining order at sample position {idx} — model P(drop)={shap_scores[idx]:.3f}"
 )
-shap.plots._waterfall.waterfall_legacy(
-    base,
-    shap_values[idx],
+explanation = shap.Explanation(
+    values=shap_values[idx],
+    base_values=base,
+    data=X_shap.iloc[idx].values,
     feature_names=list(X_shap.columns),
-    max_display=14,
-    show=False,
 )
+shap.plots.waterfall(explanation, max_display=14, show=False)
 plt.tight_layout()
 plt.show()
 ```
@@ -2464,7 +2365,7 @@ plt.show()
 
 
     
-![svg](notebook_files/notebook_103_1.svg)
+![png](notebook_files/notebook_105_1.png)
     
 
 
@@ -2487,7 +2388,7 @@ def build_submission_candidate(
 
     preds = []
     for name in ("lgbm", "xgb", "cat"):
-        preds.append(fit_predict(name, X_train_full, y_full, X_test))
+        preds.append(fit_predict(name, X_train_full, y_full, X_test, SEED))
         print(f"fitted {name} on {len(X_train_full):,} rows")
 
     submission = pd.DataFrame({
@@ -2498,7 +2399,6 @@ def build_submission_candidate(
         submission.to_csv(out_path, index=False)
         print(f"wrote {out_path}  ({len(submission):,} rows)")
     return submission
-
 
 def rebuild_and_compare():
     submission = build_submission_candidate(write=False)
@@ -2538,7 +2438,6 @@ def rebuild_and_compare():
             )
     else:
         print(f"{scored_path} not found; skipped scored-file comparison.")
-
 
 RUN_REBUILD_AND_COMPARE = False  # expensive; keep disabled during routine editing
 
