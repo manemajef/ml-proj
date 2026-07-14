@@ -5,28 +5,28 @@ I**nteractive HTML Report:** [https://manemajef.github.io/ml-proj/](https://mane
 TAU Intro to Machine Learning final project for Nova Academy. The task is to predict the probability that a B2B course registration will be cancelled (`Dropped_Course`).
 
 - **Deadline:** 17.7.26 at 23:59.
-- **Assignment source of truth:** [References/instructions.md](References/instructions.md)`.
-- **Best scored submission:** [data/Group_27_Submission.csv](data/Group_27_Submission.csv),
-  produced by [pipeline.py](pipeline.py), with documented leaderboard AUC `0.889314` (1st of 32).
+- **Assignment source of truth:** [References/instructions.md](<References/instructions.md>)`.
+- **Best scored submission:** [data/Group_27_Submission.csv](<data/Group_27_Submission.csv>),
+  produced by [pipeline.py](<pipeline.py>), with documented leaderboard AUC `0.889314` (1st of 32).
 
-The current notebook work is in [notebook.py](notebook.py) (`.py` marimo notebook) and a [synced jupyter notebook](notebook.ipynb)
+The current notebook work is in [notebook.py](<notebook.py>) (`.py` marimo notebook) and a [synced jupyter notebook](<notebook.ipynb>)
 
 ## Road Map
 
 - [ ] **Refine the model's pipeline** - Goal: `AUC > 0.9`, (cant be verified before submission), risks the safe but not impressive `0.8893` current AUC score.
 - [ ] Refine ugly plots and graph
-- [ ] align [notebook](notebook.py) with the [submission-report](submission-report.md)
+- [ ] align [notebook](<notebook.py>) with the [submission-report](<submission-report.md>)
 
 ## עברית
 
-- קובץ ההסתברויות שקיבל AUC של `88.889` נמצא כאן: [data/Group_27_Submission.csv](data/Group_27_Submission.csv). (הלוגיקה שהביאה את הציון נמצאת ב-[pipeline.py](pipeline.py))
-- המחברת המרכזית לעבודה היא [notebook.ipynb](notebook.ipynb).
-- לקריאה מהירה של המחברת עם פלטים, לפתוח את [האתר הזה](https://manemajef.github.io/ml-proj/) או את [docs/notebook.md](docs/notebook.md),
+- קובץ ההסתברויות שקיבל AUC של `88.889` נמצא כאן: [data/Group_27_Submission.csv](<data/Group_27_Submission.csv>). (הלוגיקה שהביאה את הציון נמצאת ב-[pipeline.py](<pipeline.py>))
+- המחברת המרכזית לעבודה היא [notebook.ipynb](<notebook.ipynb>).
+- לקריאה מהירה של המחברת עם פלטים, לפתוח את [האתר הזה](https://manemajef.github.io/ml-proj/) או את [docs/notebook.md](<docs/notebook.md>),
 - ה-plots יעברו רענון ויהיו ״יפים״ יותר טרם ההגשה.
 
 ## Notebook Summary
 
-Open [docs/notebook.md](docs/notebook.md) for a rendered review path,
+Open [docs/notebook.md](<docs/notebook.md>) for a rendered review path,
 but refresh it before treating it as current if the notebook changed.
 
 The notebook currently follows this flow:
@@ -77,13 +77,13 @@ The notebook currently follows this flow:
 
 | Path                                                         | Role                                                                  |
 | ------------------------------------------------------------ | --------------------------------------------------------------------- |
-| [References/instructions.md](References/instructions.md)     | Assignment requirements and grading source of truth.                  |
-| [notebook.ipynb](notebook.ipynb)                             | Current integrated notebook draft.                                    |
-| [notebook.py](notebook.py)                                   | Jupytext source for the current notebook draft.                       |
-| [docs/notebook.md](docs/notebook.md)                         | Rendered notebook review artifact; may be stale after notebook edits. |
-| [pipeline.py](pipeline.py)                                   | Clean scored pipeline used for the best CSV.                          |
-| [data/Group_27_Submission.csv](data/Group_27_Submission.csv) | Best scored submission; do not overwrite casually.                    |
-| [agent/README.md](_agent/README.md)                          | Rules for local planning and audit notes.                             |
+| [References/instructions.md](<References/instructions.md>)     | Assignment requirements and grading source of truth.                  |
+| [notebook.ipynb](<notebook.ipynb>)                             | Current integrated notebook draft.                                    |
+| [notebook.py](<notebook.py>)                                   | Jupytext source for the current notebook draft.                       |
+| [docs/notebook.md](<docs/notebook.md>)                         | Rendered notebook review artifact; may be stale after notebook edits. |
+| [pipeline.py](<pipeline.py>)                                   | Clean scored pipeline used for the best CSV.                          |
+| [data/Group_27_Submission.csv](<data/Group_27_Submission.csv>) | Best scored submission; do not overwrite casually.                    |
+| [agent/README.md](<_agent/README.md>)                          | Rules for local planning and audit notes.                             |
 
 Older notebooks and pipelines are kept for history, but `notebook` and `pipeline.py` are the active paths.
 
@@ -131,11 +131,11 @@ MPLBACKEND=Agg uv run python notebook.py
 
 ## If You Are An Agent
 
-- Read [agent/README.md](_agent/README.md) before creating reusable local notes.
-- Read [References/instructions.md](References/instructions.md) before making
+- Read [agent/README.md](<_agent/README.md>) before creating reusable local notes.
+- Read [References/instructions.md](<References/instructions.md>) before making
   grading, sufficiency, or quality judgments.
 - Keep notebook work separate from scored-pipeline work unless explicitly asked.
-- Do not overwrite [data/Group_27_Submission.csv](data/Group_27_Submission.csv)
+- Do not overwrite [data/Group_27_Submission.csv](<data/Group_27_Submission.csv>)
   casually.
 - Prefer small, cited decision-defense fixes over broad rewrites.
 - Do not call `notebook` final or submission-ready until the review against the

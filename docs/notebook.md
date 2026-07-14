@@ -710,7 +710,7 @@ plot_target_balance()
 
 
     
-![svg](notebook_files/notebook_9_1.svg)
+![svg](<notebook_files/notebook_9_1.svg>)
     
 
 
@@ -772,7 +772,7 @@ plot_monthly_drop_rate()
 
 
     
-![svg](notebook_files/notebook_13_1.svg)
+![svg](<notebook_files/notebook_13_1.svg>)
     
 
 
@@ -1398,7 +1398,7 @@ plot_categorical_overview()
 
 
     
-![svg](notebook_files/notebook_29_0.svg)
+![svg](<notebook_files/notebook_29_0.svg>)
     
 
 
@@ -1483,7 +1483,7 @@ display(
 
 
     
-![svg](notebook_files/notebook_32_0.svg)
+![svg](<notebook_files/notebook_32_0.svg>)
     
 
 
@@ -1689,7 +1689,7 @@ display(company_presence)
 
 
     
-![svg](notebook_files/notebook_36_0.svg)
+![svg](<notebook_files/notebook_36_0.svg>)
     
 
 
@@ -2054,7 +2054,7 @@ plt.show()
 
 
     
-![svg](notebook_files/notebook_43_0.svg)
+![svg](<notebook_files/notebook_43_0.svg>)
     
 
 
@@ -2094,7 +2094,7 @@ plot_numeric_bins()
 
 
     
-![svg](notebook_files/notebook_46_0.svg)
+![svg](<notebook_files/notebook_46_0.svg>)
     
 
 
@@ -2388,7 +2388,7 @@ plot_tail_checks()
 
 
     
-![svg](notebook_files/notebook_53_0.svg)
+![svg](<notebook_files/notebook_53_0.svg>)
     
 
 
@@ -2548,7 +2548,7 @@ plot_cap_effects()
 
 
     
-![svg](notebook_files/notebook_55_1.svg)
+![svg](<notebook_files/notebook_55_1.svg>)
     
 
 
@@ -2598,6 +2598,8 @@ Based on the EDA findings and domain questions, we create features that expose r
 | Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the assigned lab configuration matches the original request.                                                                                        |
 | Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves the presence differences observed in Section 3.2 even when a raw identifier is removed.                                                                    |
 | Agent/company/country IDs | frequency encodings and native categories                    | Retains identity and commonness information while avoiding a wide dummy matrix.                                                                                      |
+
+`Assigned_Lab_Config` is populated even for cancelled bookings, so we treat it as a planned assignment known before the course and use it in `got_requested_lab`. This timing assumption would need confirmation before deploying the model.
 
 ## 5.2 Dimensionality
 
@@ -3115,7 +3117,7 @@ pred_mlp = selected_predictions['mlp']
 
 
     
-![svg](notebook_files/notebook_74_0.svg)
+![svg](<notebook_files/notebook_74_0.svg>)
     
 
 
@@ -3283,7 +3285,7 @@ pred_xgb = budget_predictions[(0.03, 700)]
 
 
     
-![svg](notebook_files/notebook_77_0.svg)
+![svg](<notebook_files/notebook_77_0.svg>)
     
 
 
@@ -3499,7 +3501,7 @@ All three boosters perform similarly on this holdout. Adding the fixed LightGBM 
 
 ## 7.4 Returning to the time-index hypothesis
 
-EDA suggested that the long-term time position might help. We test `days_since_epoch` on the rank-average blend.
+EDA suggested that the long-term time position might help. We test `days_since_epoch` on the rank-average blend, then compare it with a diagnostic random split using the same three-model combination.
 
 Trees cannot extrapolate a linear trend beyond the observed range, but the index can still separate older and more recent training regimes. Whether that helps is an empirical question answered by the chronological holdout below.
 
@@ -3510,16 +3512,32 @@ pred_blend_no_time = rank_avg([
     fit_predict(name, Xtr_n, y_tr, Xva_n, SEED) for name in model_names
 ])
 
+# Diagnostic only: a random split mixes time periods and is optimistic for
+# the future-window task. Its frequency maps still use training rows only.
+tr_r, va_r = train_test_split(
+    train_raw, test_size=0.2, random_state=SEED, stratify=train_raw[TARGET]
+)
+fm_r = make_freq_maps(tr_r)
+Xtr_r = build_features(tr_r, fm_r)
+Xva_r = build_features(va_r, fm_r)
+align_categories(Xtr_r, Xva_r)
+pred_blend_random = rank_avg([
+    fit_predict(name, Xtr_r, tr_r[TARGET].values, Xva_r, SEED)
+    for name in model_names
+])
+
 ablation = pd.DataFrame({
     "configuration": [
         "Rank-average blend, no time index",
         "Rank-average blend, + time index",
+        "Rank-average blend, random split (diagnostic only)",
     ],
     "AUC": [
         roc_auc_score(y_va, pred_blend_no_time),
         roc_auc_score(y_va, blend_t),
+        roc_auc_score(va_r[TARGET].values, pred_blend_random),
     ],
-    "validation": ["chrono", "chrono"],
+    "validation": ["chrono", "chrono", "random"],
 })
 display(ablation)
 ```
@@ -3561,12 +3579,18 @@ display(ablation)
       <td>0.915618</td>
       <td>chrono</td>
     </tr>
+    <tr>
+      <th>2</th>
+      <td>Rank-average blend, random split (diagnostic o...</td>
+      <td>0.962039</td>
+      <td>random</td>
+    </tr>
   </tbody>
 </table>
 </div>
 
 
-The table tests the time index on the boosted-tree blend using the chronological holdout.
+The table keeps the time-index comparison on the chronological holdout. The random split mixes periods and is included  to show  it gives an optimistic estimate for the later test window.
 
 # 8. Model evaluation
 
@@ -3615,7 +3639,7 @@ plot_evaluation_curves()
 
 
     
-![svg](notebook_files/notebook_86_0.svg)
+![svg](<notebook_files/notebook_86_0.svg>)
     
 
 
@@ -3685,7 +3709,7 @@ display(evaluation_metrics)
 
 
     
-![svg](notebook_files/notebook_89_0.svg)
+![svg](<notebook_files/notebook_89_0.svg>)
     
 
 
@@ -3794,7 +3818,7 @@ print(f"share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%")
 
 
     
-![svg](notebook_files/notebook_92_0.svg)
+![svg](<notebook_files/notebook_92_0.svg>)
     
 
 
@@ -3893,13 +3917,13 @@ display(top)
 
 
     
-![svg](notebook_files/notebook_97_0.svg)
+![svg](<notebook_files/notebook_97_0.svg>)
     
 
 
 
     
-![svg](notebook_files/notebook_97_1.svg)
+![svg](<notebook_files/notebook_97_1.svg>)
     
 
 
@@ -4170,7 +4194,7 @@ except Exception as e:
 
 
     
-![svg](notebook_files/notebook_102_0.svg)
+![svg](<notebook_files/notebook_102_0.svg>)
     
 
 
@@ -4205,7 +4229,7 @@ plt.show()
 
 
     
-![svg](notebook_files/notebook_104_1.svg)
+![svg](<notebook_files/notebook_104_1.svg>)
     
 
 

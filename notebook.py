@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.14"
+__generated_with = "0.23.9"
 app = marimo.App()
 
 
@@ -174,15 +174,6 @@ def _(TEST_PATH, TRAIN_PATH, display, load_raw, pd):
     })
     display(data_dictionary)
 
-    # The CSV parser reads these ID fields as numbers because their non-missing
-    # values look numeric. They are labels, not measurable quantities, so from
-    # this point onward we keep them as strings.
-    def cast_id_columns(df):
-        for col in ("Agent_ID", "Company_ID"):
-            df[col] = df[col].astype("string")
-
-    for df in (train_raw, test_raw):
-        cast_id_columns(df)
     return test_raw, train_raw
 
 
@@ -200,7 +191,13 @@ def _(mo):
 
 
 @app.cell
-def _(train_raw):
+def _(test_raw, train_raw):
+    def cast_id_columns(df):
+        for col in ("Agent_ID", "Company_ID"):
+            df[col] = df[col].astype("string")
+
+    for df in (train_raw, test_raw):
+        cast_id_columns(df)
     train_raw.describe()
     return
 
@@ -234,7 +231,7 @@ def _(TARGET, display, pd, plt, train_raw):
         plt.tight_layout()
         plt.show()
 
-    plot_target_balance()
+    plot_target_balance() # atrocious , low quality, klooking bad. 
     return
 
 
@@ -280,32 +277,20 @@ def _(TARGET, plt, test_raw, train_raw):
     )
 
     def plot_monthly_drop_rate():
-        ax = monthly.plot(marker='o', figsize=(12, 4))
-        ax.axhline(
-            train_raw[TARGET].mean() * 100,
-            ls='--',
-            color='grey',
-            label='train average',
-        )
-        ax.axvline(
-            train_end,
-            ls='--',
-            color='green',
-            label=f'train ends ({train_end.date()})',
-        )
-        ax.axvline(
-            test_end, ls=':', color='red', label=f'test ends ({test_end.date()})'
-        )
+        fig, ax = plt.subplots(figsize=(12, 4))
+        monthly.plot(marker="o", ax=ax)
+        ax.axhline(train_raw[TARGET].mean() * 100, ls='--', color='grey', label='train average',)
+        ax.axvline(train_end, ls='--', color='green', label=f'train ends ({train_end.date()})',)
+        ax.axvline(test_end, ls=':', color='red', label=f'test ends ({test_end.date()})')
         ax.set_xlim(train_raw['Course_Start_Date'].min(), test_end)
         ax.set_ylabel('drop rate (%)')
-        ax.set_title(
-            'Drop rate over time — training period and the hidden test horizon'
-        )
+        ax.set_title('Drop rate over time — training period and the hidden test horizon')
         ax.legend()
         plt.tight_layout()
-        plt.show()
+        return fig
 
-    plot_monthly_drop_rate()
+
+    plot_monthly_drop_rate() 
     return
 
 
@@ -443,20 +428,7 @@ def _(mo):
 @app.cell
 def _(pd):
     # Placeholder strings that mean "missing", in any casing/padding after canonicalisation.
-    COMMON_NANS = {
-        '',
-        '-',
-        '--',
-        '.',
-        '?',
-        'na',
-        'n/a',
-        'nan',
-        'none',
-        'null',
-        'unknown',
-        'unknonwn',
-    }
+    COMMON_NANS = {'', '-','--','.','?','na','n/a','nan','none','null','unknown','unknonwn',}
     COUNTRY_ALIASES = {'cn': 'chn'}
 
     def canonicalize(s: pd.Series) -> pd.Series:
@@ -558,20 +530,12 @@ def _(TARGET, clean_train, plt):
 
     def plot_categorical_overview():
         fig, axes = plt.subplots(2, 2, figsize=(14, 9))
-        plot_dropout_by_category(
-            clean_train, 'Payment_Terms', min_count=20, top_n=5, ax=axes[0, 0]
-        )
-        plot_dropout_by_category(
-            clean_train, 'Client_Category', min_count=100, top_n=8, ax=axes[0, 1]
-        )
-        plot_dropout_by_category(
-            clean_train, 'Submission_Source', min_count=100, top_n=6, ax=axes[1, 0]
-        )
-        plot_dropout_by_category(
-            clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=axes[1, 1]
-        )
+        plot_dropout_by_category(clean_train, 'Payment_Terms', min_count=20, top_n=5, ax=axes[0, 0])
+        plot_dropout_by_category(clean_train, 'Client_Category', min_count=100, top_n=8, ax=axes[0, 1])
+        plot_dropout_by_category(clean_train, 'Submission_Source', min_count=100, top_n=6, ax=axes[1, 0])
+        plot_dropout_by_category(clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=axes[1, 1])
         plt.tight_layout()
-        plt.show()
+        return fig
 
     plot_categorical_overview()
     return (plot_dropout_by_category,)
@@ -611,9 +575,7 @@ def _(TARGET, clean_train, display, np, pd, plt):
             lift_pp=lambda d: (d['drop_rate'] - overall_drop) * 100,
         )
     )
-    top_by_size = country_stats.sort_values('count', ascending=False).head(
-        country_top_n
-    )
+    top_by_size = country_stats.sort_values('count', ascending=False).head( country_top_n)
     extreme_by_lift = (
         country_stats[country_stats['count'] >= country_min_n]
         .iloc[
@@ -635,26 +597,15 @@ def _(TARGET, clean_train, display, np, pd, plt):
         ]
         colors = np.where(stats['lift_pp'] >= 0, '#c44e52', '#4c72b0')
         ax.barh(labels, stats['drop_rate_pct'], color=colors)
-        ax.axvline(
-            overall_drop * 100,
-            ls='--',
-            color='black',
-            lw=1,
-            label=f'overall ({overall_drop * 100:.1f}%)',
-        )
+        ax.axvline(overall_drop * 100,ls='--',color='black',lw=1,label=f'overall ({overall_drop * 100:.1f}%)',)
         ax.set_xlabel('drop rate (%)')
         ax.set_title(title)
         ax.legend()
 
     def plot_country_overview():
         fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-        plot_country_dropout(
-            top_by_size, f'Drop rate by largest {country_top_n} countries', axes[0]
-        )
-        plot_country_dropout(
-            extreme_by_lift,
-            f'Most unusual country drop rates (n >= {country_min_n})',
-            axes[1],
+        plot_country_dropout(top_by_size, f'Drop rate by largest {country_top_n} countries', axes[0])
+        plot_country_dropout(extreme_by_lift,f'Most unusual country drop rates (n >= {country_min_n})',axes[1],
         )
         plt.tight_layout()
         plt.show()
@@ -873,8 +824,7 @@ def _(TARGET, pd, plt, train_raw):
         fig, axes = plt.subplots(1, 2, figsize=(15, 4.5))
         plot_dropout_by_bins(train_raw, 'Registration_Days_Before', bins=8, ax=axes[0])
         plot_dropout_by_bins(
-            train_raw, 'Pre_Course_Supports_Tickets', bins=6, ax=axes[1]
-        )
+            train_raw, 'Pre_Course_Supports_Tickets', bins=6, ax=axes[1])
         plt.tight_layout()
         plt.show()
 
@@ -1048,7 +998,7 @@ def _(pd, plt, sns, test_raw, train_raw):
         fig.tight_layout()
         plt.show()
 
-    plot_tail_checks()
+    plot_tail_checks() # could be better i guess / code is painfully long
     return
 
 
@@ -1216,6 +1166,8 @@ def _(mo):
     | Requested vs assigned lab | `got_requested_lab`                                          | Captures whether the assigned lab configuration matches the original request.                                                                                        |
     | Missing company/agent IDs | `has_company_id`, `has_agent_id`                             | Preserves the presence differences observed in Section 3.2 even when a raw identifier is removed.                                                                    |
     | Agent/company/country IDs | frequency encodings and native categories                    | Retains identity and commonness information while avoiding a wide dummy matrix.                                                                                      |
+
+    `Assigned_Lab_Config` is populated even for cancelled bookings, so we treat it as a planned assignment known before the course and use it in `got_requested_lab`. This timing assumption would need confirmation before deploying the model.
     """)
     return
 
@@ -1764,7 +1716,7 @@ def _(
             y=1.02,
         )
         plt.tight_layout()
-        plt.show()
+        plt.show() #good be more impressive, the code is long af, the plots themselves are "cute" but nothing more. 
 
     plot_tuning_curves()
     selected_tuning = tuning.loc[
@@ -2060,7 +2012,7 @@ def _(mo):
     mo.md(r"""
     ## 7.4 Returning to the time-index hypothesis
 
-    EDA suggested that the long-term time position might help. We test `days_since_epoch` on the rank-average blend.
+    EDA suggested that the long-term time position might help. We test `days_since_epoch` on the rank-average blend, then compare it with a diagnostic random split using the same three-model combination.
 
     Trees cannot extrapolate a linear trend beyond the observed range, but the index can still separate older and more recent training regimes. Whether that helps is an empirical question answered by the chronological holdout below.
     """)
@@ -2070,14 +2022,20 @@ def _(mo):
 @app.cell
 def _(
     SEED,
+    TARGET,
     Xtr_n,
     Xva_n,
+    align_categories,
     blend_t,
+    build_features,
     display,
     fit_predict,
+    make_freq_maps,
     pd,
     rank_avg,
     roc_auc_score,
+    train_raw,
+    train_test_split,
     y_tr,
     y_va,
 ):
@@ -2086,16 +2044,32 @@ def _(
         fit_predict(name, Xtr_n, y_tr, Xva_n, SEED) for name in model_names
     ])
 
+    # Diagnostic only: a random split mixes time periods and is optimistic for
+    # the future-window task. Its frequency maps still use training rows only.
+    tr_r, va_r = train_test_split(
+        train_raw, test_size=0.2, random_state=SEED, stratify=train_raw[TARGET]
+    )
+    fm_r = make_freq_maps(tr_r)
+    Xtr_r = build_features(tr_r, fm_r)
+    Xva_r = build_features(va_r, fm_r)
+    align_categories(Xtr_r, Xva_r)
+    pred_blend_random = rank_avg([
+        fit_predict(name, Xtr_r, tr_r[TARGET].values, Xva_r, SEED)
+        for name in model_names
+    ])
+
     ablation = pd.DataFrame({
         "configuration": [
             "Rank-average blend, no time index",
             "Rank-average blend, + time index",
+            "Rank-average blend, random split (diagnostic only)",
         ],
         "AUC": [
             roc_auc_score(y_va, pred_blend_no_time),
             roc_auc_score(y_va, blend_t),
+            roc_auc_score(va_r[TARGET].values, pred_blend_random),
         ],
-        "validation": ["chrono", "chrono"],
+        "validation": ["chrono", "chrono", "random"],
     })
     display(ablation)
     return
@@ -2104,7 +2078,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The table tests the time index on the boosted-tree blend using the chronological holdout.
+    The table keeps the time-index comparison on the chronological holdout. The random split mixes periods and is included  to show  it gives an optimistic estimate for the later test window.
     """)
     return
 
