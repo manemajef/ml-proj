@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.14"
 app = marimo.App(width="medium", auto_download=["html", "ipynb"])
 
 
@@ -40,6 +40,7 @@ def _(mo):
 @app.cell
 def _():
     from functools import wraps
+    import math
     from inspect import getsource
     import warnings
     from pathlib import Path
@@ -135,6 +136,7 @@ def _():
         figure_size,
         load_raw,
         log_loss,
+        math,
         np,
         pd,
         plt,
@@ -201,7 +203,7 @@ def _(mo):
     mo.md(r"""
     **What the dictionary tells us.**
 
-    - `Client_ID` is unique per row — an identifier, never a feature.
+    - `Client_ID` is unique per row
     - `Agent_ID` and `Company_ID` were inferred as numeric even though they are identifiers, so we convert them to strings after this first inspection. `Company_ID` is also missing for most rows.
     - Several text fields have unexpectedly high cardinality. We inspect their raw values later before deciding whether that reflects real variety or inconsistent spelling.
     - The numeric summary below lets us look for suspicious ranges and extreme values.
@@ -252,7 +254,7 @@ def _(TARGET, display, pd, show, subplot_grid, train_raw):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The classes are reasonably balanced: about 59% completed and 41% dropped
+    about 59% completed and 41% dropped
     """)
     return
 
@@ -402,7 +404,7 @@ def _(train_raw):
     def most_common_cats(df, col, n=15):
         return df[col].value_counts(normalize=True).head(n)
 
-    N_COUNT = 8
+    N_COUNT = 9
 
     def print_category_summaries():
         for col in TEXT_COLS:
@@ -415,7 +417,7 @@ def _(train_raw):
                 (' | '.join(cats[i : i + 3]) for i in range(0, len(cats), 3))
             )
             print(
-                f"\n{'=' * 80}\n\nColumn: {col}\nUnique values: {count_unique_vals(train_raw, col)}\n\nTop {len(top_values)} categories:\n\n{cats_str}\n"
+                f"\n{'=' * 80}\n{col} ({count_unique_vals(train_raw, col)} unique values)\n\n{cats_str}\n"
             )
 
     print_category_summaries()
@@ -434,11 +436,9 @@ def _(mo):
 def _(pd):
     # Placeholder strings that mean "missing", in any casing/padding after canonicalisation.
     COMMON_NANS = {'','-','--','.','?','na','n/a','nan','none','null','unknown','unknonwn',}
-    COUNTRY_ALIASES = {'cn': 'chn'}
+    COUNTRY_ALIASES = {'cn': 'chn'} # both mean China
 
     def canonicalize(s: pd.Series) -> pd.Series:
-        """Map dirty categorical text to its canonical form: lowercase, injected
-        punctuation stripped, single-spaced. No NaN masking — that is normalize_cats' job."""
         s = s.astype('string').str.strip().str.lower()
         return (
             s.str
@@ -511,26 +511,52 @@ def _(mo):
 
 
 @app.cell
-def _(TARGET, clean_train, show, subplot_grid):
+def _(TARGET, TEXT_COLS, clean_train, math, show, subplot_grid):
     def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
-        stats = df.groupby(col, dropna=False)[TARGET].agg(drop_rate='mean', count='size')
-        stats = stats[stats['count'] >= min_count].sort_values('count', ascending=False).head(top_n).sort_values('drop_rate')
+
+        stats = (
+            df.groupby(col, dropna=False)[TARGET]
+            .agg(drop_rate="mean", count="size")
+        )
+
+        stats = (
+            stats[stats["count"] >= min_count]
+            .sort_values("count", ascending=False)
+            .head(top_n)
+            .sort_values("drop_rate")
+        )
+
         labels = [f"{i} (n={int(r['count'])})" for i, r in stats.iterrows()]
+
         if ax is None:
             ax = subplot_grid()[1]
-        ax.barh(labels, stats['drop_rate'] * 100)
-        overall = df[TARGET].mean() * 100
-        ax.axvline(overall, linestyle='--', label=f'mean ({overall:.1f}%)')
-        ax.set(xlabel='drop rate (%)', title=f'Drop rate by {col}')
+
+        overall = df[TARGET].mean()
+
+        ax.barh(
+            labels,
+            stats["drop_rate"] * 100,
+            color=["C1" if rate > overall else "C0" for rate in stats["drop_rate"]],
+        )
+
+        ax.axvline(overall * 100, linestyle="--", label=f"mean ({overall * 100:.1f}%)")
+        ax.set(xlabel="Drop rate (%)", title=f"Drop rate by {col}")
         ax.legend()
+
         return stats
 
+
     def plot_categorical_overview():
-        fig, axes = subplot_grid(2, 2)
-        plot_dropout_by_category(clean_train, 'Payment_Terms', min_count=20, top_n=5, ax=axes[0, 0])
-        plot_dropout_by_category(clean_train, 'Client_Category', min_count=100, top_n=8, ax=axes[0, 1])
-        plot_dropout_by_category(clean_train, 'Submission_Source', min_count=100, top_n=6, ax=axes[1, 0])
-        plot_dropout_by_category(clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=axes[1, 1])
+        cats_to_plot = [ col for col in TEXT_COLS if col != "Origin_Country"]
+
+        n_cols = 2
+        n_rows = math.ceil(len(cats_to_plot) / n_cols)
+        fig, axes = subplot_grid(n_rows, n_cols)
+
+        for idx, category in enumerate(cats_to_plot):
+            i, j = divmod(idx, n_cols)
+            plot_dropout_by_category(clean_train, category, ax=axes[i, j],)
+
         show(fig)
     plot_categorical_overview()
     return (plot_dropout_by_category,)
@@ -539,7 +565,9 @@ def _(TARGET, clean_train, show, subplot_grid):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The clearest surprise is `Payment_Terms`: prepaid, non-refundable registrations drop more often than pay-on-start registrations, the opposite of what we expected. Two possible explanations are that these terms are assigned to riskier deals in advance or that the field is updated later in the registration process. We return to this question after fitting the model.
+    One big surprise is `Payment_Terms`: prepaid, non-refundable registrations drop more often than pay-on-start registrations, the opposite of what we expected. Two possible explanations are that these terms are assigned to riskier deals in advance or that the field is updated later in the registration process. We return to this question after fitting the model.
+
+    `Welcome_Gift_Type` and `Lanyard_Color` seems to unrelated to dropping. `Assigned_Lab_Config` pattern could probably be explained by PC being the default.
 
     The other plots also show useful separation. Direct-website and dedicated-sales registrations drop less often than reseller traffic, organisational enrollment is lower-risk than general admission, and client segments differ. We carry these signals into modelling.
     """)
@@ -809,7 +837,7 @@ def _(mo):
     - Missing `Company_ID`, support activity, registration channel, enrollment type, and lead time all separate groups with different drop rates. Together, these patterns suggest a broader difference in buyer commitment.
     - `Payment_Terms` is unusually strong and counter-intuitive. We include it and later test how much XGBoost depends on it.
     - Country and agent both contain signal and overlap slightly. Their many levels require a compact encoding instead of a large one-hot expansion.
-    - The later test window and changing monthly rates make time-aware validation important. We derive calendar and trend features, then test the time index after selecting a model.
+    - The later test window and changing monthly rates make time-aware validation important. We derive calendar and trend features, then test the time index with a stable reference candidate during tuning.
     - Some numeric values are clearly suspicious, while other large values may be legitimate rare cases. We will correct only the values for which we have evidence of an error.
 
     These conclusions give us a modelling hypothesis: a flexible model may capture the combined effects better than a linear baseline. We test that hypothesis in the model comparison.
@@ -1040,7 +1068,7 @@ def _(mo):
 
     | Raw signal                | Engineered feature(s)                                        | Reason for testing it                                                                                                                                                |
     | ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | `Course_Start_Date`       | `start_month`, `start_dow`, `days_since_epoch`               | Month represents broad seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1. ISO week was removed after a chronological ablation showed that it did not improve future-window AUC. |
+    | `Course_Start_Date`       | `start_month`, `start_dow`, `days_since_epoch`               | Month represents broad seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1. |
     | Participant counts        | `total_participants`, `prof_share`                           | Total size and professional share describe group composition more directly than three separate counts.                                                               |
     | Practical/theory hours    | `total_hours`, `practical_share`                             | Total duration and hands-on share distinguish courses with the same raw hour count but different structure.                                                          |
     | Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Combines previous dropouts and attendance into one history signal; the `+1` handles clients with no attended courses.                                                |
@@ -1282,6 +1310,97 @@ def _(TARGET, align_categories, build_features, make_freq_maps, pd, train_raw):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 6.3 Why a random split is misleading
+
+    To isolate the effect of the split itself, we fit the same fixed reference XGBoost configuration once on the chronological split and once on a random split of similar size. This is a validation diagnostic, not the model-selection result used later.
+    """)
+    return
+
+
+@app.cell
+def _(
+    SEED,
+    TARGET,
+    Xtr_t,
+    Xva_t,
+    align_categories,
+    build_features,
+    cache,
+    display,
+    make_freq_maps,
+    pd,
+    roc_auc_score,
+    train_raw,
+    train_test_split,
+    va_raw,
+    XGBClassifier,
+    y_tr,
+    y_va,
+):
+    @cache
+    def fit_split_diagnostic(X_train, y_train, X_valid, seed):
+        model = XGBClassifier(
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=6,
+            min_child_weight=10,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            reg_alpha=0.1,
+            reg_lambda=3.0,
+            enable_categorical=True,
+            tree_method='hist',
+            eval_metric='auc',
+            random_state=seed,
+            n_jobs=-1,
+        )
+        model.fit(X_train, y_train)
+        return model.predict_proba(X_valid)[:, 1]
+
+    random_fraction = len(va_raw) / len(train_raw)
+    tr_random, va_random = train_test_split(
+        train_raw,
+        test_size=random_fraction,
+        random_state=SEED,
+        stratify=train_raw[TARGET],
+    )
+    random_maps = make_freq_maps(tr_random)
+    Xtr_random = build_features(tr_random, random_maps)
+    Xva_random = build_features(va_random, random_maps)
+    align_categories(Xtr_random, Xva_random)
+
+    split_check = pd.DataFrame({
+        'split': ['Chronological future holdout', 'Random holdout (diagnostic)'],
+        'AUC': [
+            roc_auc_score(
+                y_va, fit_split_diagnostic(Xtr_t, y_tr, Xva_t, SEED)
+            ),
+            roc_auc_score(
+                va_random[TARGET].values,
+                fit_split_diagnostic(
+                    Xtr_random,
+                    tr_random[TARGET].values,
+                    Xva_random,
+                    SEED,
+                ),
+            ),
+        ],
+    })
+    display(split_check.round(4))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The random split mixes older and newer registrations, so it produces an optimistic score for a genuinely future-facing task. We therefore use the chronological holdout for every model and feature decision below.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     # 7. Model experiments & tuning
 
     The assignment requires at least three models and hyperparameter tuning. We compare one linear model, one neural network, and one boosted-tree model on the same chronological holdout.
@@ -1294,7 +1413,7 @@ def _(mo):
     mo.md(r"""
     ## 7.1 The model families
 
-    We tune one important capacity or regularization parameter for each family and compare the selected settings on the same holdout. The strongest family becomes the focus of the next experiments.
+    We tune one important capacity or regularization parameter for each family and compare the selected settings on the same holdout. The strongest family becomes the development focus of the next experiments; final model selection is deferred until all candidates are evaluated in Section 8.
 
     Each model family is paired with its appropriate preprocessing pipeline: bounded one-hot and scaling for the continuous baselines, and native categorical handling for the tree boosters.
 
@@ -1306,39 +1425,28 @@ def _(mo):
 
 
 @app.cell
-def _(OneHotEncoder, SEED, XGBClassifier, pd):
-    def get_xgb(**kw):
-        p = dict(
-            n_estimators=700,
-            learning_rate=0.03,
-            max_depth=6,
-            min_child_weight=10,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=0.1,
-            reg_lambda=3.0,
-            enable_categorical=True,
-            tree_method="hist",
-            eval_metric="auc",
-            random_state=SEED,
-            n_jobs=-1,
-        )
-        p.update(kw)
-        return XGBClassifier(**p)
+def _(SEED, XGBClassifier):
+    XGB_FIXED_PARAMS = {
+        'min_child_weight': 10,
+        'subsample': 0.8,
+        'colsample_bytree': 0.8,
+        'reg_alpha': 0.1,
+        'reg_lambda': 3.0,
+        'enable_categorical': True,
+        'tree_method': 'hist',
+        'eval_metric': 'auc',
+        'n_jobs': -1,
+    }
 
-    def fit_predict_xgb_pair(X_tr, y_tr, X_va, sample_weight=None, **model_params):
-        """Fit XGBoost and return P(drop) on train and validation."""
-        m = get_xgb(**model_params)
-        m.fit(X_tr, y_tr, sample_weight=sample_weight)
-        return m.predict_proba(X_tr)[:, 1], m.predict_proba(X_va)[:, 1]
+    def make_xgb(seed=SEED, **overrides):
+        params = {**XGB_FIXED_PARAMS, 'random_state': seed, **overrides}
+        return XGBClassifier(**params)
 
-    def fit_predict_xgb(X_tr, y_tr, X_va, sample_weight=None, **model_params):
-        """Fit XGBoost and return P(drop) on validation."""
-        _, pred_va = fit_predict_xgb_pair(
-            X_tr, y_tr, X_va, sample_weight, **model_params
-        )
-        return pred_va
+    return (make_xgb,)
 
+
+@app.cell
+def _(OneHotEncoder, pd):
     def encode_for_continuous_models(
         X_tr: pd.DataFrame, X_va: pd.DataFrame, min_count=30
     ):
@@ -1381,9 +1489,9 @@ def _(mo):
     mo.md(r"""
     ## 7.2 Focused hyperparameter tuning
 
-    For each required family, we vary one parameter that controls capacity or regularization and select the setting with the highest chronological validation ROC-AUC, the project metric. Training AUC is shown beside it so we can see when extra capacity improves fit without improving the future holdout.
+    For each required family, we vary one parameter that controls capacity or regularization and evaluate it with chronological validation ROC-AUC, the project metric. Training AUC is shown beside it so we can see when extra capacity improves fit without improving the future holdout. Logistic Regression and MLP use the best validation score; for XGBoost we predefine a parsimonious rule and select the smallest depth within 0.0005 AUC of the best result.
 
-    For the MLP, the sweep varies hidden depth while keeping every layer at 64 units. For XGBoost, the first sweep varies `max_depth` while holding the boosting budget fixed. A second experiment then tunes the interaction between learning rate and number of trees.
+    For the MLP, the sweep varies hidden depth while keeping every layer at 64 units. For XGBoost, all trials use the same conservative sampling and regularization settings, while the first sweep varies `max_depth` with a fixed boosting budget. A second experiment then tunes the interaction between learning rate and number of trees.
     """)
     return
 
@@ -1394,12 +1502,12 @@ def _(
     MLPClassifier,
     SEED,
     StandardScaler,
-    XGBClassifier,
     Xtr_t,
     Xva_t,
     cache,
     encode_for_continuous_models,
     log_loss,
+    make_xgb,
     pd,
     roc_auc_score,
     y_tr,
@@ -1438,19 +1546,11 @@ def _(
                 validation_predictions[(family, x)] = valid_predictions
 
         def fit_xgb_pair(depth):
-            model = XGBClassifier(
+            model = make_xgb(
+                seed,
                 n_estimators=300,
                 learning_rate=0.05,
                 max_depth=depth,
-                min_child_weight=5,
-                subsample=0.9,
-                colsample_bytree=0.8,
-                reg_lambda=1.0,
-                enable_categorical=True,
-                tree_method='hist',
-                eval_metric='auc',
-                random_state=seed,
-                n_jobs=-1,
             )
             model.fit(X_train_tree, y_train)
             return (
@@ -1510,9 +1610,15 @@ def _(
 def _(display, tuning_raw, validation_predictions):
     def select_best_trials(results):
         selected = results.copy()
-        best_indices = selected.groupby('family', sort=False)['val_AUC'].idxmax()
         selected['selected'] = False
-        selected.loc[best_indices, 'selected'] = True
+        for family, trials in selected.groupby('family', sort=False):
+            if family == 'Gradient-boosted trees (XGBoost)':
+                best_auc = trials['val_AUC'].max()
+                eligible = trials[trials['val_AUC'] >= best_auc - 0.0005]
+                chosen_index = eligible['x'].idxmin()
+            else:
+                chosen_index = trials['val_AUC'].idxmax()
+            selected.loc[chosen_index, 'selected'] = True
         selected['log_x'] = selected['family'].eq('Logistic Regression')
         return selected
 
@@ -1532,7 +1638,8 @@ def _(display, tuning_raw, validation_predictions):
     pred_mlp = validation_predictions[(
         'MLP neural network', selected_x.loc['MLP neural network']
     )]
-    return pred_lr, pred_mlp, tuning
+    selected_depth = int(selected_x.loc['Gradient-boosted trees (XGBoost)'])
+    return pred_lr, pred_mlp, selected_depth, tuning
 
 
 @app.cell
@@ -1616,7 +1723,7 @@ def _(show, sns, tuning):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The gold star in each panel marks the setting selected by maximum chronological validation AUC. The family-specific y-axis limits preserve the training/validation gap while making small within-family changes visible.
+    The gold star marks the selected setting. For Logistic Regression and MLP this is the maximum validation AUC. For XGBoost it is the smallest depth within 0.0005 of the best validation score, avoiding extra capacity for a negligible gain. XGBoost is the strongest development candidate on the future holdout, so the remaining experiments refine that candidate while retaining Logistic Regression and MLP for the final comparison. This is not yet the final model-selection decision.
     """)
     return
 
@@ -1626,7 +1733,7 @@ def _(mo):
     mo.md(r"""
     ## 7.3 Improving the gradient model
 
-    Because XGBoost achieved the highest AUC in the first sweep, we further tune it. We first tune its boosting budget, then test whether adding two fixed-configuration boosted-tree implementations improves the ranking further.
+    Because XGBoost achieved the highest AUC in the family comparison, we now refine the strongest tree-based candidate. We first tune its boosting budget, then finalize the temporal features, and only afterward test whether adding two fixed-configuration boosted-tree implementations improves the ranking further.
 
     ### (a) Boosting budget: number of trees × learning rate
 
@@ -1638,37 +1745,30 @@ def _(mo):
 @app.cell
 def _(
     SEED,
-    XGBClassifier,
     Xtr_t,
     Xva_t,
     cache,
     display,
     log_loss,
+    make_xgb,
     pd,
     plot_auc_sweep,
     roc_auc_score,
+    selected_depth,
     y_tr,
     y_va,
 ):
     @cache
-    def run_budget_sweep(X_train, X_valid, y_train, y_valid, seed):
+    def run_budget_sweep(X_train, X_valid, y_train, y_valid, seed, depth):
         budget_rows = []
         budget_predictions = {}
         for lr_rate in (0.1, 0.03):
             for n in (50, 100, 200, 400, 700, 1000):
-                model = XGBClassifier(
+                model = make_xgb(
+                    seed,
                     n_estimators=n,
                     learning_rate=lr_rate,
-                    max_depth=6,
-                    min_child_weight=5,
-                    subsample=0.9,
-                    colsample_bytree=0.8,
-                    reg_lambda=1.0,
-                    enable_categorical=True,
-                    tree_method='hist',
-                    eval_metric='auc',
-                    random_state=seed,
-                    n_jobs=-1,
+                    max_depth=depth,
                 )
                 model.fit(X_train, y_train)
                 train_predictions = model.predict_proba(X_train)[:, 1]
@@ -1684,7 +1784,9 @@ def _(
                 })
         return budget_rows, budget_predictions
 
-    budget_rows, budget_predictions = run_budget_sweep(Xtr_t, Xva_t, y_tr, y_va, SEED)
+    budget_rows, budget_predictions = run_budget_sweep(
+        Xtr_t, Xva_t, y_tr, y_va, SEED, selected_depth
+    )
     budget = pd.DataFrame(budget_rows)
 
 
@@ -1713,7 +1815,90 @@ def _(mo):
     mo.md(r"""
     At learning rate 0.1, validation AUC peaks around 200 trees and then declines while training AUC keeps rising. At 0.03, improvement is slower but the holdout reaches a slightly higher plateau around 700 trees. We choose `learning_rate=0.03` and `n_estimators=700` for XGBoost.
 
-    ### (b) Does adding other boosters help?
+    ### (b) Temporal-feature ablation
+
+    EDA suggested both broad seasonality and longer-term drift. Because XGBoost is the strongest tuning candidate and its capacity is fixed, we use it as a stable reference model to test the remaining temporal choices: whether the continuous `days_since_epoch` index helps, and whether adding ISO week contributes beyond month and weekday.
+
+    Trees cannot extrapolate a linear trend beyond the observed range, but the index can still distinguish older and newer training regimes. The chronological holdout determines whether that distinction improves future ranking.
+    """)
+    return
+
+
+@app.cell
+def _(
+    SEED,
+    Xtr_n,
+    Xtr_t,
+    Xva_n,
+    Xva_t,
+    cache,
+    display,
+    make_xgb,
+    pd,
+    pred_xgb,
+    roc_auc_score,
+    selected_depth,
+    tr_raw,
+    va_raw,
+    y_tr,
+    y_va,
+):
+    @cache
+    def fit_temporal_candidate(X_train, y_train, X_valid, seed, depth):
+        model = make_xgb(
+            seed,
+            n_estimators=700,
+            learning_rate=0.03,
+            max_depth=depth,
+        )
+        model.fit(X_train, y_train)
+        return model.predict_proba(X_valid)[:, 1]
+
+    Xtr_with_week = Xtr_t.copy()
+    Xva_with_week = Xva_t.copy()
+    Xtr_with_week['start_week'] = (
+        tr_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
+    )
+    Xva_with_week['start_week'] = (
+        va_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
+    )
+
+    temporal_check = pd.DataFrame({
+        'temporal features': [
+            'Month + weekday',
+            'Month + weekday + continuous time index',
+            'Month + weekday + time index + ISO week',
+        ],
+        'chronological AUC': [
+            roc_auc_score(
+                y_va,
+                fit_temporal_candidate(
+                    Xtr_n, y_tr, Xva_n, SEED, selected_depth
+                ),
+            ),
+            roc_auc_score(y_va, pred_xgb),
+            roc_auc_score(
+                y_va,
+                fit_temporal_candidate(
+                    Xtr_with_week,
+                    y_tr,
+                    Xva_with_week,
+                    SEED,
+                    selected_depth,
+                ),
+            ),
+        ],
+    })
+    display(temporal_check.round(6))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The continuous time index improves future-window ranking, while ISO week adds a redundant calendar representation and does not improve the reference XGBoost candidate. We therefore retain `days_since_epoch`, month, and weekday, and leave ISO week out of the final feature matrix.
+
+    ### (c) Does adding other boosters help?
 
     LightGBM and CatBoost build boosted trees differently from XGBoost, so they may rank some registrations differently. We add them with fixed, capacity-aligned settings and test the ensemble itself: does combining their rankings improve the tuned XGBoost result?
 
@@ -1727,15 +1912,17 @@ def _(
     CatBoostClassifier,
     LGBMClassifier,
     SEED,
-    XGBClassifier,
     Xtr_t,
     Xva_t,
     cache,
     display,
+    make_xgb,
     np,
     pd,
+    pred_xgb,
     rankdata,
     roc_auc_score,
+    selected_depth,
     y_tr,
     y_va,
 ):
@@ -1786,20 +1973,11 @@ def _(
                 categorical_feature=X_tr.select_dtypes("category").columns.tolist(),
             )
             return model.predict_proba(X_val)[:, 1]
-        model = XGBClassifier(
+        model = make_xgb(
+            seed,
             n_estimators=700,
             learning_rate=0.03,
-            max_depth=6,
-            min_child_weight=10,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=0.1,
-            reg_lambda=3.0,
-            enable_categorical=True,
-            tree_method='hist',
-            eval_metric='auc',
-            random_state=seed,
-            n_jobs=-1,
+            max_depth=selected_depth,
         )
         model.fit(X_tr, y_train, sample_weight=sample_weight)
         return model.predict_proba(X_val)[:, 1]
@@ -1810,7 +1988,7 @@ def _(
 
     pred_t = {
         "lgbm": fit_predict("lgbm", Xtr_t, y_tr, Xva_t, SEED),
-        "xgb": fit_predict("xgb", Xtr_t, y_tr, Xva_t, SEED),
+        "xgb": pred_xgb,
         "cat": fit_predict("cat", Xtr_t, y_tr, Xva_t, SEED),
     }
     blend_t = rank_avg(list(pred_t.values()))
@@ -1821,7 +1999,7 @@ def _(
         .DataFrame({
             "model": [
                 "LightGBM (fixed setting)",
-                "XGBoost (tuned + regularized)",
+                "XGBoost (tuned)",
                 "CatBoost (fixed setting)",
                 "Rank-average blend (LGBM+XGB+Cat)",
             ],
@@ -1843,170 +2021,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    All three boosters perform similarly on this holdout. After selecting the XGBoost depth and boosting budget, we use a slightly more conservative final configuration (`min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0`). Adding the fixed LightGBM and CatBoost rankings raises AUC from about 0.9159 for this XGBoost component to 0.9164 for the rank-average blend, which we carry forward as the boosted-tree candidate.
-    """)
-    return
-
-
-@app.cell
-def _(
-    SEED,
-    XGBClassifier,
-    Xtr_t,
-    Xva_t,
-    blend_t,
-    cache,
-    display,
-    fit_predict,
-    pd,
-    pred_t,
-    rank_avg,
-    roc_auc_score,
-    tr_raw,
-    va_raw,
-    y_tr,
-    y_va,
-):
-    @cache
-    def fit_previous_xgb(X_train, y_train, X_valid, seed):
-        model = XGBClassifier(
-            n_estimators=700,
-            learning_rate=0.03,
-            max_depth=6,
-            min_child_weight=5,
-            subsample=0.9,
-            colsample_bytree=0.8,
-            reg_lambda=1.0,
-            enable_categorical=True,
-            tree_method='hist',
-            eval_metric='auc',
-            random_state=seed,
-            n_jobs=-1,
-        )
-        model.fit(X_train, y_train)
-        return model.predict_proba(X_valid)[:, 1]
-
-    Xtr_with_week = Xtr_t.copy()
-    Xva_with_week = Xva_t.copy()
-    Xtr_with_week['start_week'] = (
-        tr_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
-    )
-    Xva_with_week['start_week'] = (
-        va_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
-    )
-
-    previous_xgb_no_week = fit_previous_xgb(
-        Xtr_t, y_tr, Xva_t, SEED
-    )
-    previous_with_week = rank_avg([
-        fit_predict('lgbm', Xtr_with_week, y_tr, Xva_with_week, SEED),
-        fit_previous_xgb(Xtr_with_week, y_tr, Xva_with_week, SEED),
-        fit_predict('cat', Xtr_with_week, y_tr, Xva_with_week, SEED),
-    ])
-    previous_no_week = rank_avg([
-        pred_t['lgbm'], previous_xgb_no_week, pred_t['cat']
-    ])
-
-    robustness_check = pd.DataFrame({
-        'final robustness step': [
-            'Previous blend: ISO week + previous XGBoost',
-            'Remove ISO week only',
-            'Remove ISO week + regularized XGBoost',
-        ],
-        'chronological AUC': [
-            roc_auc_score(y_va, previous_with_week),
-            roc_auc_score(y_va, previous_no_week),
-            roc_auc_score(y_va, blend_t),
-        ],
-    })
-    robustness_check['delta vs previous'] = (
-        robustness_check['chronological AUC']
-        - robustness_check.loc[0, 'chronological AUC']
-    )
-    display(robustness_check.round(6))
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    This final ablation changes one decision at a time on the same future holdout. Removing ISO week improves the blend slightly, which is consistent with it duplicating information already represented by month, weekday, and the continuous time index. The more conservative XGBoost settings add a second small improvement without changing the other two blend components.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 7.4 Returning to the time-index hypothesis
-
-    EDA suggested that the long-term time position might help. We test `days_since_epoch` on the rank-average blend, then compare it with a diagnostic random split using the same three-model combination.
-
-    Trees cannot extrapolate a linear trend beyond the observed range, but the index can still separate older and more recent training regimes. Whether that helps is an empirical question answered by the chronological holdout below.
-    """)
-    return
-
-
-@app.cell
-def _(
-    SEED,
-    TARGET,
-    Xtr_n,
-    Xva_n,
-    align_categories,
-    blend_t,
-    build_features,
-    display,
-    fit_predict,
-    make_freq_maps,
-    pd,
-    rank_avg,
-    roc_auc_score,
-    train_raw,
-    train_test_split,
-    y_tr,
-    y_va,
-):
-    model_names = ("lgbm", "xgb", "cat")
-    pred_blend_no_time = rank_avg([
-        fit_predict(name, Xtr_n, y_tr, Xva_n, SEED) for name in model_names
-    ])
-
-    # Diagnostic only: a random split mixes time periods and is optimistic for
-    # the future-window task. Its frequency maps still use training rows only.
-    tr_r, va_r = train_test_split(
-        train_raw, test_size=0.2, random_state=SEED, stratify=train_raw[TARGET]
-    )
-    fm_r = make_freq_maps(tr_r)
-    Xtr_r = build_features(tr_r, fm_r)
-    Xva_r = build_features(va_r, fm_r)
-    align_categories(Xtr_r, Xva_r)
-    pred_blend_random = rank_avg([
-        fit_predict(name, Xtr_r, tr_r[TARGET].values, Xva_r, SEED)
-        for name in model_names
-    ])
-
-    ablation = pd.DataFrame({
-        "configuration": [
-            "Rank-average blend, no time index",
-            "Rank-average blend, + time index",
-            "Rank-average blend, random split (diagnostic only)",
-        ],
-        "AUC": [
-            roc_auc_score(y_va, pred_blend_no_time),
-            roc_auc_score(y_va, blend_t),
-            roc_auc_score(va_r[TARGET].values, pred_blend_random),
-        ],
-        "validation": ["chrono", "chrono", "random"],
-    })
-    display(ablation)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    The table keeps the time-index comparison on the chronological holdout. The random split mixes periods and is included  to show  it gives an optimistic estimate for the later test window.
+    All XGBoost trials use the same conservative sampling and regularization settings (`min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0`), so the tuned XGBoost candidate flows unchanged into the ensemble. Adding the fixed LightGBM and CatBoost rankings gives a small further improvement, and we carry the rank-average blend forward as the boosted-tree candidate.
     """)
     return
 
@@ -2179,32 +2194,24 @@ def _(mo):
 @app.cell
 def _(
     SEED,
-    XGBClassifier,
     Xtr_t,
     Xva_t,
     cache,
+    make_xgb,
     np,
     roc_auc_score,
+    selected_depth,
     shap,
     y_tr,
     y_va,
 ):
     @cache
-    def compute_shap_analysis(X_train, X_valid, y_train, y_valid, seed):
-        shap_model = XGBClassifier(
+    def compute_shap_analysis(X_train, X_valid, y_train, y_valid, seed, depth):
+        shap_model = make_xgb(
+            seed,
             n_estimators=700,
             learning_rate=0.03,
-            max_depth=6,
-            min_child_weight=10,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=0.1,
-            reg_lambda=3.0,
-            enable_categorical=True,
-            tree_method='hist',
-            eval_metric='auc',
-            random_state=seed,
-            n_jobs=-1,
+            max_depth=depth,
         )
         shap_model.fit(X_train, y_train)
         valid_scores = shap_model.predict_proba(X_valid)[:, 1]
@@ -2226,7 +2233,7 @@ def _(
         )
 
     X_shap, shap_scores, shap_base, shap_values, shap_auc = compute_shap_analysis(
-        Xtr_t, Xva_t, y_tr, y_va, SEED
+        Xtr_t, Xva_t, y_tr, y_va, SEED, selected_depth
     )
     print(f"XGBoost+time chrono AUC: {shap_auc:.4f}")
     return X_shap, shap_base, shap_scores, shap_values
@@ -2514,7 +2521,7 @@ def _(mo):
 
     Nova Academy's test registrations occur after the training period, and both the monthly target rate and the adversarial-validation result (AUC 0.935) show temporal distribution shift. Model selection therefore used a four-month chronological holdout.
 
-    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. Model comparison confirmed that tuned XGBoost outperformed the Logistic Regression and MLP baselines on the future holdout. A final robustness check removed the redundant ISO-week feature and applied slightly stronger XGBoost regularization. The resulting LightGBM, XGBoost, and CatBoost rank-average blend reached chronological AUC 0.9164 on that split.
+    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. Model comparison confirmed that tuned XGBoost outperformed the Logistic Regression and MLP baselines on the future holdout. All XGBoost trials used the same conservative regularization, the depth sweep selected the lower-capacity plateau at depth 6, and temporal ablation retained the continuous time index while rejecting redundant ISO week. The resulting LightGBM, XGBoost, and CatBoost rank-average blend reached chronological AUC 0.9164 on that split.
 
     The stored rank-average submission received test ROC-AUC **0.889314**, above the required 0.70.
 
