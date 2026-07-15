@@ -1,3 +1,7 @@
+```python
+import marimo as mo
+```
+
 # Group 27 — Course-Drop Prediction (Nova Academy)
 
 **Submitters:** Rotem David Semah (ID: `211396593`) · Ron Drach (ID: `213915499`)
@@ -32,13 +36,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     roc_auc_score,
     log_loss,
-    roc_curve,
-    auc,
-    confusion_matrix,
     classification_report,
-    precision_recall_curve,
-    average_precision_score,
+    RocCurveDisplay,
+    PrecisionRecallDisplay,
+    ConfusionMatrixDisplay,
 )
+
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -114,16 +117,6 @@ data_dictionary = pd.DataFrame({
     "most_frequent": train_raw.mode(dropna=True).iloc[0],
 })
 display(data_dictionary)
-
-# The CSV parser reads these ID fields as numbers because their non-missing
-# values look numeric. They are labels, not measurable quantities, so from
-# this point onward we keep them as strings.
-def cast_id_columns(df):
-    for col in ("Agent_ID", "Company_ID"):
-        df[col] = df[col].astype("string")
-
-for df in (train_raw, test_raw):
-    cast_id_columns(df)
 ```
 
     train: 63,464 rows x 29 cols
@@ -433,6 +426,12 @@ for df in (train_raw, test_raw):
 
 
 ```python
+def cast_id_columns(df):
+    for col in ("Agent_ID", "Company_ID"):
+        df[col] = df[col].astype("string")
+
+for df in (train_raw, test_raw):
+    cast_id_columns(df)
 train_raw.describe()
 ```
 
@@ -659,12 +658,33 @@ balance.index = ['0 = completed', '1 = dropped']
 display(balance)
 
 def plot_target_balance():
-    ax = target_rate.mul(100).plot.bar(color=['#4c72b0', '#c44e52'])
-    ax.set_xticklabels(['completed (0)', 'dropped (1)'], rotation=0)
-    ax.set_ylabel('share of orders (%)')
-    ax.set_title('Target balance — Dropped_Course')
-    plt.tight_layout()
-    plt.show()
+    fig, ax = plt.subplots(figsize=(8.5, 2.2), layout='constrained')
+    shares = target_rate.mul(100).rename(index={0: 'Completed', 1: 'Dropped'})
+    shares.to_frame().T.plot.barh(
+        stacked=True, ax=ax, width=0.55, color=sns.color_palette('colorblind', 2)
+    )
+    for container in ax.containers:
+        ax.bar_label(
+            container,
+            fmt='%.1f%%',
+            label_type='center',
+            color='white',
+            fontsize=13,
+            fontweight='bold',
+        )
+    ax.set(
+        title='Course outcomes in the training data',
+        xlim=(0, 100),
+        xlabel='',
+        ylabel='',
+        xticks=[],
+        yticks=[],
+    )
+    ax.legend(
+        ncols=2, loc='lower center', bbox_to_anchor=(0.5, -0.18), frameon=False
+    )
+    sns.despine(ax=ax, left=True, bottom=True)
+    return fig
 
 plot_target_balance()
 ```
@@ -709,8 +729,17 @@ plot_target_balance()
 
 
 
+
+
     
-![svg](<notebook_files/notebook_9_1.svg>)
+![svg](<notebook_files/notebook_10_1.svg>)
+    
+
+
+
+
+    
+![svg](<notebook_files/notebook_10_2.svg>)
     
 
 
@@ -738,7 +767,8 @@ monthly = (
 )
 
 def plot_monthly_drop_rate():
-    ax = monthly.plot(marker='o', figsize=(12, 4))
+    fig, ax = plt.subplots(figsize=(12, 4))
+    monthly.plot(marker="o", ax=ax)
     ax.axhline(
         train_raw[TARGET].mean() * 100,
         ls='--',
@@ -761,7 +791,7 @@ def plot_monthly_drop_rate():
     )
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    return fig
 
 plot_monthly_drop_rate()
 ```
@@ -771,8 +801,17 @@ plot_monthly_drop_rate()
 
 
 
+
+
     
-![svg](<notebook_files/notebook_13_1.svg>)
+![svg](<notebook_files/notebook_14_1.svg>)
+    
+
+
+
+
+    
+![svg](<notebook_files/notebook_14_2.svg>)
     
 
 
@@ -1391,14 +1430,23 @@ def plot_categorical_overview():
         clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=axes[1, 1]
     )
     plt.tight_layout()
-    plt.show()
+    return fig
 
 plot_categorical_overview()
 ```
 
 
+
+
     
-![svg](<notebook_files/notebook_29_0.svg>)
+![svg](<notebook_files/notebook_30_0.svg>)
+    
+
+
+
+
+    
+![svg](<notebook_files/notebook_30_1.svg>)
     
 
 
@@ -1483,7 +1531,7 @@ display(
 
 
     
-![svg](<notebook_files/notebook_32_0.svg>)
+![svg](<notebook_files/notebook_33_0.svg>)
     
 
 
@@ -1689,7 +1737,7 @@ display(company_presence)
 
 
     
-![svg](<notebook_files/notebook_36_0.svg>)
+![svg](<notebook_files/notebook_37_0.svg>)
     
 
 
@@ -2054,7 +2102,7 @@ plt.show()
 
 
     
-![svg](<notebook_files/notebook_43_0.svg>)
+![svg](<notebook_files/notebook_44_0.svg>)
     
 
 
@@ -2094,7 +2142,7 @@ plot_numeric_bins()
 
 
     
-![svg](<notebook_files/notebook_46_0.svg>)
+![svg](<notebook_files/notebook_47_0.svg>)
     
 
 
@@ -2304,8 +2352,6 @@ The test set introduces no new forms of corruption, suggesting the same cleaning
 
 
 ```python
-import math
-
 TAIL_CHECK_COLS = [
     "Students_Count",
     "Practical_Hours",
@@ -2328,67 +2374,45 @@ def build_tail_data():
 tail_long = build_tail_data()
 
 def plot_tail_checks():
-    n_cols = min(3, len(TAIL_CHECK_COLS))
-    n_rows = math.ceil(len(TAIL_CHECK_COLS) / n_cols)
-    fig, axes = plt.subplots(
-        n_rows,
-        n_cols,
-        figsize=(5 * n_cols, 4.6 * n_rows),
+    grid = sns.catplot(
+        data=tail_long,
+        x='split',
+        y='value',
+        hue='split',
+        col='column',
+        col_wrap=3,
+        kind='box',
         sharey=False,
-        squeeze=False,
+        height=3.2,
+        aspect=1.05,
+        palette='colorblind',
+        legend=False,
+        flierprops={'markersize': 3, 'alpha': 0.35},
     )
-    axes = axes.ravel()
-    for ax, col in zip(axes, TAIL_CHECK_COLS):
-        subset = tail_long[tail_long["column"] == col]
-        sns.boxplot(
-            data=subset,
-            x="split",
-            y="value",
-            hue="split",
-            order=["train", "test"],
-            palette=["#4c72b0", "#dd8452"],
-            showfliers=True,
-            ax=ax,
-            legend=False,
-        )
-        for xpos, split in enumerate(["train", "test"]):
-            split_values = subset.loc[subset["split"] == split, "value"]
-            max_value = split_values.max()
-            n_at_max = int((split_values == max_value).sum())
-            ax.annotate(
-                f"max={max_value:g}\nn={n_at_max}",
-                xy=(xpos, max_value),
-                xytext=(0, 7),
-                textcoords="offset points",
-                fontsize=8,
-                ha="center",
-            )
-        positive = subset.loc[subset["value"] > 0, "value"]
-        if not positive.empty:
-            ax.set_yscale("log")
-            ax.set_ylim(bottom=max(positive.min() * 0.7, 0.1))
-        ax.set_title(col.replace("_", " "))
-        ax.set_xlabel("")
-        ax.set_ylabel("Raw value (log scale)")
-        ax.grid(axis="y", linestyle=":", alpha=0.3)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-    for ax in axes[len(TAIL_CHECK_COLS) :]:
-        ax.set_visible(False)
-    fig.suptitle(
-        "Raw tail check for candidate capped columns",
-        fontsize=15,
-        y=1.01,
-    )
-    fig.tight_layout()
-    plt.show()
+    grid.set_axis_labels('', 'Raw value (log-like scale)').set_titles('{col_name}')
+    for column, ax in grid.axes_dict.items():
+        values = tail_long.loc[tail_long['column'].eq(column), 'value']
+        ax.set_yscale('symlog' if values.min() < 0 else 'log')
+        ax.set_title(column.replace('_', ' '))
+    grid.figure.suptitle('Train/test tail comparison', fontsize=15)
+    grid.figure.set_layout_engine('constrained')
+    return grid.figure
 
 plot_tail_checks()
 ```
 
 
+
+
     
-![svg](<notebook_files/notebook_53_0.svg>)
+![svg](<notebook_files/notebook_54_0.svg>)
+    
+
+
+
+
+    
+![svg](<notebook_files/notebook_54_1.svg>)
     
 
 
@@ -2548,7 +2572,7 @@ plot_cap_effects()
 
 
     
-![svg](<notebook_files/notebook_55_1.svg>)
+![svg](<notebook_files/notebook_56_1.svg>)
     
 
 
@@ -3044,64 +3068,67 @@ tuning['selected'] = tuning.apply(
 )
 
 def plot_tuning_curves():
-    fig, axes = plt.subplots(1, 3, figsize=(17, 5))
-    for i, (ax, family) in enumerate(zip(axes, selected_x)):
-        data = tuning[tuning['family'] == family].sort_values('x')
-        ax.plot(
-            data['x'],
-            data['train_AUC'],
-            color='#2b5c8f',
-            linestyle='--',
-            marker='o',
-            alpha=0.7,
-            label='train AUC',
-        )
-        ax.plot(
-            data['x'],
-            data['val_AUC'],
-            color='#1b9e77',
-            linestyle='-',
-            marker='s',
-            linewidth=2,
-            label='val AUC',
-        )
-        star = data[data['selected']].iloc[0]
+    curves = tuning.melt(
+        id_vars=['family', 'axis', 'x', 'selected'],
+        value_vars=['train_AUC', 'val_AUC'],
+        var_name='split',
+        value_name='ROC-AUC',
+    ).replace({'split': {'train_AUC': 'Train', 'val_AUC': 'Validation'}})
+    grid = sns.relplot(
+        data=curves,
+        x='x',
+        y='ROC-AUC',
+        hue='split',
+        style='split',
+        col='family',
+        kind='line',
+        markers=True,
+        dashes=True,
+        height=4,
+        aspect=1.05,
+        palette=['#4C78A8', '#F58518'],
+        facet_kws={'sharex': False, 'sharey': True},
+    )
+    grid.set_titles('{col_name}').set_axis_labels('', 'ROC-AUC')
+    for family, ax in grid.axes_dict.items():
+        data = tuning[tuning['family'].eq(family)]
+        chosen = data[data['selected']].iloc[0]
         ax.scatter(
-            star['x'],
-            star['val_AUC'],
+            chosen['x'],
+            chosen['val_AUC'],
             marker='*',
-            s=250,
-            color='#ffd700',
-            edgecolor='black',
-            linewidths=1.5,
-            zorder=10,
-            label='selected setting',
+            s=260,
+            color='#FFD54F',
+            edgecolor='#222',
+            zorder=5,
         )
-        ax.set_title(family, fontsize=12, pad=12, fontweight='bold')
-        ax.set_xlabel(data['axis'].iloc[0], fontsize=10)
-        if i == 0:
-            ax.set_ylabel('ROC-AUC Score', fontsize=10)
+        ax.annotate(
+            f"selected {chosen['val_AUC']:.3f}",
+            (chosen['x'], chosen['val_AUC']),
+            xytext=(0, 14),
+            textcoords='offset points',
+            ha='center',
+            fontweight='bold',
+            fontsize=9,
+        )
+        ax.set_xlabel(data['axis'].iloc[0])
         if family != 'Gradient-boosted trees (XGBoost)':
             ax.set_xscale('log')
-        ax.grid(True, linestyle=':', alpha=0.6)
-        loc = 'center right' if family == 'Logistic Regression' else 'lower left'
-        if family == 'Gradient-boosted trees (XGBoost)':
-            loc = 'lower right'
-        ax.legend(
-            loc=loc,
-            fontsize=8,
-            frameon=True,
-            facecolor='white',
-            framealpha=0.9,
-        )
-    fig.suptitle(
-        'Focused tuning: training vs validation ROC-AUC',
-        fontsize=14,
-        fontweight='bold',
-        y=1.02,
+    sns.move_legend(
+        grid,
+        'lower center',
+        bbox_to_anchor=(0.5, -0.08),
+        ncols=2,
+        title=None,
+        frameon=False,
     )
-    plt.tight_layout()
-    plt.show()
+    grid.figure.suptitle(
+        'Focused tuning: training vs validation ROC-AUC',
+        fontsize=15,
+        fontweight='bold',
+    )
+    grid.figure.set_layout_engine('constrained')
+    return grid.figure
 
 plot_tuning_curves()
 selected_tuning = tuning.loc[
@@ -3114,12 +3141,6 @@ display(selected_tuning)
 pred_lr = selected_predictions['lr']
 pred_mlp = selected_predictions['mlp']
 ```
-
-
-    
-![svg](<notebook_files/notebook_74_0.svg>)
-    
-
 
 
 <div>
@@ -3171,6 +3192,12 @@ pred_mlp = selected_predictions['mlp']
   </tbody>
 </table>
 </div>
+
+
+
+    
+![svg](<notebook_files/notebook_75_1.svg>)
+    
 
 
 Logistic Regression performs best with strong regularization (`C=0.001`); increasing `C` improves training fit slightly but reduces holdout AUC. The MLP performs best at `alpha=0.1`, after which its training/validation gap grows. XGBoost holdout AUC rises through depth 6 and then levels off while training AUC continues upward, so we keep depth 6 as the best trade-off in this sweep.
@@ -3225,51 +3252,66 @@ budget_rows, budget_predictions = run_budget_sweep(Xtr_t, Xva_t, y_tr, y_va, SEE
 budget = pd.DataFrame(budget_rows)
 
 def plot_budget_curves():
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-    for ax, (lr_rate, subset) in zip(axes, budget.groupby('learning_rate')):
-        subset = subset.sort_values('n_trees')
-        ax.plot(
-            subset['n_trees'],
-            subset['train_AUC'],
-            marker='o',
-            ls='--',
-            color='#2b5c8f',
-            label='train AUC',
-        )
-        ax.plot(
-            subset['n_trees'],
-            subset['val_AUC'],
-            marker='o',
-            color='#d95f02',
-            linewidth=2,
-            label='val AUC',
-        )
-        best_row = subset.loc[subset['val_AUC'].idxmax()]
-        ax.scatter(
-            best_row['n_trees'],
-            best_row['val_AUC'],
-            marker='*',
-            s=250,
-            color='#ffd700',
-            edgecolor='black',
-            linewidths=1.5,
-            zorder=10,
-            label=f"best AUC ({int(best_row['n_trees'])} trees)",
-        )
-        ax.set_xlabel('number of trees (n_estimators)', fontsize=10)
-        if ax == axes[0]:
-            ax.set_ylabel('ROC-AUC Score', fontsize=10)
-        ax.set_title(f'Learning Rate = {lr_rate}', fontsize=12, fontweight='bold')
-        ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend(fontsize=9, loc='lower right')
-    fig.suptitle(
-        'Boosting budget: ROC-AUC vs number of trees, by learning rate (star = best AUC)',
-        fontsize=14,
-        fontweight='bold',
-        y=1.02,
+    curves = budget.melt(
+        id_vars=['learning_rate', 'n_trees'],
+        value_vars=['train_AUC', 'val_AUC'],
+        var_name='split',
+        value_name='ROC-AUC',
+    ).replace({'split': {'train_AUC': 'Train', 'val_AUC': 'Validation'}})
+    grid = sns.relplot(
+        data=curves,
+        x='n_trees',
+        y='ROC-AUC',
+        hue='split',
+        style='split',
+        col='learning_rate',
+        kind='line',
+        markers=True,
+        dashes=True,
+        height=4,
+        aspect=1.2,
+        palette=['#4C78A8', '#F58518'],
+        facet_kws={'sharey': True},
     )
-    plt.tight_layout()
-    plt.show()
+    grid.set_titles('learning rate = {col_name}').set_axis_labels(
+        'number of trees', 'ROC-AUC'
+    )
+    for learning_rate, ax in grid.axes_dict.items():
+        subset = budget[budget['learning_rate'].eq(learning_rate)]
+        best = subset.loc[subset['val_AUC'].idxmax()]
+        ax.scatter(
+            best['n_trees'],
+            best['val_AUC'],
+            marker='*',
+            s=260,
+            color='#FFD54F',
+            edgecolor='#222',
+            zorder=5,
+        )
+        ax.annotate(
+            f"best {best['val_AUC']:.3f}",
+            (best['n_trees'], best['val_AUC']),
+            xytext=(0, 14),
+            textcoords='offset points',
+            ha='center',
+            fontweight='bold',
+            fontsize=9,
+        )
+    sns.move_legend(
+        grid,
+        'lower center',
+        bbox_to_anchor=(0.5, -0.08),
+        ncols=2,
+        title=None,
+        frameon=False,
+    )
+    grid.figure.suptitle(
+        'Boosting budget: train vs validation ROC-AUC',
+        fontsize=15,
+        fontweight='bold',
+    )
+    grid.figure.set_layout_engine('constrained')
+    return grid.figure
 
 plot_budget_curves()
 budget_best = budget.loc[
@@ -3282,12 +3324,6 @@ budget_best[['train_AUC', 'val_AUC']] = budget_best[['train_AUC', 'val_AUC']].ro
 display(budget_best)
 pred_xgb = budget_predictions[(0.03, 700)]
 ```
-
-
-    
-![svg](<notebook_files/notebook_77_0.svg>)
-    
-
 
 
 <div>
@@ -3332,6 +3368,12 @@ pred_xgb = budget_predictions[(0.03, 700)]
   </tbody>
 </table>
 </div>
+
+
+
+    
+![svg](<notebook_files/notebook_78_1.svg>)
+    
 
 
 At learning rate 0.1, validation AUC peaks around 200 trees and then declines while training AUC keeps rising. At 0.03, improvement is slower but the holdout reaches a slightly higher plateau around 700 trees. We choose `learning_rate=0.03` and `n_estimators=700` for XGBoost.
@@ -3601,45 +3643,44 @@ We compare the tuned Logistic Regression, MLP, and boosted-tree candidates on th
 
 ```python
 def plot_evaluation_curves():
-    fig, axes = plt.subplots(1, 2, figsize=(15, 5.5))
-    for predictions, name in [
-        (pred_lr, 'Logistic Regression'),
-        (pred_mlp, 'MLP'),
-        (blend_t, 'Boosted-tree rank blend'),
-    ]:
-        fpr, tpr, roc_thresholds = roc_curve(y_va, predictions)
-        axes[0].plot(
-            fpr,
-            tpr,
-            label=f'{name} (AUC={auc(fpr, tpr):.3f})',
-            lw=2,
-        )
-        precision, recall, pr_thresholds = precision_recall_curve(y_va, predictions)
-        axes[1].plot(
-            recall,
-            precision,
-            label=f'{name} (AP={average_precision_score(y_va, predictions):.3f})',
-            lw=2,
-        )
-    axes[0].plot([0, 1], [0, 1], 'k--', alpha=0.5)
-    axes[0].set(
-        xlabel='False Positive Rate',
-        ylabel='True Positive Rate',
-        title='ROC curve',
-    )
-    axes[0].legend(loc='lower right', fontsize=8)
-    axes[1].axhline(y_va.mean(), ls='--', color='grey', alpha=0.7)
-    axes[1].set(xlabel='Recall', ylabel='Precision', title='Precision–Recall curve')
-    axes[1].legend(loc='lower left', fontsize=8)
-    plt.tight_layout()
-    plt.show()
+    candidates = [
+        ('Logistic Regression', pred_lr),
+        ('MLP', pred_mlp),
+        ('Boosted-tree rank blend', blend_t),
+    ]
+    displays = [
+        (RocCurveDisplay, 'ROC curve'),
+        (PrecisionRecallDisplay, 'Precision–Recall curve'),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5.5), layout='constrained')
+    for ax, (display, title) in zip(axes, displays):
+        for index, (name, predictions) in enumerate(candidates):
+            display.from_predictions(
+                y_va,
+                predictions,
+                name=name,
+                ax=ax,
+                plot_chance_level=index == len(candidates) - 1,
+                despine=True,
+            )
+        ax.set_title(title)
+    return fig
 
 plot_evaluation_curves()
 ```
 
 
+
+
     
-![svg](<notebook_files/notebook_86_0.svg>)
+![svg](<notebook_files/notebook_87_0.svg>)
+    
+
+
+
+
+    
+![svg](<notebook_files/notebook_87_1.svg>)
     
 
 
@@ -3657,11 +3698,10 @@ def evaluate_candidates():
         ('MLP neural network', pred_mlp),
         ('Boosted-tree rank blend', blend_t),
     ]
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.8), layout='constrained')
     metric_rows = []
     for ax, (name, predictions) in zip(axes, candidates):
         labels = (predictions >= 0.5).astype(int)
-        matrix = confusion_matrix(y_va, labels)
         auc_score = roc_auc_score(y_va, predictions)
         report = classification_report(
             y_va,
@@ -3670,22 +3710,16 @@ def evaluate_candidates():
             output_dict=True,
             zero_division=0,
         )
-        sns.heatmap(
-            matrix,
-            annot=True,
-            fmt=',d',
+        ConfusionMatrixDisplay.from_predictions(
+            y_va,
+            labels,
+            display_labels=['completed', 'dropped'],
+            values_format=',d',
             cmap='Blues',
-            cbar=False,
-            square=True,
-            linewidths=0.5,
-            xticklabels=['pred completed', 'pred dropped'],
-            yticklabels=['true completed', 'true dropped'],
-            annot_kws={'fontsize': 12},
+            colorbar=False,
             ax=ax,
         )
         ax.set_title(f'{name}\nROC-AUC={auc_score:.3f}', fontweight='bold')
-        ax.set_xlabel('Predicted class')
-        ax.set_ylabel('Actual class')
         metric_rows.append({
             'model': name,
             'ROC-AUC': auc_score,
@@ -3699,19 +3733,11 @@ def evaluate_candidates():
         fontsize=14,
         fontweight='bold',
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
-    plt.show()
     return pd.DataFrame(metric_rows).set_index('model')
 
 evaluation_metrics = evaluate_candidates().round(3)
 display(evaluation_metrics)
 ```
-
-
-    
-![svg](<notebook_files/notebook_89_0.svg>)
-    
-
 
 
 <div>
@@ -3777,6 +3803,12 @@ display(evaluation_metrics)
 </div>
 
 
+
+    
+![svg](<notebook_files/notebook_90_1.svg>)
+    
+
+
 ## 8.2 Model Family Comparisons
 
 - Logistic Regression slightly outperformed the MLP, suggesting that non-linearity is not the primary limitation for continuous models on this dataset.
@@ -3818,7 +3850,7 @@ print(f"share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%")
 
 
     
-![svg](<notebook_files/notebook_92_0.svg>)
+![svg](<notebook_files/notebook_93_0.svg>)
     
 
 
@@ -3917,13 +3949,13 @@ display(top)
 
 
     
-![svg](<notebook_files/notebook_97_0.svg>)
+![svg](<notebook_files/notebook_98_0.svg>)
     
 
 
 
     
-![svg](<notebook_files/notebook_97_1.svg>)
+![svg](<notebook_files/notebook_98_1.svg>)
     
 
 
@@ -4194,7 +4226,7 @@ except Exception as e:
 
 
     
-![svg](<notebook_files/notebook_102_0.svg>)
+![svg](<notebook_files/notebook_103_0.svg>)
     
 
 
@@ -4229,7 +4261,7 @@ plt.show()
 
 
     
-![svg](<notebook_files/notebook_104_1.svg>)
+![svg](<notebook_files/notebook_105_1.svg>)
     
 
 

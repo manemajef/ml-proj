@@ -4,6 +4,13 @@ __generated_with = "0.23.9"
 app = marimo.App()
 
 
+@app.cell
+def _():
+    import marimo as mo
+
+    return (mo,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -50,13 +57,12 @@ def _():
     from sklearn.metrics import (
         roc_auc_score,
         log_loss,
-        roc_curve,
-        auc,
-        confusion_matrix,
         classification_report,
-        precision_recall_curve,
-        average_precision_score,
+        RocCurveDisplay,
+        PrecisionRecallDisplay,
+        ConfusionMatrixDisplay,
     )
+
     from sklearn.model_selection import train_test_split
     from sklearn.neural_network import MLPClassifier
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -96,32 +102,30 @@ def _():
 
     return (
         CatBoostClassifier,
+        ConfusionMatrixDisplay,
         LGBMClassifier,
         LogisticRegression,
         MLPClassifier,
         OneHotEncoder,
         Path,
+        PrecisionRecallDisplay,
+        RocCurveDisplay,
         SEED,
         StandardScaler,
         TARGET,
         TEST_PATH,
         TRAIN_PATH,
         XGBClassifier,
-        auc,
-        average_precision_score,
         cache,
         classification_report,
-        confusion_matrix,
         display,
         load_raw,
         log_loss,
         np,
         pd,
         plt,
-        precision_recall_curve,
         rankdata,
         roc_auc_score,
-        roc_curve,
         shap,
         sns,
         train_test_split,
@@ -173,7 +177,6 @@ def _(TEST_PATH, TRAIN_PATH, display, load_raw, pd):
         "most_frequent": train_raw.mode(dropna=True).iloc[0],
     })
     display(data_dictionary)
-
     return test_raw, train_raw
 
 
@@ -213,7 +216,7 @@ def _(mo):
 
 
 @app.cell
-def _(TARGET, display, pd, plt, train_raw):
+def _(TARGET, display, pd, plt, sns, train_raw):
     target_counts = train_raw[TARGET].value_counts().sort_index()
     target_rate = train_raw[TARGET].value_counts(normalize=True).sort_index()
     balance = pd.DataFrame({
@@ -224,14 +227,35 @@ def _(TARGET, display, pd, plt, train_raw):
     display(balance)
 
     def plot_target_balance():
-        ax = target_rate.mul(100).plot.bar(color=['#4c72b0', '#c44e52'])
-        ax.set_xticklabels(['completed (0)', 'dropped (1)'], rotation=0)
-        ax.set_ylabel('share of orders (%)')
-        ax.set_title('Target balance — Dropped_Course')
-        plt.tight_layout()
-        plt.show()
+        fig, ax = plt.subplots(figsize=(8.5, 2.2), layout='constrained')
+        shares = target_rate.mul(100).rename(index={0: 'Completed', 1: 'Dropped'})
+        shares.to_frame().T.plot.barh(
+            stacked=True, ax=ax, width=0.55, color=sns.color_palette('colorblind', 2)
+        )
+        for container in ax.containers:
+            ax.bar_label(
+                container,
+                fmt='%.1f%%',
+                label_type='center',
+                color='white',
+                fontsize=13,
+                fontweight='bold',
+            )
+        ax.set(
+            title='Course outcomes in the training data',
+            xlim=(0, 100),
+            xlabel='',
+            ylabel='',
+            xticks=[],
+            yticks=[],
+        )
+        ax.legend(
+            ncols=2, loc='lower center', bbox_to_anchor=(0.5, -0.18), frameon=False
+        )
+        sns.despine(ax=ax, left=True, bottom=True)
+        return fig
 
-    plot_target_balance() # atrocious , low quality, klooking bad. 
+    plot_target_balance()
     return
 
 
@@ -279,18 +303,31 @@ def _(TARGET, plt, test_raw, train_raw):
     def plot_monthly_drop_rate():
         fig, ax = plt.subplots(figsize=(12, 4))
         monthly.plot(marker="o", ax=ax)
-        ax.axhline(train_raw[TARGET].mean() * 100, ls='--', color='grey', label='train average',)
-        ax.axvline(train_end, ls='--', color='green', label=f'train ends ({train_end.date()})',)
-        ax.axvline(test_end, ls=':', color='red', label=f'test ends ({test_end.date()})')
+        ax.axhline(
+            train_raw[TARGET].mean() * 100,
+            ls='--',
+            color='grey',
+            label='train average',
+        )
+        ax.axvline(
+            train_end,
+            ls='--',
+            color='green',
+            label=f'train ends ({train_end.date()})',
+        )
+        ax.axvline(
+            test_end, ls=':', color='red', label=f'test ends ({test_end.date()})'
+        )
         ax.set_xlim(train_raw['Course_Start_Date'].min(), test_end)
         ax.set_ylabel('drop rate (%)')
-        ax.set_title('Drop rate over time — training period and the hidden test horizon')
+        ax.set_title(
+            'Drop rate over time — training period and the hidden test horizon'
+        )
         ax.legend()
         plt.tight_layout()
         return fig
 
-
-    plot_monthly_drop_rate() 
+    plot_monthly_drop_rate()
     return
 
 
@@ -428,7 +465,20 @@ def _(mo):
 @app.cell
 def _(pd):
     # Placeholder strings that mean "missing", in any casing/padding after canonicalisation.
-    COMMON_NANS = {'', '-','--','.','?','na','n/a','nan','none','null','unknown','unknonwn',}
+    COMMON_NANS = {
+        '',
+        '-',
+        '--',
+        '.',
+        '?',
+        'na',
+        'n/a',
+        'nan',
+        'none',
+        'null',
+        'unknown',
+        'unknonwn',
+    }
     COUNTRY_ALIASES = {'cn': 'chn'}
 
     def canonicalize(s: pd.Series) -> pd.Series:
@@ -530,10 +580,18 @@ def _(TARGET, clean_train, plt):
 
     def plot_categorical_overview():
         fig, axes = plt.subplots(2, 2, figsize=(14, 9))
-        plot_dropout_by_category(clean_train, 'Payment_Terms', min_count=20, top_n=5, ax=axes[0, 0])
-        plot_dropout_by_category(clean_train, 'Client_Category', min_count=100, top_n=8, ax=axes[0, 1])
-        plot_dropout_by_category(clean_train, 'Submission_Source', min_count=100, top_n=6, ax=axes[1, 0])
-        plot_dropout_by_category(clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=axes[1, 1])
+        plot_dropout_by_category(
+            clean_train, 'Payment_Terms', min_count=20, top_n=5, ax=axes[0, 0]
+        )
+        plot_dropout_by_category(
+            clean_train, 'Client_Category', min_count=100, top_n=8, ax=axes[0, 1]
+        )
+        plot_dropout_by_category(
+            clean_train, 'Submission_Source', min_count=100, top_n=6, ax=axes[1, 0]
+        )
+        plot_dropout_by_category(
+            clean_train, 'Enrollment_Type', min_count=100, top_n=6, ax=axes[1, 1]
+        )
         plt.tight_layout()
         return fig
 
@@ -575,7 +633,9 @@ def _(TARGET, clean_train, display, np, pd, plt):
             lift_pp=lambda d: (d['drop_rate'] - overall_drop) * 100,
         )
     )
-    top_by_size = country_stats.sort_values('count', ascending=False).head( country_top_n)
+    top_by_size = country_stats.sort_values('count', ascending=False).head(
+        country_top_n
+    )
     extreme_by_lift = (
         country_stats[country_stats['count'] >= country_min_n]
         .iloc[
@@ -597,15 +657,26 @@ def _(TARGET, clean_train, display, np, pd, plt):
         ]
         colors = np.where(stats['lift_pp'] >= 0, '#c44e52', '#4c72b0')
         ax.barh(labels, stats['drop_rate_pct'], color=colors)
-        ax.axvline(overall_drop * 100,ls='--',color='black',lw=1,label=f'overall ({overall_drop * 100:.1f}%)',)
+        ax.axvline(
+            overall_drop * 100,
+            ls='--',
+            color='black',
+            lw=1,
+            label=f'overall ({overall_drop * 100:.1f}%)',
+        )
         ax.set_xlabel('drop rate (%)')
         ax.set_title(title)
         ax.legend()
 
     def plot_country_overview():
         fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-        plot_country_dropout(top_by_size, f'Drop rate by largest {country_top_n} countries', axes[0])
-        plot_country_dropout(extreme_by_lift,f'Most unusual country drop rates (n >= {country_min_n})',axes[1],
+        plot_country_dropout(
+            top_by_size, f'Drop rate by largest {country_top_n} countries', axes[0]
+        )
+        plot_country_dropout(
+            extreme_by_lift,
+            f'Most unusual country drop rates (n >= {country_min_n})',
+            axes[1],
         )
         plt.tight_layout()
         plt.show()
@@ -824,7 +895,8 @@ def _(TARGET, pd, plt, train_raw):
         fig, axes = plt.subplots(1, 2, figsize=(15, 4.5))
         plot_dropout_by_bins(train_raw, 'Registration_Days_Before', bins=8, ax=axes[0])
         plot_dropout_by_bins(
-            train_raw, 'Pre_Course_Supports_Tickets', bins=6, ax=axes[1])
+            train_raw, 'Pre_Course_Supports_Tickets', bins=6, ax=axes[1]
+        )
         plt.tight_layout()
         plt.show()
 
@@ -918,9 +990,7 @@ def _(mo):
 
 
 @app.cell
-def _(pd, plt, sns, test_raw, train_raw):
-    import math
-
+def _(pd, sns, test_raw, train_raw):
     TAIL_CHECK_COLS = [
         "Students_Count",
         "Practical_Hours",
@@ -943,62 +1013,31 @@ def _(pd, plt, sns, test_raw, train_raw):
     tail_long = build_tail_data()
 
     def plot_tail_checks():
-        n_cols = min(3, len(TAIL_CHECK_COLS))
-        n_rows = math.ceil(len(TAIL_CHECK_COLS) / n_cols)
-        fig, axes = plt.subplots(
-            n_rows,
-            n_cols,
-            figsize=(5 * n_cols, 4.6 * n_rows),
+        grid = sns.catplot(
+            data=tail_long,
+            x='split',
+            y='value',
+            hue='split',
+            col='column',
+            col_wrap=3,
+            kind='box',
             sharey=False,
-            squeeze=False,
+            height=3.2,
+            aspect=1.05,
+            palette='colorblind',
+            legend=False,
+            flierprops={'markersize': 3, 'alpha': 0.35},
         )
-        axes = axes.ravel()
-        for ax, col in zip(axes, TAIL_CHECK_COLS):
-            subset = tail_long[tail_long["column"] == col]
-            sns.boxplot(
-                data=subset,
-                x="split",
-                y="value",
-                hue="split",
-                order=["train", "test"],
-                palette=["#4c72b0", "#dd8452"],
-                showfliers=True,
-                ax=ax,
-                legend=False,
-            )
-            for xpos, split in enumerate(["train", "test"]):
-                split_values = subset.loc[subset["split"] == split, "value"]
-                max_value = split_values.max()
-                n_at_max = int((split_values == max_value).sum())
-                ax.annotate(
-                    f"max={max_value:g}\nn={n_at_max}",
-                    xy=(xpos, max_value),
-                    xytext=(0, 7),
-                    textcoords="offset points",
-                    fontsize=8,
-                    ha="center",
-                )
-            positive = subset.loc[subset["value"] > 0, "value"]
-            if not positive.empty:
-                ax.set_yscale("log")
-                ax.set_ylim(bottom=max(positive.min() * 0.7, 0.1))
-            ax.set_title(col.replace("_", " "))
-            ax.set_xlabel("")
-            ax.set_ylabel("Raw value (log scale)")
-            ax.grid(axis="y", linestyle=":", alpha=0.3)
-            ax.spines["top"].set_visible(False)
-            ax.spines["right"].set_visible(False)
-        for ax in axes[len(TAIL_CHECK_COLS) :]:
-            ax.set_visible(False)
-        fig.suptitle(
-            "Raw tail check for candidate capped columns",
-            fontsize=15,
-            y=1.01,
-        )
-        fig.tight_layout()
-        plt.show()
+        grid.set_axis_labels('', 'Raw value (log-like scale)').set_titles('{col_name}')
+        for column, ax in grid.axes_dict.items():
+            values = tail_long.loc[tail_long['column'].eq(column), 'value']
+            ax.set_yscale('symlog' if values.min() < 0 else 'log')
+            ax.set_title(column.replace('_', ' '))
+        grid.figure.suptitle('Train/test tail comparison', fontsize=15)
+        grid.figure.set_layout_engine('constrained')
+        return grid.figure
 
-    plot_tail_checks() # could be better i guess / code is painfully long
+    plot_tail_checks()
     return
 
 
@@ -1550,8 +1589,8 @@ def _(
     log_loss,
     np,
     pd,
-    plt,
     roc_auc_score,
+    sns,
     y_tr,
     y_va,
 ):
@@ -1659,64 +1698,67 @@ def _(
     )
 
     def plot_tuning_curves():
-        fig, axes = plt.subplots(1, 3, figsize=(17, 5))
-        for i, (ax, family) in enumerate(zip(axes, selected_x)):
-            data = tuning[tuning['family'] == family].sort_values('x')
-            ax.plot(
-                data['x'],
-                data['train_AUC'],
-                color='#2b5c8f',
-                linestyle='--',
-                marker='o',
-                alpha=0.7,
-                label='train AUC',
-            )
-            ax.plot(
-                data['x'],
-                data['val_AUC'],
-                color='#1b9e77',
-                linestyle='-',
-                marker='s',
-                linewidth=2,
-                label='val AUC',
-            )
-            star = data[data['selected']].iloc[0]
+        curves = tuning.melt(
+            id_vars=['family', 'axis', 'x', 'selected'],
+            value_vars=['train_AUC', 'val_AUC'],
+            var_name='split',
+            value_name='ROC-AUC',
+        ).replace({'split': {'train_AUC': 'Train', 'val_AUC': 'Validation'}})
+        grid = sns.relplot(
+            data=curves,
+            x='x',
+            y='ROC-AUC',
+            hue='split',
+            style='split',
+            col='family',
+            kind='line',
+            markers=True,
+            dashes=True,
+            height=4,
+            aspect=1.05,
+            palette=['#4C78A8', '#F58518'],
+            facet_kws={'sharex': False, 'sharey': True},
+        )
+        grid.set_titles('{col_name}').set_axis_labels('', 'ROC-AUC')
+        for family, ax in grid.axes_dict.items():
+            data = tuning[tuning['family'].eq(family)]
+            chosen = data[data['selected']].iloc[0]
             ax.scatter(
-                star['x'],
-                star['val_AUC'],
+                chosen['x'],
+                chosen['val_AUC'],
                 marker='*',
-                s=250,
-                color='#ffd700',
-                edgecolor='black',
-                linewidths=1.5,
-                zorder=10,
-                label='selected setting',
+                s=260,
+                color='#FFD54F',
+                edgecolor='#222',
+                zorder=5,
             )
-            ax.set_title(family, fontsize=12, pad=12, fontweight='bold')
-            ax.set_xlabel(data['axis'].iloc[0], fontsize=10)
-            if i == 0:
-                ax.set_ylabel('ROC-AUC Score', fontsize=10)
+            ax.annotate(
+                f"selected {chosen['val_AUC']:.3f}",
+                (chosen['x'], chosen['val_AUC']),
+                xytext=(0, 14),
+                textcoords='offset points',
+                ha='center',
+                fontweight='bold',
+                fontsize=9,
+            )
+            ax.set_xlabel(data['axis'].iloc[0])
             if family != 'Gradient-boosted trees (XGBoost)':
                 ax.set_xscale('log')
-            ax.grid(True, linestyle=':', alpha=0.6)
-            loc = 'center right' if family == 'Logistic Regression' else 'lower left'
-            if family == 'Gradient-boosted trees (XGBoost)':
-                loc = 'lower right'
-            ax.legend(
-                loc=loc,
-                fontsize=8,
-                frameon=True,
-                facecolor='white',
-                framealpha=0.9,
-            )
-        fig.suptitle(
-            'Focused tuning: training vs validation ROC-AUC',
-            fontsize=14,
-            fontweight='bold',
-            y=1.02,
+        sns.move_legend(
+            grid,
+            'lower center',
+            bbox_to_anchor=(0.5, -0.08),
+            ncols=2,
+            title=None,
+            frameon=False,
         )
-        plt.tight_layout()
-        plt.show() #good be more impressive, the code is long af, the plots themselves are "cute" but nothing more. 
+        grid.figure.suptitle(
+            'Focused tuning: training vs validation ROC-AUC',
+            fontsize=15,
+            fontweight='bold',
+        )
+        grid.figure.set_layout_engine('constrained')
+        return grid.figure
 
     plot_tuning_curves()
     selected_tuning = tuning.loc[
@@ -1765,8 +1807,8 @@ def _(
     display,
     log_loss,
     pd,
-    plt,
     roc_auc_score,
+    sns,
     y_tr,
     y_va,
 ):
@@ -1808,51 +1850,66 @@ def _(
     budget = pd.DataFrame(budget_rows)
 
     def plot_budget_curves():
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-        for ax, (lr_rate, subset) in zip(axes, budget.groupby('learning_rate')):
-            subset = subset.sort_values('n_trees')
-            ax.plot(
-                subset['n_trees'],
-                subset['train_AUC'],
-                marker='o',
-                ls='--',
-                color='#2b5c8f',
-                label='train AUC',
-            )
-            ax.plot(
-                subset['n_trees'],
-                subset['val_AUC'],
-                marker='o',
-                color='#d95f02',
-                linewidth=2,
-                label='val AUC',
-            )
-            best_row = subset.loc[subset['val_AUC'].idxmax()]
-            ax.scatter(
-                best_row['n_trees'],
-                best_row['val_AUC'],
-                marker='*',
-                s=250,
-                color='#ffd700',
-                edgecolor='black',
-                linewidths=1.5,
-                zorder=10,
-                label=f"best AUC ({int(best_row['n_trees'])} trees)",
-            )
-            ax.set_xlabel('number of trees (n_estimators)', fontsize=10)
-            if ax == axes[0]:
-                ax.set_ylabel('ROC-AUC Score', fontsize=10)
-            ax.set_title(f'Learning Rate = {lr_rate}', fontsize=12, fontweight='bold')
-            ax.grid(True, linestyle=':', alpha=0.6)
-            ax.legend(fontsize=9, loc='lower right')
-        fig.suptitle(
-            'Boosting budget: ROC-AUC vs number of trees, by learning rate (star = best AUC)',
-            fontsize=14,
-            fontweight='bold',
-            y=1.02,
+        curves = budget.melt(
+            id_vars=['learning_rate', 'n_trees'],
+            value_vars=['train_AUC', 'val_AUC'],
+            var_name='split',
+            value_name='ROC-AUC',
+        ).replace({'split': {'train_AUC': 'Train', 'val_AUC': 'Validation'}})
+        grid = sns.relplot(
+            data=curves,
+            x='n_trees',
+            y='ROC-AUC',
+            hue='split',
+            style='split',
+            col='learning_rate',
+            kind='line',
+            markers=True,
+            dashes=True,
+            height=4,
+            aspect=1.2,
+            palette=['#4C78A8', '#F58518'],
+            facet_kws={'sharey': True},
         )
-        plt.tight_layout()
-        plt.show()
+        grid.set_titles('learning rate = {col_name}').set_axis_labels(
+            'number of trees', 'ROC-AUC'
+        )
+        for learning_rate, ax in grid.axes_dict.items():
+            subset = budget[budget['learning_rate'].eq(learning_rate)]
+            best = subset.loc[subset['val_AUC'].idxmax()]
+            ax.scatter(
+                best['n_trees'],
+                best['val_AUC'],
+                marker='*',
+                s=260,
+                color='#FFD54F',
+                edgecolor='#222',
+                zorder=5,
+            )
+            ax.annotate(
+                f"best {best['val_AUC']:.3f}",
+                (best['n_trees'], best['val_AUC']),
+                xytext=(0, 14),
+                textcoords='offset points',
+                ha='center',
+                fontweight='bold',
+                fontsize=9,
+            )
+        sns.move_legend(
+            grid,
+            'lower center',
+            bbox_to_anchor=(0.5, -0.08),
+            ncols=2,
+            title=None,
+            frameon=False,
+        )
+        grid.figure.suptitle(
+            'Boosting budget: train vs validation ROC-AUC',
+            fontsize=15,
+            fontweight='bold',
+        )
+        grid.figure.set_layout_engine('constrained')
+        return grid.figure
 
     plot_budget_curves()
     budget_best = budget.loc[
@@ -2103,49 +2160,37 @@ def _(mo):
 
 @app.cell
 def _(
-    auc,
-    average_precision_score,
+    PrecisionRecallDisplay,
+    RocCurveDisplay,
     blend_t,
     plt,
-    precision_recall_curve,
     pred_lr,
     pred_mlp,
-    roc_curve,
     y_va,
 ):
     def plot_evaluation_curves():
-        fig, axes = plt.subplots(1, 2, figsize=(15, 5.5))
-        for predictions, name in [
-            (pred_lr, 'Logistic Regression'),
-            (pred_mlp, 'MLP'),
-            (blend_t, 'Boosted-tree rank blend'),
-        ]:
-            fpr, tpr, roc_thresholds = roc_curve(y_va, predictions)
-            axes[0].plot(
-                fpr,
-                tpr,
-                label=f'{name} (AUC={auc(fpr, tpr):.3f})',
-                lw=2,
-            )
-            precision, recall, pr_thresholds = precision_recall_curve(y_va, predictions)
-            axes[1].plot(
-                recall,
-                precision,
-                label=f'{name} (AP={average_precision_score(y_va, predictions):.3f})',
-                lw=2,
-            )
-        axes[0].plot([0, 1], [0, 1], 'k--', alpha=0.5)
-        axes[0].set(
-            xlabel='False Positive Rate',
-            ylabel='True Positive Rate',
-            title='ROC curve',
-        )
-        axes[0].legend(loc='lower right', fontsize=8)
-        axes[1].axhline(y_va.mean(), ls='--', color='grey', alpha=0.7)
-        axes[1].set(xlabel='Recall', ylabel='Precision', title='Precision–Recall curve')
-        axes[1].legend(loc='lower left', fontsize=8)
-        plt.tight_layout()
-        plt.show()
+        candidates = [
+            ('Logistic Regression', pred_lr),
+            ('MLP', pred_mlp),
+            ('Boosted-tree rank blend', blend_t),
+        ]
+        displays = [
+            (RocCurveDisplay, 'ROC curve'),
+            (PrecisionRecallDisplay, 'Precision–Recall curve'),
+        ]
+        fig, axes = plt.subplots(1, 2, figsize=(15, 5.5), layout='constrained')
+        for ax, (display, title) in zip(axes, displays):
+            for index, (name, predictions) in enumerate(candidates):
+                display.from_predictions(
+                    y_va,
+                    predictions,
+                    name=name,
+                    ax=ax,
+                    plot_chance_level=index == len(candidates) - 1,
+                    despine=True,
+                )
+            ax.set_title(title)
+        return fig
 
     plot_evaluation_curves()
     return
@@ -2171,16 +2216,15 @@ def _(mo):
 
 @app.cell
 def _(
+    ConfusionMatrixDisplay,
     blend_t,
     classification_report,
-    confusion_matrix,
     display,
     pd,
     plt,
     pred_lr,
     pred_mlp,
     roc_auc_score,
-    sns,
     y_va,
 ):
     def evaluate_candidates():
@@ -2189,11 +2233,10 @@ def _(
             ('MLP neural network', pred_mlp),
             ('Boosted-tree rank blend', blend_t),
         ]
-        fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+        fig, axes = plt.subplots(1, 3, figsize=(16, 4.8), layout='constrained')
         metric_rows = []
         for ax, (name, predictions) in zip(axes, candidates):
             labels = (predictions >= 0.5).astype(int)
-            matrix = confusion_matrix(y_va, labels)
             auc_score = roc_auc_score(y_va, predictions)
             report = classification_report(
                 y_va,
@@ -2202,22 +2245,16 @@ def _(
                 output_dict=True,
                 zero_division=0,
             )
-            sns.heatmap(
-                matrix,
-                annot=True,
-                fmt=',d',
+            ConfusionMatrixDisplay.from_predictions(
+                y_va,
+                labels,
+                display_labels=['completed', 'dropped'],
+                values_format=',d',
                 cmap='Blues',
-                cbar=False,
-                square=True,
-                linewidths=0.5,
-                xticklabels=['pred completed', 'pred dropped'],
-                yticklabels=['true completed', 'true dropped'],
-                annot_kws={'fontsize': 12},
+                colorbar=False,
                 ax=ax,
             )
             ax.set_title(f'{name}\nROC-AUC={auc_score:.3f}', fontweight='bold')
-            ax.set_xlabel('Predicted class')
-            ax.set_ylabel('Actual class')
             metric_rows.append({
                 'model': name,
                 'ROC-AUC': auc_score,
@@ -2231,8 +2268,6 @@ def _(
             fontsize=14,
             fontweight='bold',
         )
-        fig.tight_layout(rect=(0, 0, 1, 0.93))
-        plt.show()
         return pd.DataFrame(metric_rows).set_index('model')
 
     evaluation_metrics = evaluate_candidates().round(3)
