@@ -19,6 +19,8 @@ _agent/*
 !_agent/
 !_agent/README.md
 !_agent/base-grading-agent-prompt.md
+experiments/
+
 
 
 __marimo__/
