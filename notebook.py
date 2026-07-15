@@ -40,7 +40,6 @@ def _(mo):
 @app.cell
 def _():
     from functools import wraps
-    import math
     from inspect import getsource
     import warnings
     from pathlib import Path
@@ -56,7 +55,7 @@ def _():
     from lightgbm import LGBMClassifier
     from scipy.stats import rankdata
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import roc_auc_score, log_loss, classification_report, RocCurveDisplay, PrecisionRecallDisplay, ConfusionMatrixDisplay
+    from sklearn.metrics import roc_auc_score, classification_report, RocCurveDisplay, PrecisionRecallDisplay, ConfusionMatrixDisplay
     from sklearn.model_selection import train_test_split
     from sklearn.neural_network import MLPClassifier
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -135,8 +134,6 @@ def _():
         display,
         figure_size,
         load_raw,
-        log_loss,
-        math,
         np,
         pd,
         plt,
@@ -213,12 +210,9 @@ def _(mo):
 
 @app.cell
 def _(test_raw, train_raw):
-    def cast_id_columns(df):
-        for col in ("Agent_ID", "Company_ID"):
-            df[col] = df[col].astype("string")
-
-    for df in (train_raw, test_raw):
-        cast_id_columns(df)
+    for id_frame in (train_raw, test_raw):
+        for id_col in ("Agent_ID", "Company_ID"):
+            id_frame[id_col] = id_frame[id_col].astype("string")
     train_raw.describe()
     return
 
@@ -241,13 +235,11 @@ def _(TARGET, display, pd, show, subplot_grid, train_raw):
     balance.index = ['0 = completed', '1 = dropped']
     display(balance)
 
-    def plot_target_balance():
-        fig, ax = subplot_grid()
-        balance['rate_%'].plot.bar(ax=ax)
-        ax.set(title='Course outcomes in the training data', xlabel='', ylabel='share (%)')
-        ax.tick_params(axis='x', rotation=0)
-        show(fig)
-    plot_target_balance()
+    balance_fig, balance_ax = subplot_grid()
+    balance['rate_%'].plot.bar(ax=balance_ax)
+    balance_ax.set(title='Course outcomes in the training data', xlabel='', ylabel='share (%)')
+    balance_ax.tick_params(axis='x', rotation=0)
+    show(balance_fig)
     return
 
 
@@ -288,16 +280,14 @@ def _(TARGET, show, subplot_grid, test_raw, train_raw):
     print(f'test  dates: {test_start.date()} -> {test_end.date()}')
     monthly = train_raw.set_index('Course_Start_Date').resample('MS')[TARGET].mean().mul(100)
 
-    def plot_monthly_drop_rate():
-        fig, ax = subplot_grid()
-        monthly.plot(marker='o', ax=ax)
-        ax.axhline(train_raw[TARGET].mean() * 100, linestyle='--', label='train average')
-        ax.axvline(train_end, linestyle='--', label=f'train ends ({train_end.date()})')
-        ax.axvline(test_end, linestyle=':', label=f'test ends ({test_end.date()})')
-        ax.set(xlim=(train_raw['Course_Start_Date'].min(), test_end), ylabel='drop rate (%)', title='Drop rate over time — training period and the hidden test horizon')
-        ax.legend()
-        show(fig)
-    plot_monthly_drop_rate()
+    monthly_fig, monthly_ax = subplot_grid()
+    monthly.plot(marker='o', ax=monthly_ax)
+    monthly_ax.axhline(train_raw[TARGET].mean() * 100, linestyle='--', label='train average')
+    monthly_ax.axvline(train_end, linestyle='--', label=f'train ends ({train_end.date()})')
+    monthly_ax.axvline(test_end, linestyle=':', label=f'test ends ({test_end.date()})')
+    monthly_ax.set(xlim=(train_raw['Course_Start_Date'].min(), test_end), ylabel='drop rate (%)', title='Drop rate over time — training period and the hidden test horizon')
+    monthly_ax.legend()
+    show(monthly_fig)
     return
 
 
@@ -354,25 +344,19 @@ def _(TARGET, display, pd, train_raw):
         'Payment_Terms',
     ]
 
-    def summarize_missingness():
-        rows = []
-        for col in missingness_cols:
-            stats = (
-                train_raw
-                .assign(is_missing=train_raw[col].isna())
-                .groupby('is_missing')[TARGET]
-                .agg(count='size', drop_rate='mean')
-            )
-            for is_missing, row in stats.iterrows():
-                rows.append({
-                    'column': col,
-                    'is_missing': is_missing,
-                    'count': int(row['count']),
-                    'drop_rate_%': round(row['drop_rate'] * 100, 1),
-                })
-        return pd.DataFrame(rows)
-
-    display(summarize_missingness())
+    missing_summary = (
+        pd.concat({
+            col: train_raw.assign(is_missing=train_raw[col].isna())
+            .groupby('is_missing')[TARGET]
+            .agg(count='size', drop_rate='mean')
+            for col in missingness_cols
+        }, names=['column'])
+        .reset_index()
+        .assign(drop_rate_pct=lambda df: (df['drop_rate'] * 100).round(1))
+        .drop(columns='drop_rate')
+        .rename(columns={'drop_rate_pct': 'drop_rate_%'})
+    )
+    display(missing_summary)
     return
 
 
@@ -397,30 +381,20 @@ def _(mo):
 @app.cell
 def _(train_raw):
     TEXT_COLS = list(train_raw.select_dtypes(include=['object']).columns)
-
-    def count_unique_vals(df, col):
-        return df[col].nunique()
-
-    def most_common_cats(df, col, n=15):
-        return df[col].value_counts(normalize=True).head(n)
-
     N_COUNT = 9
 
-    def print_category_summaries():
-        for col in TEXT_COLS:
-            top_values = most_common_cats(train_raw, col, N_COUNT)
-            cats = [
-                f'{value!r}: ({share * 100:.1f}%)'
-                for value, share in top_values.items()
-            ]
-            cats_str = '\n'.join(
-                (' | '.join(cats[i : i + 3]) for i in range(0, len(cats), 3))
-            )
-            print(
-                f"\n{'=' * 80}\n{col} ({count_unique_vals(train_raw, col)} unique values)\n\n{cats_str}\n"
-            )
-
-    print_category_summaries()
+    for text_col in TEXT_COLS:
+        top_values = train_raw[text_col].value_counts(normalize=True).head(N_COUNT)
+        cats = [
+            f'{value!r}: ({share * 100:.1f}%)'
+            for value, share in top_values.items()
+        ]
+        cats_str = '\n'.join(
+            ' | '.join(cats[i : i + 3]) for i in range(0, len(cats), 3)
+        )
+        print(
+            f"\n{'=' * 80}\n{text_col} ({train_raw[text_col].nunique()} unique values)\n\n{cats_str}\n"
+        )
     return (TEXT_COLS,)
 
 
@@ -511,9 +485,8 @@ def _(mo):
 
 
 @app.cell
-def _(TARGET, TEXT_COLS, clean_train, math, show, subplot_grid):
-    def plot_dropout_by_category(df, col, min_count=50, top_n=10, ax=None):
-
+def _(TARGET, TEXT_COLS, clean_train, show, subplot_grid):
+    def plot_dropout_by_category(df, col, ax, min_count=50, top_n=10):
         stats = (
             df.groupby(col, dropna=False)[TARGET]
             .agg(drop_rate="mean", count="size")
@@ -527,12 +500,7 @@ def _(TARGET, TEXT_COLS, clean_train, math, show, subplot_grid):
         )
 
         labels = [f"{i} (n={int(r['count'])})" for i, r in stats.iterrows()]
-
-        if ax is None:
-            ax = subplot_grid()[1]
-
         overall = df[TARGET].mean()
-
         ax.barh(
             labels,
             stats["drop_rate"] * 100,
@@ -543,22 +511,13 @@ def _(TARGET, TEXT_COLS, clean_train, math, show, subplot_grid):
         ax.set(xlabel="Drop rate (%)", title=f"Drop rate by {col}")
         ax.legend()
 
-        return stats
-
-
-    def plot_categorical_overview():
-        cats_to_plot = [ col for col in TEXT_COLS if col != "Origin_Country"]
-
-        n_cols = 2
-        n_rows = math.ceil(len(cats_to_plot) / n_cols)
-        fig, axes = subplot_grid(n_rows, n_cols)
-
-        for idx, category in enumerate(cats_to_plot):
-            i, j = divmod(idx, n_cols)
-            plot_dropout_by_category(clean_train, category, ax=axes[i, j],)
-
-        show(fig)
-    plot_categorical_overview()
+    category_features = [col for col in TEXT_COLS if col != "Origin_Country"]
+    category_fig, category_axes = subplot_grid((len(category_features) + 1) // 2, 2)
+    for category_ax, category_feature in zip(category_axes.flat, category_features):
+        plot_dropout_by_category(clean_train, category_feature, category_ax)
+    for unused_category_ax in category_axes.flat[len(category_features):]:
+        unused_category_ax.set_visible(False)
+    show(category_fig)
     return (plot_dropout_by_category,)
 
 
@@ -603,12 +562,14 @@ def _(TARGET, clean_train, display, pd, show, sns, subplot_grid):
         ax.set(xlabel='drop rate (%)', title=title)
         ax.legend()
 
-    def plot_country_overview():
-        fig, axes = subplot_grid(1, 2)
-        plot_country_dropout(top_by_size, f'Drop rate by largest {country_top_n} countries', axes[0])
-        plot_country_dropout(extreme_by_lift, f'Most unusual country drop rates (n >= {country_min_n})', axes[1])
-        show(fig)
-    plot_country_overview()
+    plots = [
+        (top_by_size, f'Drop rate by largest {country_top_n} countries'),
+        (extreme_by_lift, f'Most unusual country drop rates (n >= {country_min_n})'),
+    ]
+    country_fig, country_axes = subplot_grid(1, 2)
+    for country_ax, (country_plot_stats, country_title) in zip(country_axes, plots):
+        plot_country_dropout(country_plot_stats, country_title, country_ax)
+    show(country_fig)
     display(country_stats.sort_values('count', ascending=False).head(country_top_n)[['count', 'drop_rate_pct', 'lift_pp']].round(2))
     return
 
@@ -661,13 +622,11 @@ def _(
     company_presence = train_raw.groupby(train_raw['Company_ID'].notna())[TARGET].agg(count='size', drop_rate='mean')
     company_presence.index = ['no company_id', 'has company_id']
 
-    def plot_agent_company_overview():
-        fig, axes = subplot_grid(1, 2)
-        plot_dropout_by_category(clean_train, 'Agent_ID', min_count=150, top_n=12, ax=axes[0])
-        axes[1].bar(company_presence.index, company_presence['drop_rate'] * 100)
-        axes[1].set(ylabel='drop rate (%)', title='Drop rate by Company_ID presence')
-        show(fig)
-    plot_agent_company_overview()
+    identifier_fig, identifier_axes = subplot_grid(1, 2)
+    plot_dropout_by_category(clean_train, 'Agent_ID', identifier_axes[0], min_count=150, top_n=12)
+    identifier_axes[1].bar(company_presence.index, company_presence['drop_rate'] * 100)
+    identifier_axes[1].set(ylabel='drop rate (%)', title='Drop rate by Company_ID presence')
+    show(identifier_fig)
     display(company_presence)
     return
 
@@ -734,24 +693,17 @@ def _(TARGET, display, pd, train_raw):
         if c not in ID_LIKE + [TARGET]
     ]
 
-    def numeric_summary(df, cols):
-        rows = []
-        for c in cols:
-            s = df[c]
-            rows.append({
-                "column": c,
-                "missing_%": round(s.isna().mean() * 100, 1),
-                "corr_target": round(s.corr(df[TARGET]), 3),
-                "mean": round(s.mean(), 2),
-                "median": round(s.median(), 2),
-                "std": round(s.std(), 2),
-                "min": round(s.min(), 2),
-                "max": round(s.max(), 2),
-                "skew": round(s.skew(), 2),
-            })
-        return pd.DataFrame(rows).sort_values("corr_target", key=abs, ascending=False)
-
-    display(numeric_summary(train_raw, num_cols))
+    numeric_summary = train_raw[num_cols].agg(['mean', 'median', 'std', 'min', 'max', 'skew']).T
+    numeric_summary.insert(0, 'missing_%', train_raw[num_cols].isna().mean() * 100)
+    numeric_summary.insert(1, 'corr_target', train_raw[num_cols].corrwith(train_raw[TARGET]))
+    numeric_summary = (
+        numeric_summary
+        .round({'missing_%': 1, 'corr_target': 3, 'mean': 2, 'median': 2, 'std': 2, 'min': 2, 'max': 2, 'skew': 2})
+        .rename_axis('column')
+        .reset_index()
+        .sort_values('corr_target', key=abs, ascending=False)
+    )
+    display(numeric_summary)
     return (num_cols,)
 
 
@@ -766,14 +718,11 @@ def _(mo):
 @app.cell
 def _(TARGET, figure_size, num_cols, plt, show, sns, train_raw):
     corr = train_raw[num_cols + [TARGET]].corr()
-
-    def plot_correlation_heatmap():
-        fig, ax = plt.subplots(figsize=figure_size(2, 2), layout='constrained')
-        sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', center=0, ax=ax)
-        ax.set_title('Numeric correlation heatmap (incl. target)')
-        ax.grid(False)
-        show(fig)
-    plot_correlation_heatmap()
+    corr_fig, corr_ax = plt.subplots(figsize=figure_size(2, 2), layout='constrained')
+    sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', center=0, ax=corr_ax)
+    corr_ax.set_title('Numeric correlation heatmap (incl. target)')
+    corr_ax.grid(False)
+    show(corr_fig)
     return
 
 
@@ -797,25 +746,21 @@ def _(mo):
 
 @app.cell
 def _(TARGET, pd, show, subplot_grid, train_raw):
-    def plot_dropout_by_bins(df, col, bins=8, ax=None):
+    def plot_dropout_by_bins(df, col, bins, ax):
         tmp = df[[col, TARGET]].dropna().copy()
         tmp['bin'] = pd.qcut(tmp[col], q=bins, duplicates='drop')
         stats = tmp.groupby('bin', observed=True)[TARGET].mean().mul(100)
-        if ax is None:
-            ax = subplot_grid()[1]
         stats.plot.bar(ax=ax)
         ax.axhline(df[TARGET].mean() * 100, linestyle='--', label='mean')
         ax.set(ylabel='drop rate (%)', title=f'Drop rate by {col} bins')
         ax.legend()
         ax.tick_params(axis='x', labelrotation=45)
-        return stats
 
-    def plot_numeric_bins():
-        fig, axes = subplot_grid(1, 2)
-        plot_dropout_by_bins(train_raw, 'Registration_Days_Before', bins=8, ax=axes[0])
-        plot_dropout_by_bins(train_raw, 'Pre_Course_Supports_Tickets', bins=6, ax=axes[1])
-        show(fig)
-    plot_numeric_bins()
+    numeric_bin_specs = [('Registration_Days_Before', 8), ('Pre_Course_Supports_Tickets', 6)]
+    numeric_bin_fig, numeric_bin_axes = subplot_grid(1, 2)
+    for numeric_bin_ax, (numeric_feature, bins) in zip(numeric_bin_axes, numeric_bin_specs):
+        plot_dropout_by_bins(train_raw, numeric_feature, bins, numeric_bin_ax)
+    show(numeric_bin_fig)
     return
 
 
@@ -915,44 +860,35 @@ def _(pd, show, sns, test_raw, train_raw):
         "Registration_Changes",
     ]
 
-    def build_tail_data():
-        frames = []
-        for split, df in [("train", train_raw), ("test", test_raw)]:
-            for col in TAIL_CHECK_COLS:
-                frame = df[col].dropna().rename("value").to_frame()
-                frame["split"] = split
-                frame["column"] = col
-                frames.append(frame)
-        return pd.concat(frames, ignore_index=True)
+    tail_long = pd.concat([
+        df[col].dropna().rename('value').to_frame().assign(split=split, column=col)
+        for split, df in [('train', train_raw), ('test', test_raw)]
+        for col in TAIL_CHECK_COLS
+    ], ignore_index=True)
 
-    tail_long = build_tail_data()
-
-    def plot_tail_checks():
-        grid = sns.catplot(
-            data=tail_long,
-            x='split',
-            y='value',
-            hue='split',
-            col='column',
-            col_wrap=3,
-            kind='box',
-            sharey=False,
-            height=3.2,
-            aspect=1.05,
-            palette='colorblind',
-            legend=False,
-            flierprops={'markersize': 3, 'alpha': 0.35},
-        )
-        grid.set_axis_labels('', 'Raw value (log-like scale)').set_titles('{col_name}')
-        for column, ax in grid.axes_dict.items():
-            values = tail_long.loc[tail_long['column'].eq(column), 'value']
-            ax.set_yscale('symlog' if values.min() < 0 else 'log')
-            ax.set_title(column.replace('_', ' '))
-        grid.figure.suptitle('Train/test tail comparison', fontsize=15)
-        grid.figure.set_layout_engine('constrained')
-        show(grid.figure)
-
-    plot_tail_checks()
+    grid = sns.catplot(
+        data=tail_long,
+        x='split',
+        y='value',
+        hue='split',
+        col='column',
+        col_wrap=3,
+        kind='box',
+        sharey=False,
+        height=3.2,
+        aspect=1.05,
+        palette='colorblind',
+        legend=False,
+        flierprops={'markersize': 3, 'alpha': 0.35},
+    )
+    grid.set_axis_labels('', 'Raw value (log-like scale)').set_titles('{col_name}')
+    for tail_column, tail_ax in grid.axes_dict.items():
+        tail_values = tail_long.loc[tail_long['column'].eq(tail_column), 'value']
+        tail_ax.set_yscale('symlog' if tail_values.min() < 0 else 'log')
+        tail_ax.set_title(tail_column.replace('_', ' '))
+    grid.figure.suptitle('Train/test tail comparison', fontsize=15)
+    grid.figure.set_layout_engine('constrained')
+    show(grid.figure)
     return
 
 
@@ -972,41 +908,45 @@ def _(mo):
 
 @app.cell
 def _(display, pd, show, subplot_grid, test_raw, train_raw):
-    CAP_RULES = {'Students_Count': {'lower': None, 'upper': 10, 'problem': '9999 placeholder', 'reason': 'repeated 9999 values are isolated placeholders beyond the observed support'}, 'Practical_Hours': {'lower': 0, 'upper': 12, 'problem': 'negative values and 10000', 'reason': 'course hours cannot be negative; 12 covers a long practical day'}, 'Daily_Tuition_Cost': {'lower': None, 'upper': 600, 'problem': '5400 value', 'reason': '5400 is far beyond the valid fee range; 600 keeps the high-cost tail'}} 
+    CAP_RULES = {
+        'Students_Count': (None, 10),
+        'Practical_Hours': (0, 12),
+        'Daily_Tuition_Cost': (None, 600),
+    }
+    cap_notes = {
+        'Students_Count': ('9999 placeholder', 'repeated 9999 values are isolated placeholders beyond the observed support'),
+        'Practical_Hours': ('negative values and 10000', 'course hours cannot be negative; 12 covers a long practical day'),
+        'Daily_Tuition_Cost': ('5400 value', '5400 is far beyond the valid fee range; 600 keeps the high-cost tail'),
+    }
 
-    def apply_cap(s, lower=None, upper=None):
-        if lower is not None:
-            s = s.clip(lower=lower)
-        if upper is not None:
-            s = s.clip(upper=upper)
-        return s
+    cap_rows = []
+    for cap_col, (lower, upper) in CAP_RULES.items():
+        problem, reason = cap_notes[cap_col]
+        train_capped = train_raw[cap_col].clip(lower=lower, upper=upper)
+        test_capped = test_raw[cap_col].clip(lower=lower, upper=upper)
+        cap_rows.append({
+            'column': cap_col,
+            'raw_train_min': train_raw[cap_col].min(),
+            'raw_train_max': train_raw[cap_col].max(),
+            'problem': problem,
+            'action': f'clip to [{lower}, {upper}]' if lower is not None else f'clip to <= {upper}',
+            'train_rows_affected': int((train_raw[cap_col].notna() & train_capped.ne(train_raw[cap_col])).sum()),
+            'test_rows_affected': int((test_raw[cap_col].notna() & test_capped.ne(test_raw[cap_col])).sum()),
+            'reason': reason,
+        })
+    display(pd.DataFrame(cap_rows))
 
-    def build_cap_summary():
-        rows = []
-        for col, rule in CAP_RULES.items():
-            lo, hi = (rule['lower'], rule['upper'])
-            train_changed = (train_raw[col].notna() & apply_cap(train_raw[col], lo, hi).ne(train_raw[col])).sum()
-            test_changed = (test_raw[col].notna() & apply_cap(test_raw[col], lo, hi).ne(test_raw[col])).sum()
-            action = f'clip to [{lo}, {hi}]' if lo is not None else f'clip to <= {hi}'
-            rows.append({'column': col, 'raw_train_min': train_raw[col].min(), 'raw_train_max': train_raw[col].max(), 'problem': rule['problem'], 'action': action, 'train_rows_affected': int(train_changed), 'test_rows_affected': int(test_changed), 'reason': rule['reason']})
-        return pd.DataFrame(rows)
-    display(build_cap_summary())
-
-    def plot_cap_effects():
-        fig, axes = subplot_grid(2, 3, sharey='row')
-        for index, (column, rule) in enumerate(CAP_RULES.items()):
-            before = train_raw[column].dropna()
-            after = apply_cap(before, rule['lower'], rule['upper'])
-            for ax, values, label in zip(
-                axes[:, index], (before, after), ('raw', 'clipped')
-            ):
-                ax.hist(values, bins=30)
-                ax.set(yscale='log', title=f'{column}: {label}', xlabel=f'max={values.max():g}')
-        axes[0, 0].set_ylabel('count (log)')
-        axes[1, 0].set_ylabel('count (log)')
-        show(fig)
-    plot_cap_effects()
-    return
+    cap_fig, cap_axes = subplot_grid(2, 3, sharey='row')
+    for cap_index, (cap_column, (lower, upper)) in enumerate(CAP_RULES.items()):
+        before = train_raw[cap_column].dropna()
+        after = before.clip(lower=lower, upper=upper)
+        for cap_ax, cap_values, cap_label in zip(cap_axes[:, cap_index], (before, after), ('raw', 'clipped')):
+            cap_ax.hist(cap_values, bins=30)
+            cap_ax.set(yscale='log', title=f'{cap_column}: {cap_label}', xlabel=f'max={cap_values.max():g}')
+    cap_axes[0, 0].set_ylabel('count (log)')
+    cap_axes[1, 0].set_ylabel('count (log)')
+    show(cap_fig)
+    return (CAP_RULES,)
 
 
 @app.cell(hide_code=True)
@@ -1097,13 +1037,18 @@ def _(mo):
 
 
 @app.cell
-def _(display, normalize_cats, np, pd, test_raw, train_raw):
+def _(CAP_RULES, TEXT_COLS, display, normalize_cats, np, num_cols, pd, test_raw, train_raw):
+    frequency_cols = ('Agent_ID', 'Company_ID', 'Origin_Country')
+    native_cat_cols = [
+        col for col in TEXT_COLS if col != 'Assigned_Lab_Config'
+    ] + ['Agent_ID']
+
     def make_freq_maps(*dfs):
         """Label-free frequency of each ID value across the supplied frames."""
         combined = pd.concat([normalize_cats(d) for d in dfs], ignore_index=True)
         return {
             col: combined[col].value_counts(normalize=True)
-            for col in ('Agent_ID', 'Company_ID', 'Origin_Country')
+            for col in frequency_cols
         }
 
     freq_maps = make_freq_maps(train_raw, test_raw)
@@ -1116,18 +1061,9 @@ def _(display, normalize_cats, np, pd, test_raw, train_raw):
 
         Mirrors the feature values used by the scored ``pipeline.py`` transform."""
         df = normalize_cats(df)
-        numeric_cols = [
-            'Professionals_Count', 'Students_Count', 'Observers_Count',
-            'Practical_Hours', 'Theory_Hours', 'Registration_Days_Before',
-            'Prev_Course_Dropouts', 'Prev_Course_Attended',
-            'Pre_Course_Supports_Tickets', 'Physical_Course_Kits',
-            'Waiting_List_Days', 'Registration_Changes', 'Returning_Client',
-            'Daily_Tuition_Cost',
-        ]
-        out = df[numeric_cols].copy()
-        out['Students_Count'] = out['Students_Count'].clip(upper=10)
-        out['Practical_Hours'] = out['Practical_Hours'].clip(0, 12)
-        out['Daily_Tuition_Cost'] = out['Daily_Tuition_Cost'].clip(upper=600)
+        out = df[num_cols].copy()
+        for col, (lower, upper) in CAP_RULES.items():
+            out[col] = out[col].clip(lower=lower, upper=upper)
         dates = df['Course_Start_Date']
         out['start_month'] = dates.dt.month
         out['start_dow'] = dates.dt.dayofweek
@@ -1143,15 +1079,11 @@ def _(display, normalize_cats, np, pd, test_raw, train_raw):
         out['kits_per_participant'] = out['Physical_Course_Kits'] / total.replace(0, np.nan)
         out['tickets_per_participant'] = out['Pre_Course_Supports_Tickets'] / total.replace(0, np.nan)
         out['got_requested_lab'] = (df['Requested_Lab_Config'] == df['Assigned_Lab_Config']).astype(float)
-        out['has_company_id'] = df['Company_ID'].notna().astype(int)
-        out['has_agent_id'] = df['Agent_ID'].notna().astype(int)
-        for col in ('Agent_ID', 'Company_ID', 'Origin_Country'):
+        for col in ('Company_ID', 'Agent_ID'):
+            out[f'has_{col.lower()}'] = df[col].notna().astype(int)
+        for col in frequency_cols:
             out[f'{col}_freq'] = df[col].map(freq_maps[col]).fillna(0).astype(float)
-        for col in (
-            'Origin_Country', 'Catering_Package', 'Welcome_Gift_Type',
-            'Requested_Lab_Config', 'Enrollment_Type', 'Lanyard_Color',
-            'Client_Category', 'Submission_Source', 'Payment_Terms', 'Agent_ID',
-        ):
+        for col in native_cat_cols:
             out[col] = df[col].fillna('missing').astype('category')
         return out
 
@@ -1159,11 +1091,11 @@ def _(display, normalize_cats, np, pd, test_raw, train_raw):
         """Give every frame identical category levels so the boosters agree."""
         for col in train_X.select_dtypes('category').columns:
             cats = train_X[col].cat.categories
-            for o in others:
-                cats = cats.union(o[col].cat.categories)
+            for other in others:
+                cats = cats.union(other[col].cat.categories)
             train_X[col] = train_X[col].cat.set_categories(cats)
-            for o in others:
-                o[col] = o[col].cat.set_categories(cats)
+            for other in others:
+                other[col] = other[col].cat.set_categories(cats)
 
     X_all = build_features(train_raw, freq_maps)
     cat_cols = X_all.select_dtypes('category').columns
@@ -1238,14 +1170,9 @@ def _(
             X, y, test_size=0.25, random_state=seed, stratify=y
         )
         m = XGBClassifier(
-            n_estimators=300,
-            max_depth=4,
-            learning_rate=0.05,
-            subsample=0.9,
-            colsample_bytree=0.9,
-            eval_metric="logloss",
-            random_state=seed,
-            n_jobs=-1,
+            n_estimators=300, max_depth=4, learning_rate=0.05,
+            subsample=0.9, colsample_bytree=0.9,
+            eval_metric="logloss", random_state=seed, n_jobs=-1,
         )
         m.fit(Xtr, ytr)
         a = roc_auc_score(yva, m.predict_proba(Xva)[:, 1])
@@ -1340,19 +1267,11 @@ def _(
     @cache
     def fit_split_diagnostic(X_train, y_train, X_valid, seed):
         model = XGBClassifier(
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=6,
-            min_child_weight=10,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=0.1,
-            reg_lambda=3.0,
-            enable_categorical=True,
-            tree_method='hist',
-            eval_metric='auc',
-            random_state=seed,
-            n_jobs=-1,
+            n_estimators=300, learning_rate=0.05, max_depth=6,
+            min_child_weight=10, subsample=0.8, colsample_bytree=0.8,
+            reg_alpha=0.1, reg_lambda=3.0,
+            enable_categorical=True, tree_method='hist', eval_metric='auc',
+            random_state=seed, n_jobs=-1,
         )
         model.fit(X_train, y_train)
         return model.predict_proba(X_valid)[:, 1]
@@ -1506,7 +1425,6 @@ def _(
     Xva_t,
     cache,
     encode_for_continuous_models,
-    log_loss,
     make_xgb,
     pd,
     roc_auc_score,
@@ -1520,81 +1438,48 @@ def _(
     Xva_scaled = scaler.transform(Xva_enc)
 
     @cache
-    def hyper_tune(
-        X_train_scaled,
-        X_valid_scaled,
-        X_train_tree,
-        X_valid_tree,
-        y_train,
-        y_valid,
-        seed,
-    ):
+    def hyper_tune(X_train_scaled, X_valid_scaled, X_train_tree, X_valid_tree, y_train, y_valid, seed):
         tuning_rows = []
         validation_predictions = {}
 
-        def record_trial(family, axis, x, train_predictions, valid_predictions, keep=False):
+        def record_trial(family, axis, x, model, X_train, X_valid, keep=False):
+            train_predictions = model.predict_proba(X_train)[:, 1]
+            valid_predictions = model.predict_proba(X_valid)[:, 1]
             tuning_rows.append({
                 'family': family,
                 'axis': axis,
                 'x': x,
-                'train_logloss': log_loss(y_train, train_predictions),
-                'val_logloss': log_loss(y_valid, valid_predictions),
                 'train_AUC': roc_auc_score(y_train, train_predictions),
                 'val_AUC': roc_auc_score(y_valid, valid_predictions),
             })
             if keep:
                 validation_predictions[(family, x)] = valid_predictions
 
-        def fit_xgb_pair(depth):
-            model = make_xgb(
-                seed,
-                n_estimators=300,
-                learning_rate=0.05,
-                max_depth=depth,
-            )
-            model.fit(X_train_tree, y_train)
-            return (
-                model.predict_proba(X_train_tree)[:, 1],
-                model.predict_proba(X_valid_tree)[:, 1],
-            )
-
         for C in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0):
             model = LogisticRegression(C=C, max_iter=2000).fit(X_train_scaled, y_train)
             record_trial(
-                'Logistic Regression',
-                'C  → (less regularisation)',
-                C,
-                model.predict_proba(X_train_scaled)[:, 1],
-                model.predict_proba(X_valid_scaled)[:, 1],
-                keep=True,
+                'Logistic Regression', 'C  → (less regularisation)', C,
+                model, X_train_scaled, X_valid_scaled, keep=True,
             )
 
         for hidden_layers in (1, 2, 3, 4):
             model = MLPClassifier(
                 hidden_layer_sizes=(64,) * hidden_layers,
-                learning_rate_init=0.001,
-                max_iter=150,
-                early_stopping=True,
-                n_iter_no_change=10,
-                random_state=seed,
+                learning_rate_init=0.001, max_iter=150, early_stopping=True,
+                n_iter_no_change=10, random_state=seed,
             ).fit(X_train_scaled, y_train)
             record_trial(
-                'MLP neural network',
-                'hidden layers → (more depth)',
-                hidden_layers,
-                model.predict_proba(X_train_scaled)[:, 1],
-                model.predict_proba(X_valid_scaled)[:, 1],
-                keep=True,
+                'MLP neural network', 'hidden layers → (more depth)', hidden_layers,
+                model, X_train_scaled, X_valid_scaled, keep=True,
             )
 
         for depth in (2, 3, 4, 5, 6, 8, 10):
-            train_predictions, valid_predictions = fit_xgb_pair(depth)
+            model = make_xgb(
+                seed, n_estimators=300, learning_rate=0.05, max_depth=depth,
+            ).fit(X_train_tree, y_train)
             record_trial(
-                'Gradient-boosted trees (XGBoost)',
-                'max_depth → (more capacity)',
-                depth,
-                train_predictions,
-                valid_predictions,
+                'Gradient-boosted trees (XGBoost)', 'max_depth → (more capacity)', depth,
+                model, X_train_tree, X_valid_tree,
             )
 
         return tuning_rows, validation_predictions
@@ -1608,21 +1493,18 @@ def _(
 
 @app.cell
 def _(display, tuning_raw, validation_predictions):
-    def select_best_trials(results):
-        selected = results.copy()
-        selected['selected'] = False
-        for family, trials in selected.groupby('family', sort=False):
-            if family == 'Gradient-boosted trees (XGBoost)':
-                best_auc = trials['val_AUC'].max()
-                eligible = trials[trials['val_AUC'] >= best_auc - 0.0005]
-                chosen_index = eligible['x'].idxmin()
-            else:
-                chosen_index = trials['val_AUC'].idxmax()
-            selected.loc[chosen_index, 'selected'] = True
-        selected['log_x'] = selected['family'].eq('Logistic Regression')
-        return selected
+    tuning = tuning_raw.copy()
+    tuning['selected'] = False
+    for family, trials in tuning.groupby('family', sort=False):
+        if family == 'Gradient-boosted trees (XGBoost)':
+            best_auc = trials['val_AUC'].max()
+            eligible = trials[trials['val_AUC'] >= best_auc - 0.0005]
+            chosen_index = eligible['x'].idxmin()
+        else:
+            chosen_index = trials['val_AUC'].idxmax()
+        tuning.loc[chosen_index, 'selected'] = True
+    tuning['log_x'] = tuning['family'].eq('Logistic Regression')
 
-    tuning = select_best_trials(tuning_raw)
     selected_tuning = tuning.loc[
         tuning['selected'], ['family', 'x', 'train_AUC', 'val_AUC']
     ].copy()
@@ -1644,21 +1526,17 @@ def _(display, tuning_raw, validation_predictions):
 
 @app.cell
 def _(show, sns, tuning):
-    def plot_auc_sweep(data, x, facet, title, x_label=None, row=False):
-        id_vars = [facet, x] + [
-            col for col in ('axis', 'log_x', 'selected') if col in data
-        ]
+    def plot_auc_sweep(data, x, facet, title):
+        row_layout = facet == 'family'
         curves = (
-            data
-            .melt(
-                id_vars=id_vars,
+            data.melt(
+                id_vars=[facet, x, 'axis', 'log_x', 'selected'],
                 value_vars=['train_AUC', 'val_AUC'],
                 var_name='split',
                 value_name='ROC-AUC',
             )
             .replace({'split': {'train_AUC': 'Train', 'val_AUC': 'Validation'}})
         )
-        facets = {'row': facet} if row else {'col': facet}
         grid = sns.relplot(
             data=curves,
             x=x,
@@ -1668,55 +1546,27 @@ def _(show, sns, tuning):
             kind='line',
             markers=True,
             dashes=False,
-            height=4.0 if row else 4.2,
-            aspect=1.55 if row else 1.35,
+            height=4.0 if row_layout else 4.2,
+            aspect=1.55 if row_layout else 1.35,
             facet_kws={'sharex': False, 'sharey': False},
-            **facets,
+            **({'row': facet} if row_layout else {'col': facet}),
         )
         grid.set_titles('').set_ylabels('ROC-AUC')
         for value, ax in grid.axes_dict.items():
             subset = data[data[facet].eq(value)]
-            span = subset['train_AUC'].max() - subset['val_AUC'].min()
-            epsilon = max(span * 0.06, 0.001)
             ax.set(
-                title=str(value) if row else f'{facet.replace("_", " ")} = {value}',
-                xlabel=(
-                    subset['axis'].iloc[0]
-                    if 'axis' in data
-                    else x_label or x.replace('_', ' ')
-                ),
-                ylim=(
-                    max(0, subset['val_AUC'].min() - epsilon),
-                    min(1, subset['train_AUC'].max() + epsilon),
-                ),
+                title=str(value) if row_layout else f'{facet.replace("_", " ")} = {value}',
+                xlabel=subset['axis'].iloc[0],
             )
-            if 'log_x' in data and subset['log_x'].iloc[0]:
+            if subset['log_x'].iloc[0]:
                 ax.set_xscale('log')
-            chosen = (
-                subset.loc[subset['selected']].iloc[0]
-                if 'selected' in data and subset['selected'].any()
-                else subset.loc[subset['val_AUC'].idxmax()]
-            )
-            ax.scatter(
-                chosen[x], chosen['val_AUC'], marker='*', s=190,
-                color='#E69F00', edgecolor='black', linewidth=0.7, zorder=5,
-            )
-            ax.annotate(
-                'selected' if 'selected' in data else 'best',
-                (chosen[x], chosen['val_AUC']), xytext=(7, 7),
-                textcoords='offset points', fontsize=9,
-            )
+            chosen = subset.loc[subset['selected']].iloc[0]
+            ax.scatter(chosen[x], chosen['val_AUC'], marker='*', s=190, color='#E69F00', edgecolor='black', linewidth=0.7, zorder=5)
         grid.figure.suptitle(title, y=1.01)
         grid.figure.subplots_adjust(top=0.94, hspace=0.5, wspace=0.25)
         show(grid.figure)
 
-    plot_auc_sweep(
-        tuning,
-        x='x',
-        facet='family',
-        title='Focused tuning: training vs validation ROC-AUC',
-        row=True,
-    )
+    plot_auc_sweep(tuning, 'x', 'family', 'Focused tuning: training vs validation ROC-AUC')
     return (plot_auc_sweep,)
 
 
@@ -1749,7 +1599,6 @@ def _(
     Xva_t,
     cache,
     display,
-    log_loss,
     make_xgb,
     pd,
     plot_auc_sweep,
@@ -1761,42 +1610,34 @@ def _(
     @cache
     def run_budget_sweep(X_train, X_valid, y_train, y_valid, seed, depth):
         budget_rows = []
-        budget_predictions = {}
+        selected_prediction = None
         for lr_rate in (0.1, 0.03):
             for n in (50, 100, 200, 400, 700, 1000):
                 model = make_xgb(
-                    seed,
-                    n_estimators=n,
-                    learning_rate=lr_rate,
-                    max_depth=depth,
+                    seed, n_estimators=n, learning_rate=lr_rate, max_depth=depth,
                 )
                 model.fit(X_train, y_train)
                 train_predictions = model.predict_proba(X_train)[:, 1]
                 valid_predictions = model.predict_proba(X_valid)[:, 1]
-                budget_predictions[(lr_rate, n)] = valid_predictions
+                if (lr_rate, n) == (0.03, 700):
+                    selected_prediction = valid_predictions
                 budget_rows.append({
                     'learning_rate': lr_rate,
                     'n_trees': n,
-                    'train_logloss': log_loss(y_train, train_predictions),
-                    'val_logloss': log_loss(y_valid, valid_predictions),
                     'train_AUC': roc_auc_score(y_train, train_predictions),
                     'val_AUC': roc_auc_score(y_valid, valid_predictions),
                 })
-        return budget_rows, budget_predictions
+        return budget_rows, selected_prediction
 
-    budget_rows, budget_predictions = run_budget_sweep(
+    budget_rows, pred_xgb = run_budget_sweep(
         Xtr_t, Xva_t, y_tr, y_va, SEED, selected_depth
     )
     budget = pd.DataFrame(budget_rows)
-
-
-    plot_auc_sweep(
-        budget,
-        x='n_trees',
-        facet='learning_rate',
-        title='Boosting budget: train vs validation ROC-AUC',
-        x_label='number of trees',
-    )
+    budget['axis'] = 'number of trees'
+    budget['log_x'] = False
+    budget['selected'] = False
+    budget.loc[budget.groupby('learning_rate')['val_AUC'].idxmax(), 'selected'] = True
+    plot_auc_sweep(budget, 'n_trees', 'learning_rate', 'Boosting budget: train vs validation ROC-AUC')
 
     budget_best = budget.loc[
         budget.groupby('learning_rate')['val_AUC'].idxmax(),
@@ -1806,7 +1647,6 @@ def _(
         4
     )
     display(budget_best)
-    pred_xgb = budget_predictions[(0.03, 700)]
     return (pred_xgb,)
 
 
@@ -1846,10 +1686,7 @@ def _(
     @cache
     def fit_temporal_candidate(X_train, y_train, X_valid, seed, depth):
         model = make_xgb(
-            seed,
-            n_estimators=700,
-            learning_rate=0.03,
-            max_depth=depth,
+            seed, n_estimators=700, learning_rate=0.03, max_depth=depth,
         )
         model.fit(X_train, y_train)
         return model.predict_proba(X_valid)[:, 1]
@@ -1927,7 +1764,7 @@ def _(
     y_va,
 ):
     @cache
-    def fit_predict(name, X_tr, y_train, X_val, seed, sample_weight=None):
+    def fit_predict(name, X_tr, y_train, X_val, seed):
         """Fit one boosted-tree implementation and return P(drop) on X_val."""
         if name == "cat":
             cat_idx = [
@@ -1940,46 +1777,29 @@ def _(
                 X_tr2[c] = X_tr2[c].astype(str)
                 X_val2[c] = X_val2[c].astype(str)
             model = CatBoostClassifier(
-                iterations=1200,
-                learning_rate=0.05,
-                depth=6,
-                l2_leaf_reg=3.0,
-                random_seed=seed,
-                verbose=False,
-                allow_writing_files=False,
-                eval_metric='AUC',
-                cat_features=cat_idx,
+                iterations=1200, learning_rate=0.05, depth=6, l2_leaf_reg=3.0,
+                random_seed=seed, verbose=False, allow_writing_files=False,
+                eval_metric='AUC', cat_features=cat_idx,
             )
-            model.fit(X_tr2, y_train, sample_weight=sample_weight)
+            model.fit(X_tr2, y_train)
             return model.predict_proba(X_val2)[:, 1]
         if name == "lgbm":
             model = LGBMClassifier(
-                n_estimators=700,
-                learning_rate=0.03,
-                num_leaves=63,
-                min_child_samples=40,
-                subsample=0.9,
-                subsample_freq=1,
-                colsample_bytree=0.8,
-                reg_lambda=1.0,
-                random_state=seed,
-                n_jobs=-1,
-                verbosity=-1,
+                n_estimators=700, learning_rate=0.03, num_leaves=63,
+                min_child_samples=40, subsample=0.9, subsample_freq=1,
+                colsample_bytree=0.8, reg_lambda=1.0,
+                random_state=seed, n_jobs=-1, verbosity=-1,
             )
             model.fit(
                 X_tr,
                 y_train,
-                sample_weight=sample_weight,
                 categorical_feature=X_tr.select_dtypes("category").columns.tolist(),
             )
             return model.predict_proba(X_val)[:, 1]
         model = make_xgb(
-            seed,
-            n_estimators=700,
-            learning_rate=0.03,
-            max_depth=selected_depth,
+            seed, n_estimators=700, learning_rate=0.03, max_depth=selected_depth,
         )
-        model.fit(X_tr, y_train, sample_weight=sample_weight)
+        model.fit(X_tr, y_train)
         return model.predict_proba(X_val)[:, 1]
 
     def rank_avg(predictions):
@@ -2055,16 +1875,14 @@ def _(
     show,
     y_va,
 ):
-    def plot_evaluation_curves():
-        candidates = [('Logistic Regression', pred_lr), ('MLP', pred_mlp), ('Boosted-tree rank blend', blend_t)]
-        displays = [(RocCurveDisplay, 'ROC curve'), (PrecisionRecallDisplay, 'Precision–Recall curve')]
-        fig, axes = plt.subplots(1, 2, figsize=(15, 5.5), layout='compressed')
-        for ax, (display, title) in zip(axes, displays):
-            for index, (name, predictions) in enumerate(candidates):
-                display.from_predictions(y_va, predictions, name=name, ax=ax, plot_chance_level=index == len(candidates) - 1, despine=True)
-            ax.set_title(title)
-        show(fig)
-    plot_evaluation_curves()
+    curve_candidates = [('Logistic Regression', pred_lr), ('MLP', pred_mlp), ('Boosted-tree rank blend', blend_t)]
+    curve_displays = [(RocCurveDisplay, 'ROC curve'), (PrecisionRecallDisplay, 'Precision–Recall curve')]
+    curve_fig, curve_axes = plt.subplots(1, 2, figsize=(15, 5.5), layout='compressed')
+    for curve_ax, (display_class, curve_title) in zip(curve_axes, curve_displays):
+        for curve_index, (candidate_name, candidate_predictions) in enumerate(curve_candidates):
+            display_class.from_predictions(y_va, candidate_predictions, name=candidate_name, ax=curve_ax, plot_chance_level=curve_index == len(curve_candidates) - 1, despine=True)
+        curve_ax.set_title(curve_title)
+    show(curve_fig)
     return
 
 
@@ -2100,22 +1918,20 @@ def _(
     subplot_grid,
     y_va,
 ):
-    def evaluate_candidates():
-        candidates = [('Logistic Regression', pred_lr), ('MLP neural network', pred_mlp), ('Boosted-tree rank blend', blend_t)]
-        fig, axes = subplot_grid(1, 3)
-        metric_rows = []
-        for ax, (name, predictions) in zip(axes, candidates):
-            labels = (predictions >= 0.5).astype(int)
-            auc_score = roc_auc_score(y_va, predictions)
-            report = classification_report(y_va, labels, target_names=['completed', 'dropped'], output_dict=True, zero_division=0)
-            ConfusionMatrixDisplay.from_predictions(y_va, labels, display_labels=['completed', 'dropped'], values_format=',d', cmap='Blues', colorbar=False, ax=ax)
-            ax.set_title(f'{name} — ROC-AUC={auc_score:.3f}')
-            ax.grid(False)
-            metric_rows.append({'model': name, 'ROC-AUC': auc_score, 'accuracy': report['accuracy'], 'precision (dropped)': report['dropped']['precision'], 'recall (dropped)': report['dropped']['recall'], 'F1 (dropped)': report['dropped']['f1-score']})
-        fig.suptitle('Candidate-model confusion matrices at a 0.5 reference cutoff')
-        show(fig)
-        return pd.DataFrame(metric_rows).set_index('model')
-    evaluation_metrics = evaluate_candidates().round(3)
+    matrix_candidates = [('Logistic Regression', pred_lr), ('MLP neural network', pred_mlp), ('Boosted-tree rank blend', blend_t)]
+    matrix_fig, matrix_axes = subplot_grid(1, 3)
+    metric_rows = []
+    for matrix_ax, (matrix_name, matrix_predictions) in zip(matrix_axes, matrix_candidates):
+        matrix_labels = (matrix_predictions >= 0.5).astype(int)
+        matrix_auc = roc_auc_score(y_va, matrix_predictions)
+        matrix_report = classification_report(y_va, matrix_labels, target_names=['completed', 'dropped'], output_dict=True, zero_division=0)
+        ConfusionMatrixDisplay.from_predictions(y_va, matrix_labels, display_labels=['completed', 'dropped'], values_format=',d', cmap='Blues', colorbar=False, ax=matrix_ax)
+        matrix_ax.set_title(f'{matrix_name} — ROC-AUC={matrix_auc:.3f}')
+        matrix_ax.grid(False)
+        metric_rows.append({'model': matrix_name, 'ROC-AUC': matrix_auc, 'accuracy': matrix_report['accuracy'], 'precision (dropped)': matrix_report['dropped']['precision'], 'recall (dropped)': matrix_report['dropped']['recall'], 'F1 (dropped)': matrix_report['dropped']['f1-score']})
+    matrix_fig.suptitle('Candidate-model confusion matrices at a 0.5 reference cutoff')
+    show(matrix_fig)
+    evaluation_metrics = pd.DataFrame(metric_rows).set_index('model').round(3)
     display(evaluation_metrics)
     return
 
@@ -2157,17 +1973,15 @@ def _(mo):
 
 @app.cell
 def _(blend_t, show, sns, subplot_grid):
-    def plot_score_dist():
-        fig, ax = subplot_grid()
-        sns.histplot(blend_t, bins=50, ax=ax)
-        ax.axvline(0.5, linestyle='--', label='reference cutoff')
-        ax.axvspan(0.4, 0.6, color='orange', alpha=0.25, zorder=2, label='near-threshold band')
-        ax.set(xlabel='Rank-average risk score', title='Selected-blend score distribution')
-        ax.legend()
-        near_threshold = ((blend_t > 0.4) & (blend_t < 0.6)).mean() * 100
-        print(f'share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%')
-        show(fig)
-    plot_score_dist()
+    score_fig, score_ax = subplot_grid()
+    sns.histplot(blend_t, bins=50, ax=score_ax)
+    score_ax.axvline(0.5, linestyle='--', label='reference cutoff')
+    score_ax.axvspan(0.4, 0.6, color='orange', alpha=0.25, zorder=2, label='near-threshold band')
+    score_ax.set(xlabel='Rank-average risk score', title='Selected-blend score distribution')
+    score_ax.legend()
+    near_threshold = ((blend_t > 0.4) & (blend_t < 0.6)).mean() * 100
+    print(f'share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%')
+    show(score_fig)
     return
 
 
@@ -2208,10 +2022,7 @@ def _(
     @cache
     def compute_shap_analysis(X_train, X_valid, y_train, y_valid, seed, depth):
         shap_model = make_xgb(
-            seed,
-            n_estimators=700,
-            learning_rate=0.03,
-            max_depth=depth,
+            seed, n_estimators=700, learning_rate=0.03, max_depth=depth,
         )
         shap_model.fit(X_train, y_train)
         valid_scores = shap_model.predict_proba(X_valid)[:, 1]
@@ -2224,13 +2035,7 @@ def _(
         shap_values = np.asarray(shap_values)
         if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
             shap_values = shap_values[:, :, 1]
-        return (
-            X_shap,
-            sample_scores,
-            explainer.expected_value,
-            shap_values,
-            roc_auc_score(y_valid, valid_scores),
-        )
+        return X_shap, sample_scores, explainer.expected_value, shap_values, roc_auc_score(y_valid, valid_scores)
 
     X_shap, shap_scores, shap_base, shap_values, shap_auc = compute_shap_analysis(
         Xtr_t, Xva_t, y_tr, y_va, SEED, selected_depth
@@ -2263,15 +2068,12 @@ def _(X_shap, display, figure_size, np, pd, plt, shap, shap_values, show):
     )
     top = importance.head(20)
 
-    def plot_shap_importance():
-        fig, ax = plt.subplots(figsize=figure_size(2, 1), layout='constrained')
-        top.sort_values('mean_abs_shap').plot.barh(
-            x='feature', y='mean_abs_shap', legend=False, ax=ax
-        )
-        ax.set(xlabel='mean |SHAP value|', title='Top 20 features by SHAP importance')
-        show(fig)
-
-    plot_shap_importance()
+    importance_fig, importance_ax = plt.subplots(figsize=figure_size(2, 1), layout='constrained')
+    top.sort_values('mean_abs_shap').plot.barh(
+        x='feature', y='mean_abs_shap', legend=False, ax=importance_ax
+    )
+    importance_ax.set(xlabel='mean |SHAP value|', title='Top 20 features by SHAP importance')
+    show(importance_fig)
     display(top)
     return (importance,)
 
@@ -2347,7 +2149,8 @@ def _(mo):
 def _(X_shap, figure_size, importance, pd, plt, shap, shap_values, show, sns):
     top_feat = importance.loc[importance['feature'] != 'Payment_Terms', 'feature'].iloc[0] if importance['feature'].iloc[0] == 'Payment_Terms' else importance['feature'].iloc[0]
 
-    def plot_shap_dependence_readable(feature, max_categories=15):
+    def plot_shap_dependence_readable(feature):
+        max_categories = 15
         col_idx = list(X_shap.columns).index(feature)
         values = X_shap[feature]
         is_categorical = str(values.dtype) == 'category' or values.dtype == 'object' or values.nunique(dropna=False) <= max_categories
@@ -2365,10 +2168,7 @@ def _(X_shap, figure_size, importance, pd, plt, shap, shap_values, show, sns):
         ax.axvline(0, color='black', linewidth=1)
         ax.set(title=f'Mean SHAP by {feature} level (top {max_categories} + other)', xlabel='mean SHAP contribution', ylabel=feature)
         show(fig)
-    try:
-        plot_shap_dependence_readable(top_feat)
-    except Exception as e:
-        print(f'(dependence view skipped for {top_feat}: {e})')
+    plot_shap_dependence_readable(top_feat)
     return
 
 
@@ -2424,7 +2224,6 @@ def _(mo):
 
 @app.cell
 def _(
-    Path,
     SEED,
     TARGET,
     align_categories,
@@ -2437,72 +2236,58 @@ def _(
     test_raw,
     train_raw,
 ):
-    def build_submission_candidate(
-        out_path="data/Group_27_Submission_v3.csv", write=True
-    ):
-        fm = make_freq_maps(train_raw, test_raw)
-        X_train_full = build_features(train_raw, fm)
-        X_test = build_features(test_raw, fm)
-        align_categories(X_train_full, X_test)
-        y_full = train_raw[TARGET].values
+    candidate_path = "data/Group_27_Submission_v3.csv"
+    submission_maps = make_freq_maps(train_raw, test_raw)
+    X_train_full = build_features(train_raw, submission_maps)
+    X_test = build_features(test_raw, submission_maps)
+    align_categories(X_train_full, X_test)
+    y_full = train_raw[TARGET].values
 
-        preds = []
-        for name in ("lgbm", "xgb", "cat"):
-            preds.append(fit_predict(name, X_train_full, y_full, X_test, SEED))
-            print(f"fitted {name} on {len(X_train_full):,} rows")
+    submission_predictions = []
+    for submission_model in ("lgbm", "xgb", "cat"):
+        submission_predictions.append(
+            fit_predict(submission_model, X_train_full, y_full, X_test, SEED)
+        )
+        print(f"fitted {submission_model} on {len(X_train_full):,} rows")
 
-        submission = pd.DataFrame({
-            "Client_ID": test_raw["Client_ID"],
-            "Drop_Probability": rank_avg(preds),
-        })
-        if write:
-            submission.to_csv(out_path, index=False)
-            print(f"wrote {out_path}  ({len(submission):,} rows)")
-        return submission
+    submission = pd.DataFrame({
+        "Client_ID": test_raw["Client_ID"],
+        "Drop_Probability": rank_avg(submission_predictions),
+    })
+    submission.to_csv(candidate_path, index=False)
+    print(f"wrote {candidate_path}  ({len(submission):,} rows)")
+    display(submission.head())
+    print(submission["Drop_Probability"].describe())
 
-    def rebuild_and_compare():
-        submission = build_submission_candidate(write=True)
-        display(submission.head())
-        print(submission["Drop_Probability"].describe())
-
-        scored_path = Path("data/Group_27_Submission.csv")
-        if scored_path.exists():
-            scored_submission = pd.read_csv(scored_path)
-            comparison = scored_submission.merge(
-                submission,
-                on="Client_ID",
-                suffixes=("_scored_file", "_rebuilt"),
-                validate="one_to_one",
+    scored_submission = pd.read_csv("data/Group_27_Submission.csv")
+    comparison = scored_submission.merge(
+        submission,
+        on="Client_ID",
+        suffixes=("_scored_file", "_rebuilt"),
+        validate="one_to_one",
+    )
+    diff = (
+        comparison["Drop_Probability_scored_file"]
+        - comparison["Drop_Probability_rebuilt"]
+    ).abs()
+    submission_match = pd.DataFrame({
+        "rows_compared": [len(comparison)],
+        "max_abs_diff": [diff.max()],
+        "mean_abs_diff": [diff.mean()],
+        "spearman_corr": [
+            comparison["Drop_Probability_scored_file"].corr(
+                comparison["Drop_Probability_rebuilt"], method="spearman"
             )
-            diff = (
-                comparison["Drop_Probability_scored_file"]
-                - comparison["Drop_Probability_rebuilt"]
-            ).abs()
-            submission_match = pd.DataFrame({
-                "rows_compared": [len(comparison)],
-                "max_abs_diff": [diff.max()],
-                "mean_abs_diff": [diff.mean()],
-                "spearman_corr": [
-                    comparison["Drop_Probability_scored_file"].corr(
-                        comparison["Drop_Probability_rebuilt"], method="spearman"
-                    )
-                ],
-            })
-            display(submission_match)
-            if diff.max() < 1e-12:
-                print("rebuilt predictions match the scored file exactly.")
-            else:
-                print(
-                    "rebuilt predictions are not byte-identical to the scored file; "
-                    "use the stored scored CSV as the official leaderboard record."
-                )
-        else:
-            print(f"{scored_path} not found; skipped scored-file comparison.")
-
-    RUN_REBUILD_AND_COMPARE = True
-
-    if RUN_REBUILD_AND_COMPARE:
-        rebuild_and_compare()
+        ],
+    })
+    display(submission_match)
+    if diff.max() < 1e-12:
+        print("rebuilt predictions match the scored file exactly.")
+    else:
+        print(
+            "rebuilt predictions are not byte-identical to the scored file; "
+            "use the stored scored CSV as the official leaderboard record."
+        )
     return
 
 
