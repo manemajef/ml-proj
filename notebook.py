@@ -1040,7 +1040,7 @@ def _(mo):
 
     | Raw signal                | Engineered feature(s)                                        | Reason for testing it                                                                                                                                                |
     | ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | `Course_Start_Date`       | `start_month`, `start_week`, `start_dow`, `days_since_epoch` | Month/week represent possible yearly seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1. |
+    | `Course_Start_Date`       | `start_month`, `start_dow`, `days_since_epoch`               | Month represents broad seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1. ISO week was removed after a chronological ablation showed that it did not improve future-window AUC. |
     | Participant counts        | `total_participants`, `prof_share`                           | Total size and professional share describe group composition more directly than three separate counts.                                                               |
     | Practical/theory hours    | `total_hours`, `practical_share`                             | Total duration and hands-on share distinguish courses with the same raw hour count but different structure.                                                          |
     | Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Combines previous dropouts and attendance into one history signal; the `+1` handles clients with no attended courses.                                                |
@@ -1103,7 +1103,6 @@ def _(display, normalize_cats, np, pd, test_raw, train_raw):
         dates = df['Course_Start_Date']
         out['start_month'] = dates.dt.month
         out['start_dow'] = dates.dt.dayofweek
-        out['start_week'] = dates.dt.isocalendar().week.astype(float)
         if add_time:
             out['days_since_epoch'] = (dates - pd.Timestamp('2015-01-01')).dt.days
         total = out[['Professionals_Count', 'Students_Count', 'Observers_Count']].fillna(0).sum(axis=1)
@@ -1156,7 +1155,7 @@ def _(display, normalize_cats, np, pd, test_raw, train_raw):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The tree/native-categorical path contains 42 columns. A naive one-hot expansion of the same fields would create about 435 columns, mostly from agent and country, so this representation avoids 393 sparse dummy columns. The linear and neural baselines use one-hot encoding with rare levels grouped into `other`.
+    The tree/native-categorical path contains 41 columns. A naive one-hot expansion of the same fields would create about 434 columns, mostly from agent and country, so this representation avoids 393 sparse dummy columns. The linear and neural baselines use one-hot encoding with rare levels grouped into `other`.
     """)
     return
 
@@ -1277,7 +1276,7 @@ def _(TARGET, align_categories, build_features, make_freq_maps, pd, train_raw):
     Xtr_n = build_features(tr_raw, freq_maps_chrono, add_time=False)
     Xva_n = build_features(va_raw, freq_maps_chrono, add_time=False)
     align_categories(Xtr_n, Xva_n)
-    return Xtr_n, Xtr_t, Xva_n, Xva_t, y_tr, y_va
+    return Xtr_n, Xtr_t, Xva_n, Xva_t, tr_raw, va_raw, y_tr, y_va
 
 
 @app.cell(hide_code=True)
@@ -1313,10 +1312,11 @@ def _(OneHotEncoder, SEED, XGBClassifier, pd):
             n_estimators=700,
             learning_rate=0.03,
             max_depth=6,
-            min_child_weight=5,
-            subsample=0.9,
+            min_child_weight=10,
+            subsample=0.8,
             colsample_bytree=0.8,
-            reg_lambda=1.0,
+            reg_alpha=0.1,
+            reg_lambda=3.0,
             enable_categorical=True,
             tree_method="hist",
             eval_metric="auc",
@@ -1734,7 +1734,6 @@ def _(
     display,
     np,
     pd,
-    pred_xgb,
     rankdata,
     roc_auc_score,
     y_tr,
@@ -1791,10 +1790,11 @@ def _(
             n_estimators=700,
             learning_rate=0.03,
             max_depth=6,
-            min_child_weight=5,
-            subsample=0.9,
+            min_child_weight=10,
+            subsample=0.8,
             colsample_bytree=0.8,
-            reg_lambda=1.0,
+            reg_alpha=0.1,
+            reg_lambda=3.0,
             enable_categorical=True,
             tree_method='hist',
             eval_metric='auc',
@@ -1810,7 +1810,7 @@ def _(
 
     pred_t = {
         "lgbm": fit_predict("lgbm", Xtr_t, y_tr, Xva_t, SEED),
-        "xgb": pred_xgb,
+        "xgb": fit_predict("xgb", Xtr_t, y_tr, Xva_t, SEED),
         "cat": fit_predict("cat", Xtr_t, y_tr, Xva_t, SEED),
     }
     blend_t = rank_avg(list(pred_t.values()))
@@ -1821,7 +1821,7 @@ def _(
         .DataFrame({
             "model": [
                 "LightGBM (fixed setting)",
-                "XGBoost (tuned)",
+                "XGBoost (tuned + regularized)",
                 "CatBoost (fixed setting)",
                 "Rank-average blend (LGBM+XGB+Cat)",
             ],
@@ -1837,13 +1837,100 @@ def _(
     )
     blend_check["delta_vs_XGBoost"] = (blend_check["chrono_AUC"] - xgb_auc).round(4)
     display(blend_check)
-    return blend_t, fit_predict, rank_avg
+    return blend_t, fit_predict, pred_t, rank_avg
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    All three boosters perform similarly on this holdout. Adding the fixed LightGBM and CatBoost rankings raises AUC from 0.9135 for tuned XGBoost to 0.9156 for the rank-average blend, which we carry forward as the boosted-tree candidate.
+    All three boosters perform similarly on this holdout. After selecting the XGBoost depth and boosting budget, we use a slightly more conservative final configuration (`min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0`). Adding the fixed LightGBM and CatBoost rankings raises AUC from about 0.9159 for this XGBoost component to 0.9164 for the rank-average blend, which we carry forward as the boosted-tree candidate.
+    """)
+    return
+
+
+@app.cell
+def _(
+    SEED,
+    XGBClassifier,
+    Xtr_t,
+    Xva_t,
+    blend_t,
+    cache,
+    display,
+    fit_predict,
+    pd,
+    pred_t,
+    rank_avg,
+    roc_auc_score,
+    tr_raw,
+    va_raw,
+    y_tr,
+    y_va,
+):
+    @cache
+    def fit_previous_xgb(X_train, y_train, X_valid, seed):
+        model = XGBClassifier(
+            n_estimators=700,
+            learning_rate=0.03,
+            max_depth=6,
+            min_child_weight=5,
+            subsample=0.9,
+            colsample_bytree=0.8,
+            reg_lambda=1.0,
+            enable_categorical=True,
+            tree_method='hist',
+            eval_metric='auc',
+            random_state=seed,
+            n_jobs=-1,
+        )
+        model.fit(X_train, y_train)
+        return model.predict_proba(X_valid)[:, 1]
+
+    Xtr_with_week = Xtr_t.copy()
+    Xva_with_week = Xva_t.copy()
+    Xtr_with_week['start_week'] = (
+        tr_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
+    )
+    Xva_with_week['start_week'] = (
+        va_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
+    )
+
+    previous_xgb_no_week = fit_previous_xgb(
+        Xtr_t, y_tr, Xva_t, SEED
+    )
+    previous_with_week = rank_avg([
+        fit_predict('lgbm', Xtr_with_week, y_tr, Xva_with_week, SEED),
+        fit_previous_xgb(Xtr_with_week, y_tr, Xva_with_week, SEED),
+        fit_predict('cat', Xtr_with_week, y_tr, Xva_with_week, SEED),
+    ])
+    previous_no_week = rank_avg([
+        pred_t['lgbm'], previous_xgb_no_week, pred_t['cat']
+    ])
+
+    robustness_check = pd.DataFrame({
+        'final robustness step': [
+            'Previous blend: ISO week + previous XGBoost',
+            'Remove ISO week only',
+            'Remove ISO week + regularized XGBoost',
+        ],
+        'chronological AUC': [
+            roc_auc_score(y_va, previous_with_week),
+            roc_auc_score(y_va, previous_no_week),
+            roc_auc_score(y_va, blend_t),
+        ],
+    })
+    robustness_check['delta vs previous'] = (
+        robustness_check['chronological AUC']
+        - robustness_check.loc[0, 'chronological AUC']
+    )
+    display(robustness_check.round(6))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    This final ablation changes one decision at a time on the same future holdout. Removing ISO week improves the blend slightly, which is consistent with it duplicating information already represented by month, weekday, and the continuous time index. The more conservative XGBoost settings add a second small improvement without changing the other two blend components.
     """)
     return
 
@@ -2108,10 +2195,11 @@ def _(
             n_estimators=700,
             learning_rate=0.03,
             max_depth=6,
-            min_child_weight=5,
-            subsample=0.9,
+            min_child_weight=10,
+            subsample=0.8,
             colsample_bytree=0.8,
-            reg_lambda=1.0,
+            reg_alpha=0.1,
+            reg_lambda=3.0,
             enable_categorical=True,
             tree_method='hist',
             eval_metric='auc',
@@ -2233,7 +2321,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Removing `Payment_Terms` changes chronological AUC from 0.9156 to 0.9101. The field's exact recording time is still worth confirming with the data owner.
+    Removing `Payment_Terms` changes chronological AUC from 0.9164 to 0.9093. The field's exact recording time is still worth confirming with the data owner.
     """)
     return
 
@@ -2322,7 +2410,7 @@ def _(mo):
     mo.md(r"""
     # 10. Rebuilding and checking the submission
 
-    The stored `data/Group_27_Submission.csv` is the submission that received the leaderboard score. The block below can retrain the three-model blend and compare the rebuilt ranking with that submission.
+    The stored `data/Group_27_Submission.csv` is the earlier submission that received the recorded leaderboard score. The block below retrains the final three-model blend, writes `data/Group_27_Submission_v3.csv`, and compares its ranking with that historical submission.
     """)
     return
 
@@ -2343,7 +2431,7 @@ def _(
     train_raw,
 ):
     def build_submission_candidate(
-        out_path="data/Group_27_Submission_candidate.csv", write=False
+        out_path="data/Group_27_Submission_v3.csv", write=True
     ):
         fm = make_freq_maps(train_raw, test_raw)
         X_train_full = build_features(train_raw, fm)
@@ -2366,7 +2454,7 @@ def _(
         return submission
 
     def rebuild_and_compare():
-        submission = build_submission_candidate(write=False)
+        submission = build_submission_candidate(write=True)
         display(submission.head())
         print(submission["Drop_Probability"].describe())
 
@@ -2404,7 +2492,7 @@ def _(
         else:
             print(f"{scored_path} not found; skipped scored-file comparison.")
 
-    RUN_REBUILD_AND_COMPARE = False  # expensive; keep disabled during routine editing
+    RUN_REBUILD_AND_COMPARE = True
 
     if RUN_REBUILD_AND_COMPARE:
         rebuild_and_compare()
@@ -2426,11 +2514,11 @@ def _(mo):
 
     Nova Academy's test registrations occur after the training period, and both the monthly target rate and the adversarial-validation result (AUC 0.935) show temporal distribution shift. Model selection therefore used a four-month chronological holdout.
 
-    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. Model comparison confirmed that tuned XGBoost outperformed the Logistic Regression and MLP baselines on the future holdout. Adding fixed LightGBM and CatBoost rankings produced a small further gain, from XGBoost AUC 0.9135 to blend AUC 0.9156 on that split.
+    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. Model comparison confirmed that tuned XGBoost outperformed the Logistic Regression and MLP baselines on the future holdout. A final robustness check removed the redundant ISO-week feature and applied slightly stronger XGBoost regularization. The resulting LightGBM, XGBoost, and CatBoost rank-average blend reached chronological AUC 0.9164 on that split.
 
     The stored rank-average submission received test ROC-AUC **0.889314**, above the required 0.70.
 
-    Further work could include rolling temporal validation, confirming when `Payment_Terms` is recorded, and calibrating the selected blend score for cost-based operational thresholds.
+    Across three rolling future windows, the same two final adjustments improved mean AUC by about 0.0020 relative to the previous blend. The new hidden-test score is not yet known, so 0.889314 remains a historical result rather than a claim about this updated model. Further work could include confirming when `Payment_Terms` is recorded and calibrating the selected blend score for cost-based operational thresholds.
     """)
     return
 

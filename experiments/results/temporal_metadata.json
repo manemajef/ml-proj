@@ -1,0 +1,32 @@
+{
+  "splits": [
+    {
+      "name": "2016_may_aug",
+      "valid_start": "2016-05-01",
+      "valid_end": "2016-09-01"
+    },
+    {
+      "name": "2016_sep_dec",
+      "valid_start": "2016-09-01",
+      "valid_end": "2017-01-01"
+    },
+    {
+      "name": "2017_jan_apr",
+      "valid_start": "2017-01-01",
+      "valid_end": "2017-04-27"
+    }
+  ],
+  "weighting_variants": {
+    "uniform": null,
+    "half_life_720d": 720,
+    "half_life_365d": 365,
+    "half_life_180d": 180
+  },
+  "models": [
+    "lgbm",
+    "xgb",
+    "cat"
+  ],
+  "metric": "roc_auc",
+  "frequency_map_policy": "past training window only"
+}

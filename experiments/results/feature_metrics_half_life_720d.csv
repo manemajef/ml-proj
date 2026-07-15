@@ -1,0 +1,13 @@
+variant,weighting,split,model,auc,fit_seconds
+drop_start_week,half_life_720d,2016_may_aug,lgbm,0.9151872124482747,7.780290957998659
+drop_start_week,half_life_720d,2016_may_aug,xgb,0.9182145106298799,2.848536665995198
+drop_start_week,half_life_720d,2016_may_aug,cat,0.9186850421081845,18.829226000001654
+drop_start_week,half_life_720d,2016_may_aug,equal_rank_blend,0.9206127764946119,29.45805362399551
+drop_start_week,half_life_720d,2016_sep_dec,lgbm,0.914825164166896,9.189004916996055
+drop_start_week,half_life_720d,2016_sep_dec,xgb,0.9165258612811447,3.640263374996721
+drop_start_week,half_life_720d,2016_sep_dec,cat,0.9136773293491284,28.178549208998447
+drop_start_week,half_life_720d,2016_sep_dec,equal_rank_blend,0.9189704043519777,41.00781750099122
+drop_start_week,half_life_720d,2017_jan_apr,lgbm,0.9139132771899248,10.183719417000248
+drop_start_week,half_life_720d,2017_jan_apr,xgb,0.9148864835871039,4.674406040998292
+drop_start_week,half_life_720d,2017_jan_apr,cat,0.9104150622750318,39.83752791700681
+drop_start_week,half_life_720d,2017_jan_apr,equal_rank_blend,0.9154048313250268,54.69565337500535
