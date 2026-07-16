@@ -1370,30 +1370,10 @@ def _(mo):
 
 
 @app.cell
-def _(SEED, XGBClassifier):
-    XGB_FIXED_PARAMS = {
-        'colsample_bytree': 0.8,
-        'enable_categorical': True,
-        'tree_method': 'hist',
-        'eval_metric': 'auc',
-        'n_jobs': -1,
-        'min_child_weight': 10,
-        'subsample': 0.8,
-        'reg_alpha': 0.1,
-        'reg_lambda': 3.0,
-    }
-
-    def make_xgb(seed=SEED, **overrides):
-        params = {**XGB_FIXED_PARAMS, 'random_state': seed, **overrides}
-        return XGBClassifier(**params)
-
-    return XGB_FIXED_PARAMS, make_xgb
-
-
-@app.cell
 def _(
     SEED,
     TARGET,
+    XGBClassifier,
     Xtr_t,
     Xva_t,
     align_categories,
@@ -1401,7 +1381,6 @@ def _(
     cache,
     display,
     make_freq_maps,
-    make_xgb,
     pd,
     roc_auc_score,
     train_raw,
@@ -1412,11 +1391,15 @@ def _(
 ):
     @cache
     def fit_split_diagnostic(X_train, y_train, X_valid, seed):
-        model = make_xgb(
-            seed,
+        model = XGBClassifier(
             n_estimators=300,
             learning_rate=0.05,
             max_depth=6,
+            enable_categorical=True,
+            tree_method='hist',
+            eval_metric='auc',
+            random_state=seed,
+            n_jobs=-1,
         )
         model.fit(X_train, y_train)
         return model.predict_proba(X_valid)[:, 1]
@@ -1436,7 +1419,10 @@ def _(
     split_check = pd.DataFrame({
         'split': ['Chronological future holdout', 'Random holdout (diagnostic)'],
         'AUC': [
-            roc_auc_score(y_va, fit_split_diagnostic(Xtr_t, y_tr, Xva_t, SEED)),
+            roc_auc_score(
+                y_va,
+                fit_split_diagnostic(Xtr_t, y_tr, Xva_t, SEED),
+            ),
             roc_auc_score(
                 va_random[TARGET].values,
                 fit_split_diagnostic(
@@ -1455,7 +1441,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The fixed reference XGBoost reaches AUC 0.9142 on the chronological holdout and 0.9568 on the similarly sized random holdout. The random split mixes older and newer registrations, so it produces an optimistic score for a genuinely future-facing task. We therefore use the chronological holdout for every model and feature decision below.
+    The displayed comparison shows that the same fixed reference model scores materially higher on the random holdout than on the chronological future window. The random split mixes older and newer registrations, so it produces an optimistic score for a genuinely future-facing task. We therefore use the chronological holdout for every model and feature decision below.
     """)
     return
 
@@ -1532,7 +1518,7 @@ def _(mo):
 
     For each required family, we vary one parameter that controls capacity or regularization and evaluate it with chronological validation ROC-AUC, the project metric. Training AUC is shown beside it so we can see when extra capacity improves fit without improving the future holdout. Logistic Regression and MLP use the best validation score; for XGBoost we predefine a parsimonious rule and select the smallest depth within 0.0005 AUC of the best result.
 
-    For the MLP, the sweep varies hidden depth while keeping every layer at 64 units. For XGBoost, all trials use the same fixed stability settings (`min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0`); these values are design choices, not tuned results. The first sweep varies `max_depth` with a fixed boosting budget, and a second experiment tunes the interaction between learning rate and number of trees.
+    For the MLP, the sweep varies hidden depth while keeping every layer at 64 units. For XGBoost, the structural sweeps use one baseline profile (`min_child_weight=5`, `subsample=0.9`, `reg_alpha=0`, and `reg_lambda=1`). The first sweep varies `max_depth` with a fixed boosting budget, and a second experiment tunes the interaction between learning rate and number of trees. After selecting those capacity settings, Section 7.3 tests one pre-specified stronger regularization profile while holding the selected structure fixed.
     """)
     return
 
@@ -1543,16 +1529,31 @@ def _(
     MLPClassifier,
     SEED,
     StandardScaler,
+    XGBClassifier,
     Xtr_t,
     Xva_t,
     cache,
     encode_for_continuous_models,
-    make_xgb,
     pd,
     roc_auc_score,
     y_tr,
     y_va,
 ):
+    xgb_baseline_params = {
+        'colsample_bytree': 0.8,
+        'enable_categorical': True,
+        'tree_method': 'hist',
+        'eval_metric': 'auc',
+        'n_jobs': -1,
+        'min_child_weight': 5,
+        'subsample': 0.9,
+        'reg_alpha': 0.0,
+        'reg_lambda': 1.0,
+    }
+
+    def make_xgb(seed=SEED, **params):
+        return XGBClassifier(**params, random_state=seed)
+
     Xtr_enc, Xva_enc = encode_for_continuous_models(Xtr_t, Xva_t)
     # Scale the continuous baselines after fitting the encoder on the past window.
     scaler = StandardScaler()
@@ -1568,6 +1569,7 @@ def _(
         y_train,
         y_valid,
         seed,
+        xgb_fixed_params,
     ):
         tuning_rows = []
         validation_predictions = {}
@@ -1619,6 +1621,7 @@ def _(
         for depth in (2, 3, 4, 5, 6, 8, 10):
             model = make_xgb(
                 seed,
+                **xgb_fixed_params,
                 n_estimators=300,
                 learning_rate=0.05,
                 max_depth=depth,
@@ -1635,10 +1638,17 @@ def _(
         return tuning_rows, validation_predictions
 
     tuning_rows, validation_predictions = hyper_tune(
-        Xtr_scaled, Xva_scaled, Xtr_t, Xva_t, y_tr, y_va, SEED
+        Xtr_scaled,
+        Xva_scaled,
+        Xtr_t,
+        Xva_t,
+        y_tr,
+        y_va,
+        SEED,
+        xgb_baseline_params,
     )
     tuning_raw = pd.DataFrame(tuning_rows)
-    return tuning_raw, validation_predictions
+    return make_xgb, tuning_raw, validation_predictions, xgb_baseline_params
 
 
 @app.cell
@@ -1744,11 +1754,11 @@ def _(mo):
     mo.md(r"""
     ## 7.3 Improving the gradient model
 
-    Because XGBoost achieved the highest AUC in the family comparison, we now refine the strongest tree-based candidate. We first tune the boosting budget, then test whether adding fixed LightGBM and CatBoost components improves the ranking, and finally evaluate the continuous time index on the complete blend.
+    Because XGBoost achieved the highest AUC in the family comparison, we now refine the strongest tree-based candidate in three steps: tune its boosting budget and regularization, evaluate whether fixed LightGBM and CatBoost components improve the ranking, and finally test the continuous time index on the complete blend.
 
-    ### (a) Boosting budget: number of trees × learning rate
+    ### (a) Boosting budget and regularization
 
-    The number of trees and the learning rate interact directly. Consistent with our validation choice, we evaluate the tree budget directly in ROC-AUC. We evaluate various tree counts across two learning rate settings:
+    The number of trees and the learning rate interact directly. We first evaluate various tree counts across two learning-rate settings using the baseline profile from Section 7.2. We then hold the selected depth, learning rate, and tree count fixed and compare that baseline with one pre-specified stronger regularization profile. This separates the capacity decision from a compact robustness check rather than searching a large regularization grid.
     """)
     return
 
@@ -1765,16 +1775,26 @@ def _(
     plot_auc_sweep,
     roc_auc_score,
     selected_depth,
+    xgb_baseline_params,
     y_tr,
     y_va,
 ):
     @cache
-    def run_budget_sweep(X_train, X_valid, y_train, y_valid, seed, depth):
+    def run_budget_sweep(
+        X_train,
+        X_valid,
+        y_train,
+        y_valid,
+        seed,
+        depth,
+        xgb_fixed_params,
+    ):
         budget_rows = []
         for lr_rate in (0.1, 0.03):
             for n in (50, 100, 200, 400, 700, 1000):
                 model = make_xgb(
                     seed,
+                    **xgb_fixed_params,
                     n_estimators=n,
                     learning_rate=lr_rate,
                     max_depth=depth,
@@ -1791,7 +1811,13 @@ def _(
         return budget_rows
 
     budget_rows = run_budget_sweep(
-        Xtr_t, Xva_t, y_tr, y_va, SEED, selected_depth
+        Xtr_t,
+        Xva_t,
+        y_tr,
+        y_va,
+        SEED,
+        selected_depth,
+        xgb_baseline_params,
     )
     budget = pd.DataFrame(budget_rows)
     budget['axis'] = 'number of trees'
@@ -1820,13 +1846,58 @@ def _(
         f"selected XGBoost budget: learning_rate={selected_learning_rate:g}, "
         f"n_estimators={selected_n_trees}"
     )
-    return selected_learning_rate, selected_n_trees
+    xgb_strong_params = {
+        **xgb_baseline_params,
+        'min_child_weight': 10,
+        'subsample': 0.8,
+        'reg_alpha': 0.1,
+        'reg_lambda': 3.0,
+    }
+    regularization_profiles = {
+        'Baseline': xgb_baseline_params,
+        'Stronger': xgb_strong_params,
+    }
+    strong_model = make_xgb(
+        SEED,
+        **xgb_strong_params,
+        max_depth=selected_depth,
+        learning_rate=selected_learning_rate,
+        n_estimators=selected_n_trees,
+    ).fit(Xtr_t, y_tr)
+    regularization_comparison = pd.DataFrame([
+        {
+            'profile': 'Baseline',
+            'train_AUC': float(selected_budget['train_AUC']),
+            'val_AUC': float(selected_budget['val_AUC']),
+        },
+        {
+            'profile': 'Stronger',
+            'train_AUC': roc_auc_score(y_tr, strong_model.predict_proba(Xtr_t)[:, 1]),
+            'val_AUC': roc_auc_score(y_va, strong_model.predict_proba(Xva_t)[:, 1]),
+        },
+    ])
+    selected_profile_name = regularization_comparison.loc[
+        regularization_comparison['val_AUC'].idxmax(), 'profile'
+    ]
+    regularization_comparison['selected'] = regularization_comparison['profile'].eq(
+        selected_profile_name
+    )
+    display(regularization_comparison.round(4))
+    print(f"selected XGBoost regularization profile: {selected_profile_name}")
+    selected_xgb_fixed_params = regularization_profiles[selected_profile_name]
+    return (
+        regularization_comparison,
+        selected_learning_rate,
+        selected_n_trees,
+        selected_profile_name,
+        selected_xgb_fixed_params,
+    )
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    We select the learning-rate and tree-count pair with the highest chronological validation AUC. The `0.03 × 400` setting reaches AUC 0.9149, compared with 0.9125 for the best `0.1` setting at 100 trees. The displayed training curves show that additional trees can continue improving fit after future-window performance has stopped improving.
+    The baseline profile selects `learning_rate=0.03` and 700 trees with validation AUC 0.9135, compared with 0.9125 for the best `learning_rate=0.1` setting at 200 trees. At that selected structure, the stronger profile improves validation AUC to 0.9144, so we retain `min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0` for the selected XGBoost component. The training curves also show why we stop at the validation-selected budget: additional trees can continue improving fit after future-window performance has stopped improving.
 
     ### (b) Does adding other boosters help?
 
@@ -1843,7 +1914,6 @@ def _(
     LGBMClassifier,
     SEED,
     XGBClassifier,
-    XGB_FIXED_PARAMS,
     cache,
     np,
     rankdata,
@@ -1883,11 +1953,13 @@ def _(
             xgb_depth,
             xgb_learning_rate,
             xgb_n_estimators,
+            xgb_fixed_params,
             random_state=SEED,
         ):
             self.xgb_depth = xgb_depth
             self.xgb_learning_rate = xgb_learning_rate
             self.xgb_n_estimators = xgb_n_estimators
+            self.xgb_fixed_params = dict(xgb_fixed_params)
             self.random_state = random_state
             self.component_params = {
                 'lgbm': {
@@ -1904,7 +1976,7 @@ def _(
                     'verbosity': -1,
                 },
                 'xgb': {
-                    **XGB_FIXED_PARAMS,
+                    **self.xgb_fixed_params,
                     'random_state': random_state,
                     'max_depth': xgb_depth,
                     'learning_rate': xgb_learning_rate,
@@ -1926,9 +1998,7 @@ def _(
             self.feature_names_in_ = list(X.columns)
             self.categorical_columns_ = X.select_dtypes('category').columns.tolist()
             self.models_ = {
-                name: fit_booster_component(
-                    name, X, y, self.component_params[name]
-                )
+                name: fit_booster_component(name, X, y, self.component_params[name])
                 for name in self.component_names
             }
             return self
@@ -1939,12 +2009,15 @@ def _(
                 xgb_depth=self.xgb_depth,
                 xgb_learning_rate=self.xgb_learning_rate,
                 xgb_n_estimators=self.xgb_n_estimators,
+                xgb_fixed_params=self.xgb_fixed_params,
                 random_state=self.random_state,
             )
 
         def _prediction_frame(self, name, X):
             if list(X.columns) != self.feature_names_in_:
-                raise ValueError('Prediction columns must match the fitted feature matrix.')
+                raise ValueError(
+                    'Prediction columns must match the fitted feature matrix.'
+                )
             if name != 'cat':
                 return X
             cat_frame = X.copy()
@@ -1953,23 +2026,20 @@ def _(
             return cat_frame
 
         def predict_component(self, name, X):
-            return self.models_[name].predict_proba(
-                self._prediction_frame(name, X)
-            )[:, 1]
+            return self.models_[name].predict_proba(self._prediction_frame(name, X))[
+                :, 1
+            ]
 
         def predict_components(self, X):
             return {
-                name: self.predict_component(name, X)
-                for name in self.component_names
+                name: self.predict_component(name, X) for name in self.component_names
             }
 
         @staticmethod
         def rank_average(component_scores):
             """Average batch-wise percentile ranks, not calibrated probabilities."""
             scores = list(component_scores.values())
-            return np.mean(
-                [rankdata(score) / len(score) for score in scores], axis=0
-            )
+            return np.mean([rankdata(score) / len(score) for score in scores], axis=0)
 
         def predict_rank_score(self, X):
             """Score one complete evaluation batch with the selected rank blend."""
@@ -1994,6 +2064,7 @@ def _(
     selected_depth,
     selected_learning_rate,
     selected_n_trees,
+    selected_xgb_fixed_params,
     y_tr,
     y_va,
 ):
@@ -2001,6 +2072,7 @@ def _(
         xgb_depth=selected_depth,
         xgb_learning_rate=selected_learning_rate,
         xgb_n_estimators=selected_n_trees,
+        xgb_fixed_params=selected_xgb_fixed_params,
         random_state=SEED,
     ).fit(Xtr_t, y_tr)
     pred_t = selected_blend.predict_components(Xva_t)
@@ -2012,7 +2084,7 @@ def _(
         .DataFrame({
             'model': [
                 'LightGBM (fixed setting)',
-                'XGBoost (tuned depth and budget)',
+                'XGBoost (selected configuration)',
                 'CatBoost (fixed setting)',
                 'Rank-average blend (LGBM+XGB+Cat)',
             ],
@@ -2034,7 +2106,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    All XGBoost trials use the same fixed stability settings (`min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0`). The tuned XGBoost component reaches AUC 0.9149; adding the fixed LightGBM and CatBoost rankings raises the complete blend to 0.9160. We therefore treat the fitted rank blend as the single boosted-tree candidate for the remaining ablations, evaluation, and final refit.
+    The selected regularized XGBoost component reaches AUC 0.9144; adding the fixed LightGBM and CatBoost rankings raises the complete blend to about 0.9159. We therefore treat the fitted rank blend as the single boosted-tree candidate for the remaining ablations, evaluation, and final refit.
 
     ### (c) Continuous time index on the complete blend
 
@@ -2068,8 +2140,7 @@ def _(
         ],
     })
     temporal_check['delta_vs_without_index'] = (
-        temporal_check['chronological AUC']
-        - temporal_check.loc[0, 'chronological AUC']
+        temporal_check['chronological AUC'] - temporal_check.loc[0, 'chronological AUC']
     )
     display(temporal_check.round(6))
     return
@@ -2078,7 +2149,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Adding the continuous time index improves AUC from 0.912731 to 0.916044, so we use it in the final evaluation.
+    Adding the continuous time index improves AUC from 0.912548 to 0.915926, so we use it in the final evaluation.
     """)
     return
 
@@ -2367,7 +2438,7 @@ def _(X_shap, display, figure_size, np, pd, plt, shap, shap_values, show):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The strongest XGBoost contributions broadly match the earlier exploration. The leading features are `Payment_Terms`, `Origin_Country`, `Agent_ID`, `days_since_epoch`, `tickets_per_participant`, and `Registration_Days_Before`. Raw country and agent identity contribute more than their frequency encodings, while the engineered ratios add smaller supporting signals.
+    The strongest XGBoost contributions broadly match the earlier exploration. The leading features are `Payment_Terms`, `Origin_Country`, `days_since_epoch`, `Agent_ID`, `tickets_per_participant`, and `Registration_Days_Before`. Raw country and agent identity contribute more than their frequency encodings, while the engineered ratios add smaller supporting signals.
 
     ### Checking the suspicious `Payment_Terms` signal
 
@@ -2412,7 +2483,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Removing `Payment_Terms` from every blend component changes chronological AUC from 0.9160 to 0.9092. This sensitivity result shows that the model relies on the field, but it does not prove that the field is safe from timing leakage; its exact recording time still needs confirmation with the data owner.
+    Removing `Payment_Terms` from every blend component changes chronological AUC from 0.9159 to 0.9101. This sensitivity result shows that the model relies on the field, but it does not prove that the field is safe from timing leakage; its exact recording time still needs confirmation with the data owner.
     """)
     return
 
@@ -2547,42 +2618,48 @@ def _(
     align_categories(X_train_full, X_test)
     y_full = train_raw[TARGET].values
 
-    submission_blend = selected_blend.clone().fit(X_train_full, y_full)
-    submission_scores = submission_blend.predict_rank_score(X_test)
-    print(
-        f"fitted the three-component boosted rank blend on "
-        f"{len(X_train_full):,} rows"
-    )
+    def submit():
+        submission_blend = selected_blend.clone().fit(X_train_full, y_full)
+        submission_scores = submission_blend.predict_rank_score(X_test)
+        print(
+            f"fitted the three-component boosted rank blend on "
+            f"{len(X_train_full):,} rows"
+        )
 
-    submission = pd.DataFrame({
-        "Client_ID": test_raw["Client_ID"],
-        "Drop_Probability": submission_scores,
-    })
-    score_values = submission['Drop_Probability'].to_numpy()
-    integrity_checks = {
-        'exact columns': list(submission.columns)
-        == ['Client_ID', 'Drop_Probability'],
-        '15,866 rows': len(submission) == 15866,
-        'exact test Client_ID order': submission['Client_ID'].reset_index(drop=True).equals(
-            test_raw['Client_ID'].reset_index(drop=True)
-        ),
-        'unique Client_ID': submission['Client_ID'].is_unique,
-        'no missing values': not submission.isna().any().any(),
-        'finite scores': np.isfinite(score_values).all(),
-        'scores within [0, 1]': ((score_values >= 0) & (score_values <= 1)).all(),
-    }
-    submission_integrity = pd.DataFrame({
-        'check': integrity_checks.keys(),
-        'passed': integrity_checks.values(),
-    })
-    display(submission_integrity)
-    if not all(integrity_checks.values()):
-        raise ValueError('Submission integrity check failed; file was not written.')
+        submission = pd.DataFrame({
+            "Client_ID": test_raw["Client_ID"],
+            "Drop_Probability": submission_scores,
+        })
+        score_values = submission['Drop_Probability'].to_numpy()
+        integrity_checks = {
+            'exact columns': list(submission.columns)
+            == ['Client_ID', 'Drop_Probability'],
+            '15,866 rows': len(submission) == 15866,
+            'exact test Client_ID order': submission['Client_ID']
+            .reset_index(drop=True)
+            .equals(test_raw['Client_ID'].reset_index(drop=True)),
+            'unique Client_ID': submission['Client_ID'].is_unique,
+            'no missing values': not submission.isna().any().any(),
+            'finite scores': np.isfinite(score_values).all(),
+            'scores within [0, 1]': ((score_values >= 0) & (score_values <= 1)).all(),
+        }
+        submission_integrity = pd.DataFrame({
+            'check': integrity_checks.keys(),
+            'passed': integrity_checks.values(),
+        })
+        display(submission_integrity)
+        if not all(integrity_checks.values()):
+            raise ValueError('Submission integrity check failed; file was not written.')
 
-    submission.to_csv(submission_path, index=False)
-    print(f"wrote {submission_path}  ({len(submission):,} rows)")
-    display(submission.head())
-    print(submission['Drop_Probability'].describe())
+        submission.to_csv(submission_path, index=False)
+        print(f"wrote {submission_path}  ({len(submission):,} rows)")
+        display(submission.head())
+        print(submission['Drop_Probability'].describe())
+
+    SUBMIT = False
+    if SUBMIT:
+        submit()
+
     return
 
 
@@ -2601,7 +2678,7 @@ def _(mo):
 
     Nova Academy's test registrations occur after the training period, and both the monthly target rate and the adversarial-validation result (AUC 0.935) show temporal distribution shift. Model selection therefore used a four-month chronological holdout.
 
-    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. The three required model families were tuned on the future holdout: Logistic Regression selected `C=0.001`, the MLP selected three 64-unit hidden layers, and XGBoost selected depth 10 with `learning_rate=0.03` and 400 trees. LightGBM and CatBoost were used only as fixed auxiliary blend components. The complete rank-average blend reached chronological ROC-AUC 0.9160 and Average Precision 0.897.
+    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. The three required model families were tuned on the future holdout: Logistic Regression selected `C=0.001`, the MLP selected three 64-unit hidden layers, and the baseline XGBoost sweep selected depth 6 with `learning_rate=0.03` and 700 trees. A controlled comparison at that structure then selected the stronger regularization profile. LightGBM and CatBoost were used only as fixed auxiliary blend components. The complete rank-average blend reached chronological ROC-AUC 0.9159 and Average Precision 0.897.
 
     The final CSV contains continuous rank-average risk scores in the required two-column format. Its hidden-test performance is unknown unless this exact new file is scored separately; the notebook does not reuse a score from an older model specification.
 
