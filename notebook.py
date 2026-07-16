@@ -7,8 +7,9 @@ app = marimo.App(width="medium", auto_download=["html", "ipynb"])
 @app.cell
 def _():
     import marimo as mo
+    USE_V3 = False  # False = verified v2 fallback; True = v3 candidate
 
-    return (mo,)
+    return USE_V3, mo
 
 
 @app.cell(hide_code=True)
@@ -38,7 +39,7 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(USE_V3):
     from functools import wraps
     from inspect import getsource
     import warnings
@@ -55,7 +56,13 @@ def _():
     from lightgbm import LGBMClassifier
     from scipy.stats import rankdata
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import roc_auc_score, classification_report, RocCurveDisplay, PrecisionRecallDisplay, ConfusionMatrixDisplay
+    from sklearn.metrics import (
+        roc_auc_score,
+        classification_report,
+        RocCurveDisplay,
+        PrecisionRecallDisplay,
+        ConfusionMatrixDisplay,
+    )
     from sklearn.model_selection import train_test_split
     from sklearn.neural_network import MLPClassifier
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -68,14 +75,16 @@ def _():
 
         @wraps(fn)
         def wrapped(*args, **kwargs):
-            path = cache_dir / f'{joblib_hash((source_hash, args, kwargs))}.joblib'
+            path = cache_dir / f'{joblib_hash((USE_V3, source_hash, args, kwargs))}.joblib'
             if path.exists():
                 return load(path)
             result = fn(*args, **kwargs)
             path.parent.mkdir(parents=True, exist_ok=True)
             dump(result, path)
             return result
+
         return wrapped
+
     warnings.filterwarnings('ignore')
     sns.set_theme(
         style='whitegrid',
@@ -108,10 +117,7 @@ def _():
 
     def subplot_grid(nrows=1, ncols=1, **kwargs):
         kwargs.setdefault('layout', 'constrained')
-        return plt.subplots(
-            nrows, ncols, figsize=figure_size(nrows, ncols), **kwargs
-        )
-
+        return plt.subplots(nrows, ncols, figsize=figure_size(nrows, ncols), **kwargs)
 
     return (
         CatBoostClassifier,
@@ -231,13 +237,18 @@ def _(mo):
 def _(TARGET, display, pd, show, subplot_grid, train_raw):
     target_counts = train_raw[TARGET].value_counts().sort_index()
     target_rate = train_raw[TARGET].value_counts(normalize=True).sort_index()
-    balance = pd.DataFrame({'count': target_counts, 'rate_%': (target_rate * 100).round(1)})
+    balance = pd.DataFrame({
+        'count': target_counts,
+        'rate_%': (target_rate * 100).round(1),
+    })
     balance.index = ['0 = completed', '1 = dropped']
     display(balance)
 
     balance_fig, balance_ax = subplot_grid()
     balance['rate_%'].plot.bar(ax=balance_ax)
-    balance_ax.set(title='Course outcomes in the training data', xlabel='', ylabel='share (%)')
+    balance_ax.set(
+        title='Course outcomes in the training data', xlabel='', ylabel='share (%)'
+    )
     balance_ax.tick_params(axis='x', rotation=0)
     show(balance_fig)
     return
@@ -276,16 +287,28 @@ def _(TARGET, show, subplot_grid, test_raw, train_raw):
     train_end = train_raw['Course_Start_Date'].max()
     test_start = test_raw['Course_Start_Date'].min()
     test_end = test_raw['Course_Start_Date'].max()
-    print(f"train dates: {train_raw['Course_Start_Date'].min().date()} -> {train_end.date()}")
+    print(
+        f"train dates: {train_raw['Course_Start_Date'].min().date()} -> {train_end.date()}"
+    )
     print(f'test  dates: {test_start.date()} -> {test_end.date()}')
-    monthly = train_raw.set_index('Course_Start_Date').resample('MS')[TARGET].mean().mul(100)
+    monthly = (
+        train_raw.set_index('Course_Start_Date').resample('MS')[TARGET].mean().mul(100)
+    )
 
     monthly_fig, monthly_ax = subplot_grid()
     monthly.plot(marker='o', ax=monthly_ax)
-    monthly_ax.axhline(train_raw[TARGET].mean() * 100, linestyle='--', label='train average')
-    monthly_ax.axvline(train_end, linestyle='--', label=f'train ends ({train_end.date()})')
+    monthly_ax.axhline(
+        train_raw[TARGET].mean() * 100, linestyle='--', label='train average'
+    )
+    monthly_ax.axvline(
+        train_end, linestyle='--', label=f'train ends ({train_end.date()})'
+    )
     monthly_ax.axvline(test_end, linestyle=':', label=f'test ends ({test_end.date()})')
-    monthly_ax.set(xlim=(train_raw['Course_Start_Date'].min(), test_end), ylabel='drop rate (%)', title='Drop rate over time — training period and the hidden test horizon')
+    monthly_ax.set(
+        xlim=(train_raw['Course_Start_Date'].min(), test_end),
+        ylabel='drop rate (%)',
+        title='Drop rate over time — training period and the hidden test horizon',
+    )
     monthly_ax.legend()
     show(monthly_fig)
     return
@@ -345,12 +368,17 @@ def _(TARGET, display, pd, train_raw):
     ]
 
     missing_summary = (
-        pd.concat({
-            col: train_raw.assign(is_missing=train_raw[col].isna())
-            .groupby('is_missing')[TARGET]
-            .agg(count='size', drop_rate='mean')
-            for col in missingness_cols
-        }, names=['column'])
+        pd
+        .concat(
+            {
+                col: train_raw
+                .assign(is_missing=train_raw[col].isna())
+                .groupby('is_missing')[TARGET]
+                .agg(count='size', drop_rate='mean')
+                for col in missingness_cols
+            },
+            names=['column'],
+        )
         .reset_index()
         .assign(drop_rate_pct=lambda df: (df['drop_rate'] * 100).round(1))
         .drop(columns='drop_rate')
@@ -386,8 +414,7 @@ def _(train_raw):
     for text_col in TEXT_COLS:
         top_values = train_raw[text_col].value_counts(normalize=True).head(N_COUNT)
         cats = [
-            f'{value!r}: ({share * 100:.1f}%)'
-            for value, share in top_values.items()
+            f'{value!r}: ({share * 100:.1f}%)' for value, share in top_values.items()
         ]
         cats_str = '\n'.join(
             ' | '.join(cats[i : i + 3]) for i in range(0, len(cats), 3)
@@ -409,8 +436,21 @@ def _(mo):
 @app.cell
 def _(pd):
     # Placeholder strings that mean "missing", in any casing/padding after canonicalisation.
-    COMMON_NANS = {'','-','--','.','?','na','n/a','nan','none','null','unknown','unknonwn',}
-    COUNTRY_ALIASES = {'cn': 'chn'} # both mean China
+    COMMON_NANS = {
+        '',
+        '-',
+        '--',
+        '.',
+        '?',
+        'na',
+        'n/a',
+        'nan',
+        'none',
+        'null',
+        'unknown',
+        'unknonwn',
+    }
+    COUNTRY_ALIASES = {'cn': 'chn'}  # both mean China
 
     def canonicalize(s: pd.Series) -> pd.Series:
         s = s.astype('string').str.strip().str.lower()
@@ -487,9 +527,8 @@ def _(mo):
 @app.cell
 def _(TARGET, TEXT_COLS, clean_train, show, subplot_grid):
     def plot_dropout_by_category(df, col, ax, min_count=50, top_n=10):
-        stats = (
-            df.groupby(col, dropna=False)[TARGET]
-            .agg(drop_rate="mean", count="size")
+        stats = df.groupby(col, dropna=False)[TARGET].agg(
+            drop_rate="mean", count="size"
         )
 
         stats = (
@@ -515,7 +554,7 @@ def _(TARGET, TEXT_COLS, clean_train, show, subplot_grid):
     category_fig, category_axes = subplot_grid((len(category_features) + 1) // 2, 2)
     for category_ax, category_feature in zip(category_axes.flat, category_features):
         plot_dropout_by_category(clean_train, category_feature, category_ax)
-    for unused_category_ax in category_axes.flat[len(category_features):]:
+    for unused_category_ax in category_axes.flat[len(category_features) :]:
         unused_category_ax.set_visible(False)
     show(category_fig)
     return (plot_dropout_by_category,)
@@ -548,17 +587,45 @@ def _(TARGET, clean_train, display, pd, show, sns, subplot_grid):
     country_min_n = 150
     country_top_n = 12
     overall_drop = clean_train[TARGET].mean()
-    country_stats = clean_train.groupby('Origin_Country', dropna=False)[TARGET].agg(count='size', drop_rate='mean').assign(drop_rate_pct=lambda d: d['drop_rate'] * 100, lift_pp=lambda d: (d['drop_rate'] - overall_drop) * 100)
-    top_by_size = country_stats.sort_values('count', ascending=False).head(country_top_n)
-    extreme_by_lift = country_stats[country_stats['count'] >= country_min_n].iloc[lambda d: d['lift_pp'].abs().sort_values(ascending=False).index.map(d.index.get_loc)].head(country_top_n)
+    country_stats = (
+        clean_train
+        .groupby('Origin_Country', dropna=False)[TARGET]
+        .agg(count='size', drop_rate='mean')
+        .assign(
+            drop_rate_pct=lambda d: d['drop_rate'] * 100,
+            lift_pp=lambda d: (d['drop_rate'] - overall_drop) * 100,
+        )
+    )
+    top_by_size = country_stats.sort_values('count', ascending=False).head(
+        country_top_n
+    )
+    extreme_by_lift = (
+        country_stats[country_stats['count'] >= country_min_n]
+        .iloc[
+            lambda d: (
+                d['lift_pp']
+                .abs()
+                .sort_values(ascending=False)
+                .index.map(d.index.get_loc)
+            )
+        ]
+        .head(country_top_n)
+    )
 
     def plot_country_dropout(stats, title, ax):
         stats = stats.sort_values('drop_rate_pct')
-        labels = [f"{(idx if pd.notna(idx) else '<missing>')} (n={int(row['count']):,})" for idx, row in stats.iterrows()]
+        labels = [
+            f"{(idx if pd.notna(idx) else '<missing>')} (n={int(row['count']):,})"
+            for idx, row in stats.iterrows()
+        ]
         below, above = sns.color_palette(n_colors=2)
         colors = [above if lift >= 0 else below for lift in stats['lift_pp']]
         ax.barh(labels, stats['drop_rate_pct'], color=colors)
-        ax.axvline(overall_drop * 100, linestyle='--', label=f'overall ({overall_drop * 100:.1f}%)')
+        ax.axvline(
+            overall_drop * 100,
+            linestyle='--',
+            label=f'overall ({overall_drop * 100:.1f}%)',
+        )
         ax.set(xlabel='drop rate (%)', title=title)
         ax.legend()
 
@@ -570,7 +637,12 @@ def _(TARGET, clean_train, display, pd, show, sns, subplot_grid):
     for country_ax, (country_plot_stats, country_title) in zip(country_axes, plots):
         plot_country_dropout(country_plot_stats, country_title, country_ax)
     show(country_fig)
-    display(country_stats.sort_values('count', ascending=False).head(country_top_n)[['count', 'drop_rate_pct', 'lift_pp']].round(2))
+    display(
+        country_stats
+        .sort_values('count', ascending=False)
+        .head(country_top_n)[['count', 'drop_rate_pct', 'lift_pp']]
+        .round(2)
+    )
     return
 
 
@@ -619,13 +691,19 @@ def _(
     subplot_grid,
     train_raw,
 ):
-    company_presence = train_raw.groupby(train_raw['Company_ID'].notna())[TARGET].agg(count='size', drop_rate='mean')
+    company_presence = train_raw.groupby(train_raw['Company_ID'].notna())[TARGET].agg(
+        count='size', drop_rate='mean'
+    )
     company_presence.index = ['no company_id', 'has company_id']
 
     identifier_fig, identifier_axes = subplot_grid(1, 2)
-    plot_dropout_by_category(clean_train, 'Agent_ID', identifier_axes[0], min_count=150, top_n=12)
+    plot_dropout_by_category(
+        clean_train, 'Agent_ID', identifier_axes[0], min_count=150, top_n=12
+    )
     identifier_axes[1].bar(company_presence.index, company_presence['drop_rate'] * 100)
-    identifier_axes[1].set(ylabel='drop rate (%)', title='Drop rate by Company_ID presence')
+    identifier_axes[1].set(
+        ylabel='drop rate (%)', title='Drop rate by Company_ID presence'
+    )
     show(identifier_fig)
     display(company_presence)
     return
@@ -693,12 +771,25 @@ def _(TARGET, display, pd, train_raw):
         if c not in ID_LIKE + [TARGET]
     ]
 
-    numeric_summary = train_raw[num_cols].agg(['mean', 'median', 'std', 'min', 'max', 'skew']).T
+    numeric_summary = (
+        train_raw[num_cols].agg(['mean', 'median', 'std', 'min', 'max', 'skew']).T
+    )
     numeric_summary.insert(0, 'missing_%', train_raw[num_cols].isna().mean() * 100)
-    numeric_summary.insert(1, 'corr_target', train_raw[num_cols].corrwith(train_raw[TARGET]))
+    numeric_summary.insert(
+        1, 'corr_target', train_raw[num_cols].corrwith(train_raw[TARGET])
+    )
     numeric_summary = (
         numeric_summary
-        .round({'missing_%': 1, 'corr_target': 3, 'mean': 2, 'median': 2, 'std': 2, 'min': 2, 'max': 2, 'skew': 2})
+        .round({
+            'missing_%': 1,
+            'corr_target': 3,
+            'mean': 2,
+            'median': 2,
+            'std': 2,
+            'min': 2,
+            'max': 2,
+            'skew': 2,
+        })
         .rename_axis('column')
         .reset_index()
         .sort_values('corr_target', key=abs, ascending=False)
@@ -756,9 +847,14 @@ def _(TARGET, pd, show, subplot_grid, train_raw):
         ax.legend()
         ax.tick_params(axis='x', labelrotation=45)
 
-    numeric_bin_specs = [('Registration_Days_Before', 8), ('Pre_Course_Supports_Tickets', 6)]
+    numeric_bin_specs = [
+        ('Registration_Days_Before', 8),
+        ('Pre_Course_Supports_Tickets', 6),
+    ]
     numeric_bin_fig, numeric_bin_axes = subplot_grid(1, 2)
-    for numeric_bin_ax, (numeric_feature, bins) in zip(numeric_bin_axes, numeric_bin_specs):
+    for numeric_bin_ax, (numeric_feature, bins) in zip(
+        numeric_bin_axes, numeric_bin_specs
+    ):
         plot_dropout_by_bins(train_raw, numeric_feature, bins, numeric_bin_ax)
     show(numeric_bin_fig)
     return
@@ -860,11 +956,14 @@ def _(pd, show, sns, test_raw, train_raw):
         "Registration_Changes",
     ]
 
-    tail_long = pd.concat([
-        df[col].dropna().rename('value').to_frame().assign(split=split, column=col)
-        for split, df in [('train', train_raw), ('test', test_raw)]
-        for col in TAIL_CHECK_COLS
-    ], ignore_index=True)
+    tail_long = pd.concat(
+        [
+            df[col].dropna().rename('value').to_frame().assign(split=split, column=col)
+            for split, df in [('train', train_raw), ('test', test_raw)]
+            for col in TAIL_CHECK_COLS
+        ],
+        ignore_index=True,
+    )
 
     grid = sns.catplot(
         data=tail_long,
@@ -914,9 +1013,18 @@ def _(display, pd, show, subplot_grid, test_raw, train_raw):
         'Daily_Tuition_Cost': (None, 600),
     }
     cap_notes = {
-        'Students_Count': ('9999 placeholder', 'repeated 9999 values are isolated placeholders beyond the observed support'),
-        'Practical_Hours': ('negative values and 10000', 'course hours cannot be negative; 12 covers a long practical day'),
-        'Daily_Tuition_Cost': ('5400 value', '5400 is far beyond the valid fee range; 600 keeps the high-cost tail'),
+        'Students_Count': (
+            '9999 placeholder',
+            'repeated 9999 values are isolated placeholders beyond the observed support',
+        ),
+        'Practical_Hours': (
+            'negative values and 10000',
+            'course hours cannot be negative; 12 covers a long practical day',
+        ),
+        'Daily_Tuition_Cost': (
+            '5400 value',
+            '5400 is far beyond the valid fee range; 600 keeps the high-cost tail',
+        ),
     }
 
     cap_rows = []
@@ -929,9 +1037,15 @@ def _(display, pd, show, subplot_grid, test_raw, train_raw):
             'raw_train_min': train_raw[cap_col].min(),
             'raw_train_max': train_raw[cap_col].max(),
             'problem': problem,
-            'action': f'clip to [{lower}, {upper}]' if lower is not None else f'clip to <= {upper}',
-            'train_rows_affected': int((train_raw[cap_col].notna() & train_capped.ne(train_raw[cap_col])).sum()),
-            'test_rows_affected': int((test_raw[cap_col].notna() & test_capped.ne(test_raw[cap_col])).sum()),
+            'action': f'clip to [{lower}, {upper}]'
+            if lower is not None
+            else f'clip to <= {upper}',
+            'train_rows_affected': int(
+                (train_raw[cap_col].notna() & train_capped.ne(train_raw[cap_col])).sum()
+            ),
+            'test_rows_affected': int(
+                (test_raw[cap_col].notna() & test_capped.ne(test_raw[cap_col])).sum()
+            ),
             'reason': reason,
         })
     display(pd.DataFrame(cap_rows))
@@ -940,9 +1054,15 @@ def _(display, pd, show, subplot_grid, test_raw, train_raw):
     for cap_index, (cap_column, (lower, upper)) in enumerate(CAP_RULES.items()):
         before = train_raw[cap_column].dropna()
         after = before.clip(lower=lower, upper=upper)
-        for cap_ax, cap_values, cap_label in zip(cap_axes[:, cap_index], (before, after), ('raw', 'clipped')):
+        for cap_ax, cap_values, cap_label in zip(
+            cap_axes[:, cap_index], (before, after), ('raw', 'clipped')
+        ):
             cap_ax.hist(cap_values, bins=30)
-            cap_ax.set(yscale='log', title=f'{cap_column}: {cap_label}', xlabel=f'max={cap_values.max():g}')
+            cap_ax.set(
+                yscale='log',
+                title=f'{cap_column}: {cap_label}',
+                xlabel=f'max={cap_values.max():g}',
+            )
     cap_axes[0, 0].set_ylabel('count (log)')
     cap_axes[1, 0].set_ylabel('count (log)')
     show(cap_fig)
@@ -964,8 +1084,12 @@ def _(mo):
 
 @app.cell
 def _(train_raw):
-    impossible = train_raw[train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]]
-    print(f"rows where historical dropouts exceed historical attended: {len(impossible)}")
+    impossible = train_raw[
+        train_raw["Prev_Course_Dropouts"] > train_raw["Prev_Course_Attended"]
+    ]
+    print(
+        f"rows where historical dropouts exceed historical attended: {len(impossible)}"
+    )
     return
 
 
@@ -1008,7 +1132,7 @@ def _(mo):
 
     | Raw signal                | Engineered feature(s)                                        | Reason for testing it                                                                                                                                                |
     | ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | `Course_Start_Date`       | `start_month`, `start_dow`, `days_since_epoch`               | Month represents broad seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1. |
+    | `Course_Start_Date`       | `start_month`, `start_dow`, `start_week`, `days_since_epoch` | Month and ISO week represent seasonality, weekday represents scheduling patterns, and the linear index represents the longer-term shift seen in Section 3.1.          |
     | Participant counts        | `total_participants`, `prof_share`                           | Total size and professional share describe group composition more directly than three separate counts.                                                               |
     | Practical/theory hours    | `total_hours`, `practical_share`                             | Total duration and hands-on share distinguish courses with the same raw hour count but different structure.                                                          |
     | Client history            | `prev_drop_rate = dropouts / (attended + 1)`                 | Combines previous dropouts and attendance into one history signal; the `+1` handles clients with no attended courses.                                                |
@@ -1037,25 +1161,36 @@ def _(mo):
 
 
 @app.cell
-def _(CAP_RULES, TEXT_COLS, display, normalize_cats, np, num_cols, pd, test_raw, train_raw):
+def _(
+    CAP_RULES,
+    TEXT_COLS,
+    display,
+    normalize_cats,
+    np,
+    num_cols,
+    pd,
+    test_raw,
+    train_raw,
+):
     frequency_cols = ('Agent_ID', 'Company_ID', 'Origin_Country')
-    native_cat_cols = [
-        col for col in TEXT_COLS if col != 'Assigned_Lab_Config'
-    ] + ['Agent_ID']
+    native_cat_cols = [col for col in TEXT_COLS if col != 'Assigned_Lab_Config'] + [
+        'Agent_ID'
+    ]
 
     def make_freq_maps(*dfs):
         """Label-free frequency of each ID value across the supplied frames."""
         combined = pd.concat([normalize_cats(d) for d in dfs], ignore_index=True)
         return {
-            col: combined[col].value_counts(normalize=True)
-            for col in frequency_cols
+            col: combined[col].value_counts(normalize=True) for col in frequency_cols
         }
 
     freq_maps = make_freq_maps(train_raw, test_raw)
 
-
     def build_features(
-        df: pd.DataFrame, freq_maps: dict, add_time: bool = True
+        df: pd.DataFrame,
+        freq_maps: dict,
+        add_time: bool = True,
+        add_week: bool = True,
     ) -> pd.DataFrame:
         """Cleaning + feature engineering. Identical transform for train and test.
 
@@ -1067,18 +1202,34 @@ def _(CAP_RULES, TEXT_COLS, display, normalize_cats, np, num_cols, pd, test_raw,
         dates = df['Course_Start_Date']
         out['start_month'] = dates.dt.month
         out['start_dow'] = dates.dt.dayofweek
+        if add_week:
+            out['start_week'] = dates.dt.isocalendar().week.astype(float)
         if add_time:
             out['days_since_epoch'] = (dates - pd.Timestamp('2015-01-01')).dt.days
-        total = out[['Professionals_Count', 'Students_Count', 'Observers_Count']].fillna(0).sum(axis=1)
+        total = (
+            out[['Professionals_Count', 'Students_Count', 'Observers_Count']]
+            .fillna(0)
+            .sum(axis=1)
+        )
         out['total_participants'] = total
         out['prof_share'] = out['Professionals_Count'] / total.replace(0, np.nan)
         out['total_hours'] = out['Practical_Hours'] + out['Theory_Hours']
-        out['practical_share'] = out['Practical_Hours'] / out['total_hours'].replace(0, np.nan)
+        out['practical_share'] = out['Practical_Hours'] / out['total_hours'].replace(
+            0, np.nan
+        )
         out['cost_x_days'] = out['Daily_Tuition_Cost'] * out['total_hours']
-        out['prev_drop_rate'] = out['Prev_Course_Dropouts'] / (out['Prev_Course_Attended'] + 1)
-        out['kits_per_participant'] = out['Physical_Course_Kits'] / total.replace(0, np.nan)
-        out['tickets_per_participant'] = out['Pre_Course_Supports_Tickets'] / total.replace(0, np.nan)
-        out['got_requested_lab'] = (df['Requested_Lab_Config'] == df['Assigned_Lab_Config']).astype(float)
+        out['prev_drop_rate'] = out['Prev_Course_Dropouts'] / (
+            out['Prev_Course_Attended'] + 1
+        )
+        out['kits_per_participant'] = out['Physical_Course_Kits'] / total.replace(
+            0, np.nan
+        )
+        out['tickets_per_participant'] = out[
+            'Pre_Course_Supports_Tickets'
+        ] / total.replace(0, np.nan)
+        out['got_requested_lab'] = (
+            df['Requested_Lab_Config'] == df['Assigned_Lab_Config']
+        ).astype(float)
         for col in ('Company_ID', 'Agent_ID'):
             out[f'has_{col.lower()}'] = df[col].notna().astype(int)
         for col in frequency_cols:
@@ -1115,7 +1266,7 @@ def _(CAP_RULES, TEXT_COLS, display, normalize_cats, np, num_cols, pd, test_raw,
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The tree/native-categorical path contains 41 columns. A naive one-hot expansion of the same fields would create about 434 columns, mostly from agent and country, so this representation avoids 393 sparse dummy columns. The linear and neural baselines use one-hot encoding with rare levels grouped into `other`.
+    The tree/native-categorical path contains 42 columns. A naive one-hot expansion of the same fields would create about 435 columns, mostly from agent and country, so this representation avoids 393 sparse dummy columns. The linear and neural baselines use one-hot encoding with rare levels grouped into `other`.
     """)
     return
 
@@ -1170,9 +1321,14 @@ def _(
             X, y, test_size=0.25, random_state=seed, stratify=y
         )
         m = XGBClassifier(
-            n_estimators=300, max_depth=4, learning_rate=0.05,
-            subsample=0.9, colsample_bytree=0.9,
-            eval_metric="logloss", random_state=seed, n_jobs=-1,
+            n_estimators=300,
+            max_depth=4,
+            learning_rate=0.05,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            eval_metric="logloss",
+            random_state=seed,
+            n_jobs=-1,
         )
         m.fit(Xtr, ytr)
         a = roc_auc_score(yva, m.predict_proba(Xva)[:, 1])
@@ -1209,7 +1365,7 @@ def _(mo):
 
 
 @app.cell
-def _(TARGET, align_categories, build_features, make_freq_maps, pd, train_raw):
+def _(TARGET, USE_V3, align_categories, build_features, make_freq_maps, pd, train_raw):
     CHRONO_CUTOFF = '2017-01-01'
     cutoff = pd.Timestamp(CHRONO_CUTOFF)
     tr_raw = train_raw[train_raw["Course_Start_Date"] < cutoff]
@@ -1225,13 +1381,39 @@ def _(TARGET, align_categories, build_features, make_freq_maps, pd, train_raw):
     # validation, frequency maps are fit only on the past training window. The
     # train+test map above is reserved for submission-time label-free transductive scoring.
     freq_maps_chrono = make_freq_maps(tr_raw)
-    Xtr_t = build_features(tr_raw, freq_maps_chrono, add_time=True)
-    Xva_t = build_features(va_raw, freq_maps_chrono, add_time=True)
-    align_categories(Xtr_t, Xva_t)
-    Xtr_n = build_features(tr_raw, freq_maps_chrono, add_time=False)
-    Xva_n = build_features(va_raw, freq_maps_chrono, add_time=False)
+    Xtr_n = build_features(tr_raw, freq_maps_chrono, add_time=False, add_week=False)
+    Xva_n = build_features(va_raw, freq_maps_chrono, add_time=False, add_week=False)
     align_categories(Xtr_n, Xva_n)
-    return Xtr_n, Xtr_t, Xva_n, Xva_t, tr_raw, va_raw, y_tr, y_va
+    Xtr_without_week = build_features(
+        tr_raw, freq_maps_chrono, add_time=True, add_week=False
+    )
+    Xva_without_week = build_features(
+        va_raw, freq_maps_chrono, add_time=True, add_week=False
+    )
+    align_categories(Xtr_without_week, Xva_without_week)
+    Xtr_with_week = build_features(
+        tr_raw, freq_maps_chrono, add_time=True, add_week=True
+    )
+    Xva_with_week = build_features(
+        va_raw, freq_maps_chrono, add_time=True, add_week=True
+    )
+    align_categories(Xtr_with_week, Xva_with_week)
+    Xtr_t = Xtr_without_week if USE_V3 else Xtr_with_week
+    Xva_t = Xva_without_week if USE_V3 else Xva_with_week
+    return (
+        Xtr_n,
+        Xtr_t,
+        Xtr_with_week,
+        Xtr_without_week,
+        Xva_n,
+        Xva_t,
+        Xva_with_week,
+        Xva_without_week,
+        tr_raw,
+        va_raw,
+        y_tr,
+        y_va,
+    )
 
 
 @app.cell(hide_code=True)
@@ -1245,9 +1427,32 @@ def _(mo):
 
 
 @app.cell
+def _(SEED, USE_V3, XGBClassifier):
+    XGB_FIXED_PARAMS = {
+        'colsample_bytree': 0.8,
+        'enable_categorical': True,
+        'tree_method': 'hist',
+        'eval_metric': 'auc',
+        'n_jobs': -1,
+        **(
+            {'min_child_weight': 10, 'subsample': 0.8, 'reg_alpha': 0.1, 'reg_lambda': 3.0}
+            if USE_V3
+            else {'min_child_weight': 5, 'subsample': 0.9, 'reg_lambda': 1.0}
+        ),
+    }
+
+    def make_xgb(seed=SEED, **overrides):
+        params = {**XGB_FIXED_PARAMS, 'random_state': seed, **overrides}
+        return XGBClassifier(**params)
+
+    return (make_xgb,)
+
+
+@app.cell
 def _(
     SEED,
     TARGET,
+    USE_V3,
     Xtr_t,
     Xva_t,
     align_categories,
@@ -1255,23 +1460,22 @@ def _(
     cache,
     display,
     make_freq_maps,
+    make_xgb,
     pd,
     roc_auc_score,
     train_raw,
     train_test_split,
     va_raw,
-    XGBClassifier,
     y_tr,
     y_va,
 ):
     @cache
     def fit_split_diagnostic(X_train, y_train, X_valid, seed):
-        model = XGBClassifier(
-            n_estimators=300, learning_rate=0.05, max_depth=6,
-            min_child_weight=10, subsample=0.8, colsample_bytree=0.8,
-            reg_alpha=0.1, reg_lambda=3.0,
-            enable_categorical=True, tree_method='hist', eval_metric='auc',
-            random_state=seed, n_jobs=-1,
+        model = make_xgb(
+            seed,
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=6,
         )
         model.fit(X_train, y_train)
         return model.predict_proba(X_valid)[:, 1]
@@ -1284,16 +1488,14 @@ def _(
         stratify=train_raw[TARGET],
     )
     random_maps = make_freq_maps(tr_random)
-    Xtr_random = build_features(tr_random, random_maps)
-    Xva_random = build_features(va_random, random_maps)
+    Xtr_random = build_features(tr_random, random_maps, add_week=not USE_V3)
+    Xva_random = build_features(va_random, random_maps, add_week=not USE_V3)
     align_categories(Xtr_random, Xva_random)
 
     split_check = pd.DataFrame({
         'split': ['Chronological future holdout', 'Random holdout (diagnostic)'],
         'AUC': [
-            roc_auc_score(
-                y_va, fit_split_diagnostic(Xtr_t, y_tr, Xva_t, SEED)
-            ),
+            roc_auc_score(y_va, fit_split_diagnostic(Xtr_t, y_tr, Xva_t, SEED)),
             roc_auc_score(
                 va_random[TARGET].values,
                 fit_split_diagnostic(
@@ -1344,27 +1546,6 @@ def _(mo):
 
 
 @app.cell
-def _(SEED, XGBClassifier):
-    XGB_FIXED_PARAMS = {
-        'min_child_weight': 10,
-        'subsample': 0.8,
-        'colsample_bytree': 0.8,
-        'reg_alpha': 0.1,
-        'reg_lambda': 3.0,
-        'enable_categorical': True,
-        'tree_method': 'hist',
-        'eval_metric': 'auc',
-        'n_jobs': -1,
-    }
-
-    def make_xgb(seed=SEED, **overrides):
-        params = {**XGB_FIXED_PARAMS, 'random_state': seed, **overrides}
-        return XGBClassifier(**params)
-
-    return (make_xgb,)
-
-
-@app.cell
 def _(OneHotEncoder, pd):
     def encode_for_continuous_models(
         X_tr: pd.DataFrame, X_va: pd.DataFrame, min_count=30
@@ -1410,7 +1591,7 @@ def _(mo):
 
     For each required family, we vary one parameter that controls capacity or regularization and evaluate it with chronological validation ROC-AUC, the project metric. Training AUC is shown beside it so we can see when extra capacity improves fit without improving the future holdout. Logistic Regression and MLP use the best validation score; for XGBoost we predefine a parsimonious rule and select the smallest depth within 0.0005 AUC of the best result.
 
-    For the MLP, the sweep varies hidden depth while keeping every layer at 64 units. For XGBoost, all trials use the same conservative sampling and regularization settings, while the first sweep varies `max_depth` with a fixed boosting budget. A second experiment then tunes the interaction between learning rate and number of trees.
+    For the MLP, the sweep varies hidden depth while keeping every layer at 64 units. For XGBoost, all trials use the active variant's sampling and regularization settings, while the first sweep varies `max_depth` with a fixed boosting budget. A second experiment then tunes the interaction between learning rate and number of trees.
     """)
     return
 
@@ -1438,7 +1619,15 @@ def _(
     Xva_scaled = scaler.transform(Xva_enc)
 
     @cache
-    def hyper_tune(X_train_scaled, X_valid_scaled, X_train_tree, X_valid_tree, y_train, y_valid, seed):
+    def hyper_tune(
+        X_train_scaled,
+        X_valid_scaled,
+        X_train_tree,
+        X_valid_tree,
+        y_train,
+        y_valid,
+        seed,
+    ):
         tuning_rows = []
         validation_predictions = {}
 
@@ -1458,28 +1647,48 @@ def _(
         for C in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0):
             model = LogisticRegression(C=C, max_iter=2000).fit(X_train_scaled, y_train)
             record_trial(
-                'Logistic Regression', 'C  → (less regularisation)', C,
-                model, X_train_scaled, X_valid_scaled, keep=True,
+                'Logistic Regression',
+                'C  → (less regularisation)',
+                C,
+                model,
+                X_train_scaled,
+                X_valid_scaled,
+                keep=True,
             )
 
         for hidden_layers in (1, 2, 3, 4):
             model = MLPClassifier(
                 hidden_layer_sizes=(64,) * hidden_layers,
-                learning_rate_init=0.001, max_iter=150, early_stopping=True,
-                n_iter_no_change=10, random_state=seed,
+                learning_rate_init=0.001,
+                max_iter=150,
+                early_stopping=True,
+                n_iter_no_change=10,
+                random_state=seed,
             ).fit(X_train_scaled, y_train)
             record_trial(
-                'MLP neural network', 'hidden layers → (more depth)', hidden_layers,
-                model, X_train_scaled, X_valid_scaled, keep=True,
+                'MLP neural network',
+                'hidden layers → (more depth)',
+                hidden_layers,
+                model,
+                X_train_scaled,
+                X_valid_scaled,
+                keep=True,
             )
 
         for depth in (2, 3, 4, 5, 6, 8, 10):
             model = make_xgb(
-                seed, n_estimators=300, learning_rate=0.05, max_depth=depth,
+                seed,
+                n_estimators=300,
+                learning_rate=0.05,
+                max_depth=depth,
             ).fit(X_train_tree, y_train)
             record_trial(
-                'Gradient-boosted trees (XGBoost)', 'max_depth → (more capacity)', depth,
-                model, X_train_tree, X_valid_tree,
+                'Gradient-boosted trees (XGBoost)',
+                'max_depth → (more capacity)',
+                depth,
+                model,
+                X_train_tree,
+                X_valid_tree,
             )
 
         return tuning_rows, validation_predictions
@@ -1514,12 +1723,12 @@ def _(display, tuning_raw, validation_predictions):
     display(selected_tuning)
 
     selected_x = selected_tuning.set_index('family')['x']
-    pred_lr = validation_predictions[(
-        'Logistic Regression', selected_x.loc['Logistic Regression']
-    )]
-    pred_mlp = validation_predictions[(
-        'MLP neural network', selected_x.loc['MLP neural network']
-    )]
+    pred_lr = validation_predictions[
+        ('Logistic Regression', selected_x.loc['Logistic Regression'])
+    ]
+    pred_mlp = validation_predictions[
+        ('MLP neural network', selected_x.loc['MLP neural network'])
+    ]
     selected_depth = int(selected_x.loc['Gradient-boosted trees (XGBoost)'])
     return pred_lr, pred_mlp, selected_depth, tuning
 
@@ -1528,15 +1737,12 @@ def _(display, tuning_raw, validation_predictions):
 def _(show, sns, tuning):
     def plot_auc_sweep(data, x, facet, title):
         row_layout = facet == 'family'
-        curves = (
-            data.melt(
-                id_vars=[facet, x, 'axis', 'log_x', 'selected'],
-                value_vars=['train_AUC', 'val_AUC'],
-                var_name='split',
-                value_name='ROC-AUC',
-            )
-            .replace({'split': {'train_AUC': 'Train', 'val_AUC': 'Validation'}})
-        )
+        curves = data.melt(
+            id_vars=[facet, x, 'axis', 'log_x', 'selected'],
+            value_vars=['train_AUC', 'val_AUC'],
+            var_name='split',
+            value_name='ROC-AUC',
+        ).replace({'split': {'train_AUC': 'Train', 'val_AUC': 'Validation'}})
         grid = sns.relplot(
             data=curves,
             x=x,
@@ -1555,25 +1761,38 @@ def _(show, sns, tuning):
         for value, ax in grid.axes_dict.items():
             subset = data[data[facet].eq(value)]
             ax.set(
-                title=str(value) if row_layout else f'{facet.replace("_", " ")} = {value}',
+                title=str(value)
+                if row_layout
+                else f'{facet.replace("_", " ")} = {value}',
                 xlabel=subset['axis'].iloc[0],
             )
             if subset['log_x'].iloc[0]:
                 ax.set_xscale('log')
             chosen = subset.loc[subset['selected']].iloc[0]
-            ax.scatter(chosen[x], chosen['val_AUC'], marker='*', s=190, color='#E69F00', edgecolor='black', linewidth=0.7, zorder=5)
+            ax.scatter(
+                chosen[x],
+                chosen['val_AUC'],
+                marker='*',
+                s=190,
+                color='#E69F00',
+                edgecolor='black',
+                linewidth=0.7,
+                zorder=5,
+            )
         grid.figure.suptitle(title, y=1.01)
         grid.figure.subplots_adjust(top=0.94, hspace=0.5, wspace=0.25)
         show(grid.figure)
 
-    plot_auc_sweep(tuning, 'x', 'family', 'Focused tuning: training vs validation ROC-AUC')
+    plot_auc_sweep(
+        tuning, 'x', 'family', 'Focused tuning: training vs validation ROC-AUC'
+    )
     return (plot_auc_sweep,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The gold star marks the selected setting. For Logistic Regression and MLP this is the maximum validation AUC. For XGBoost it is the smallest depth within 0.0005 of the best validation score, avoiding extra capacity for a negligible gain. XGBoost is the strongest development candidate on the future holdout, so the remaining experiments refine that candidate while retaining Logistic Regression and MLP for the final comparison. This is not yet the final model-selection decision.
+    The gold star marks the setting selected by the tuning rule. For Logistic Regression and MLP this is the maximum validation AUC. For XGBoost it is the smallest depth within 0.0005 of the best validation score, avoiding extra capacity for a negligible gain. The selected depth flows into the remaining experiments and final refit. XGBoost is the strongest development candidate on the future holdout, so the remaining experiments refine that candidate while retaining Logistic Regression and MLP for the final comparison.
     """)
     return
 
@@ -1614,7 +1833,10 @@ def _(
         for lr_rate in (0.1, 0.03):
             for n in (50, 100, 200, 400, 700, 1000):
                 model = make_xgb(
-                    seed, n_estimators=n, learning_rate=lr_rate, max_depth=depth,
+                    seed,
+                    n_estimators=n,
+                    learning_rate=lr_rate,
+                    max_depth=depth,
                 )
                 model.fit(X_train, y_train)
                 train_predictions = model.predict_proba(X_train)[:, 1]
@@ -1637,7 +1859,12 @@ def _(
     budget['log_x'] = False
     budget['selected'] = False
     budget.loc[budget.groupby('learning_rate')['val_AUC'].idxmax(), 'selected'] = True
-    plot_auc_sweep(budget, 'n_trees', 'learning_rate', 'Boosting budget: train vs validation ROC-AUC')
+    plot_auc_sweep(
+        budget,
+        'n_trees',
+        'learning_rate',
+        'Boosting budget: train vs validation ROC-AUC',
+    )
 
     budget_best = budget.loc[
         budget.groupby('learning_rate')['val_AUC'].idxmax(),
@@ -1668,37 +1895,30 @@ def _(mo):
 def _(
     SEED,
     Xtr_n,
-    Xtr_t,
+    Xtr_with_week,
+    Xtr_without_week,
     Xva_n,
-    Xva_t,
+    Xva_with_week,
+    Xva_without_week,
     cache,
     display,
     make_xgb,
     pd,
-    pred_xgb,
     roc_auc_score,
     selected_depth,
-    tr_raw,
-    va_raw,
     y_tr,
     y_va,
 ):
     @cache
     def fit_temporal_candidate(X_train, y_train, X_valid, seed, depth):
         model = make_xgb(
-            seed, n_estimators=700, learning_rate=0.03, max_depth=depth,
+            seed,
+            n_estimators=700,
+            learning_rate=0.03,
+            max_depth=depth,
         )
         model.fit(X_train, y_train)
         return model.predict_proba(X_valid)[:, 1]
-
-    Xtr_with_week = Xtr_t.copy()
-    Xva_with_week = Xva_t.copy()
-    Xtr_with_week['start_week'] = (
-        tr_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
-    )
-    Xva_with_week['start_week'] = (
-        va_raw['Course_Start_Date'].dt.isocalendar().week.astype(float)
-    )
 
     temporal_check = pd.DataFrame({
         'temporal features': [
@@ -1709,11 +1929,18 @@ def _(
         'chronological AUC': [
             roc_auc_score(
                 y_va,
+                fit_temporal_candidate(Xtr_n, y_tr, Xva_n, SEED, selected_depth),
+            ),
+            roc_auc_score(
+                y_va,
                 fit_temporal_candidate(
-                    Xtr_n, y_tr, Xva_n, SEED, selected_depth
+                    Xtr_without_week,
+                    y_tr,
+                    Xva_without_week,
+                    SEED,
+                    selected_depth,
                 ),
             ),
-            roc_auc_score(y_va, pred_xgb),
             roc_auc_score(
                 y_va,
                 fit_temporal_candidate(
@@ -1733,7 +1960,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The continuous time index improves future-window ranking, while ISO week adds a redundant calendar representation and does not improve the reference XGBoost candidate. We therefore retain `days_since_epoch`, month, and weekday, and leave ISO week out of the final feature matrix.
+    The continuous time index improves future-window ranking, while ISO week does not improve this reference holdout. We nevertheless retain ISO week because the purpose of this notebook is to reproduce the already-scored submission specification rather than modify it after seeing the leaderboard result.
 
     ### (c) Does adding other boosters help?
 
@@ -1777,18 +2004,31 @@ def _(
                 X_tr2[c] = X_tr2[c].astype(str)
                 X_val2[c] = X_val2[c].astype(str)
             model = CatBoostClassifier(
-                iterations=1200, learning_rate=0.05, depth=6, l2_leaf_reg=3.0,
-                random_seed=seed, verbose=False, allow_writing_files=False,
-                eval_metric='AUC', cat_features=cat_idx,
+                iterations=1200,
+                learning_rate=0.05,
+                depth=6,
+                l2_leaf_reg=3.0,
+                random_seed=seed,
+                verbose=False,
+                allow_writing_files=False,
+                eval_metric='AUC',
+                cat_features=cat_idx,
             )
             model.fit(X_tr2, y_train)
             return model.predict_proba(X_val2)[:, 1]
         if name == "lgbm":
             model = LGBMClassifier(
-                n_estimators=700, learning_rate=0.03, num_leaves=63,
-                min_child_samples=40, subsample=0.9, subsample_freq=1,
-                colsample_bytree=0.8, reg_lambda=1.0,
-                random_state=seed, n_jobs=-1, verbosity=-1,
+                n_estimators=700,
+                learning_rate=0.03,
+                num_leaves=63,
+                min_child_samples=40,
+                subsample=0.9,
+                subsample_freq=1,
+                colsample_bytree=0.8,
+                reg_lambda=1.0,
+                random_state=seed,
+                n_jobs=-1,
+                verbosity=-1,
             )
             model.fit(
                 X_tr,
@@ -1797,7 +2037,10 @@ def _(
             )
             return model.predict_proba(X_val)[:, 1]
         model = make_xgb(
-            seed, n_estimators=700, learning_rate=0.03, max_depth=selected_depth,
+            seed,
+            n_estimators=700,
+            learning_rate=0.03,
+            max_depth=selected_depth,
         )
         model.fit(X_tr, y_train)
         return model.predict_proba(X_val)[:, 1]
@@ -1841,7 +2084,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    All XGBoost trials use the same conservative sampling and regularization settings (`min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0`), so the tuned XGBoost candidate flows unchanged into the ensemble. Adding the fixed LightGBM and CatBoost rankings gives a small further improvement, and we carry the rank-average blend forward as the boosted-tree candidate.
+    All XGBoost trials use the same fixed sampling and regularization settings (`min_child_weight=5`, `subsample=0.9`, and `reg_lambda=1.0`), so the tuned XGBoost candidate flows unchanged into the ensemble. Adding the fixed LightGBM and CatBoost rankings gives a small further improvement, and we carry the rank-average blend forward as the boosted-tree candidate.
     """)
     return
 
@@ -1875,12 +2118,28 @@ def _(
     show,
     y_va,
 ):
-    curve_candidates = [('Logistic Regression', pred_lr), ('MLP', pred_mlp), ('Boosted-tree rank blend', blend_t)]
-    curve_displays = [(RocCurveDisplay, 'ROC curve'), (PrecisionRecallDisplay, 'Precision–Recall curve')]
+    curve_candidates = [
+        ('Logistic Regression', pred_lr),
+        ('MLP', pred_mlp),
+        ('Boosted-tree rank blend', blend_t),
+    ]
+    curve_displays = [
+        (RocCurveDisplay, 'ROC curve'),
+        (PrecisionRecallDisplay, 'Precision–Recall curve'),
+    ]
     curve_fig, curve_axes = plt.subplots(1, 2, figsize=(15, 5.5), layout='compressed')
     for curve_ax, (display_class, curve_title) in zip(curve_axes, curve_displays):
-        for curve_index, (candidate_name, candidate_predictions) in enumerate(curve_candidates):
-            display_class.from_predictions(y_va, candidate_predictions, name=candidate_name, ax=curve_ax, plot_chance_level=curve_index == len(curve_candidates) - 1, despine=True)
+        for curve_index, (candidate_name, candidate_predictions) in enumerate(
+            curve_candidates
+        ):
+            display_class.from_predictions(
+                y_va,
+                candidate_predictions,
+                name=candidate_name,
+                ax=curve_ax,
+                plot_chance_level=curve_index == len(curve_candidates) - 1,
+                despine=True,
+            )
         curve_ax.set_title(curve_title)
     show(curve_fig)
     return
@@ -1918,17 +2177,44 @@ def _(
     subplot_grid,
     y_va,
 ):
-    matrix_candidates = [('Logistic Regression', pred_lr), ('MLP neural network', pred_mlp), ('Boosted-tree rank blend', blend_t)]
+    matrix_candidates = [
+        ('Logistic Regression', pred_lr),
+        ('MLP neural network', pred_mlp),
+        ('Boosted-tree rank blend', blend_t),
+    ]
     matrix_fig, matrix_axes = subplot_grid(1, 3)
     metric_rows = []
-    for matrix_ax, (matrix_name, matrix_predictions) in zip(matrix_axes, matrix_candidates):
+    for matrix_ax, (matrix_name, matrix_predictions) in zip(
+        matrix_axes, matrix_candidates
+    ):
         matrix_labels = (matrix_predictions >= 0.5).astype(int)
         matrix_auc = roc_auc_score(y_va, matrix_predictions)
-        matrix_report = classification_report(y_va, matrix_labels, target_names=['completed', 'dropped'], output_dict=True, zero_division=0)
-        ConfusionMatrixDisplay.from_predictions(y_va, matrix_labels, display_labels=['completed', 'dropped'], values_format=',d', cmap='Blues', colorbar=False, ax=matrix_ax)
+        matrix_report = classification_report(
+            y_va,
+            matrix_labels,
+            target_names=['completed', 'dropped'],
+            output_dict=True,
+            zero_division=0,
+        )
+        ConfusionMatrixDisplay.from_predictions(
+            y_va,
+            matrix_labels,
+            display_labels=['completed', 'dropped'],
+            values_format=',d',
+            cmap='Blues',
+            colorbar=False,
+            ax=matrix_ax,
+        )
         matrix_ax.set_title(f'{matrix_name} — ROC-AUC={matrix_auc:.3f}')
         matrix_ax.grid(False)
-        metric_rows.append({'model': matrix_name, 'ROC-AUC': matrix_auc, 'accuracy': matrix_report['accuracy'], 'precision (dropped)': matrix_report['dropped']['precision'], 'recall (dropped)': matrix_report['dropped']['recall'], 'F1 (dropped)': matrix_report['dropped']['f1-score']})
+        metric_rows.append({
+            'model': matrix_name,
+            'ROC-AUC': matrix_auc,
+            'accuracy': matrix_report['accuracy'],
+            'precision (dropped)': matrix_report['dropped']['precision'],
+            'recall (dropped)': matrix_report['dropped']['recall'],
+            'F1 (dropped)': matrix_report['dropped']['f1-score'],
+        })
     matrix_fig.suptitle('Candidate-model confusion matrices at a 0.5 reference cutoff')
     show(matrix_fig)
     evaluation_metrics = pd.DataFrame(metric_rows).set_index('model').round(3)
@@ -1976,8 +2262,12 @@ def _(blend_t, show, sns, subplot_grid):
     score_fig, score_ax = subplot_grid()
     sns.histplot(blend_t, bins=50, ax=score_ax)
     score_ax.axvline(0.5, linestyle='--', label='reference cutoff')
-    score_ax.axvspan(0.4, 0.6, color='orange', alpha=0.25, zorder=2, label='near-threshold band')
-    score_ax.set(xlabel='Rank-average risk score', title='Selected-blend score distribution')
+    score_ax.axvspan(
+        0.4, 0.6, color='orange', alpha=0.25, zorder=2, label='near-threshold band'
+    )
+    score_ax.set(
+        xlabel='Rank-average risk score', title='Selected-blend score distribution'
+    )
     score_ax.legend()
     near_threshold = ((blend_t > 0.4) & (blend_t < 0.6)).mean() * 100
     print(f'share of holdout in the 0.40–0.60 band: {near_threshold:.1f}%')
@@ -2022,7 +2312,10 @@ def _(
     @cache
     def compute_shap_analysis(X_train, X_valid, y_train, y_valid, seed, depth):
         shap_model = make_xgb(
-            seed, n_estimators=700, learning_rate=0.03, max_depth=depth,
+            seed,
+            n_estimators=700,
+            learning_rate=0.03,
+            max_depth=depth,
         )
         shap_model.fit(X_train, y_train)
         valid_scores = shap_model.predict_proba(X_valid)[:, 1]
@@ -2035,7 +2328,13 @@ def _(
         shap_values = np.asarray(shap_values)
         if shap_values.ndim == 3:  # some shap versions return (n, features, classes)
             shap_values = shap_values[:, :, 1]
-        return X_shap, sample_scores, explainer.expected_value, shap_values, roc_auc_score(y_valid, valid_scores)
+        return (
+            X_shap,
+            sample_scores,
+            explainer.expected_value,
+            shap_values,
+            roc_auc_score(y_valid, valid_scores),
+        )
 
     X_shap, shap_scores, shap_base, shap_values, shap_auc = compute_shap_analysis(
         Xtr_t, Xva_t, y_tr, y_va, SEED, selected_depth
@@ -2068,11 +2367,15 @@ def _(X_shap, display, figure_size, np, pd, plt, shap, shap_values, show):
     )
     top = importance.head(20)
 
-    importance_fig, importance_ax = plt.subplots(figsize=figure_size(2, 1), layout='constrained')
+    importance_fig, importance_ax = plt.subplots(
+        figsize=figure_size(2, 1), layout='constrained'
+    )
     top.sort_values('mean_abs_shap').plot.barh(
         x='feature', y='mean_abs_shap', legend=False, ax=importance_ax
     )
-    importance_ax.set(xlabel='mean |SHAP value|', title='Top 20 features by SHAP importance')
+    importance_ax.set(
+        xlabel='mean |SHAP value|', title='Top 20 features by SHAP importance'
+    )
     show(importance_fig)
     display(top)
     return (importance,)
@@ -2130,7 +2433,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Removing `Payment_Terms` changes chronological AUC from 0.9164 to 0.9093. The field's exact recording time is still worth confirming with the data owner.
+    Removing `Payment_Terms` changes chronological AUC from 0.9156 to 0.9101. The field's exact recording time is still worth confirming with the data owner.
     """)
     return
 
@@ -2147,27 +2450,50 @@ def _(mo):
 
 @app.cell
 def _(X_shap, figure_size, importance, pd, plt, shap, shap_values, show, sns):
-    top_feat = importance.loc[importance['feature'] != 'Payment_Terms', 'feature'].iloc[0] if importance['feature'].iloc[0] == 'Payment_Terms' else importance['feature'].iloc[0]
+    top_feat = (
+        importance.loc[importance['feature'] != 'Payment_Terms', 'feature'].iloc[0]
+        if importance['feature'].iloc[0] == 'Payment_Terms'
+        else importance['feature'].iloc[0]
+    )
 
     def plot_shap_dependence_readable(feature):
         max_categories = 15
         col_idx = list(X_shap.columns).index(feature)
         values = X_shap[feature]
-        is_categorical = str(values.dtype) == 'category' or values.dtype == 'object' or values.nunique(dropna=False) <= max_categories
+        is_categorical = (
+            str(values.dtype) == 'category'
+            or values.dtype == 'object'
+            or values.nunique(dropna=False) <= max_categories
+        )
         if not is_categorical:
-            shap.dependence_plot(feature, shap_values, X_shap, interaction_index=None, show=False)
+            shap.dependence_plot(
+                feature, shap_values, X_shap, interaction_index=None, show=False
+            )
             plt.title(f'SHAP dependence — {feature}')
             show()
             return
         labels = values.astype('string').fillna('missing')
         keep = labels.value_counts().head(max_categories).index
-        grouped = pd.DataFrame({'level': labels.where(labels.isin(keep), 'other'), 'shap': shap_values[:, col_idx]})
-        summary = grouped.groupby('level', observed=True).agg(mean_shap=('shap', 'mean'), n=('shap', 'size')).sort_values('mean_shap')
+        grouped = pd.DataFrame({
+            'level': labels.where(labels.isin(keep), 'other'),
+            'shap': shap_values[:, col_idx],
+        })
+        summary = (
+            grouped
+            .groupby('level', observed=True)
+            .agg(mean_shap=('shap', 'mean'), n=('shap', 'size'))
+            .sort_values('mean_shap')
+        )
         fig, ax = plt.subplots(figsize=figure_size(2, 1), layout='constrained')
         sns.barplot(data=summary.reset_index(), y='level', x='mean_shap', ax=ax)
         ax.axvline(0, color='black', linewidth=1)
-        ax.set(title=f'Mean SHAP by {feature} level (top {max_categories} + other)', xlabel='mean SHAP contribution', ylabel=feature)
+        ax.set(
+            title=f'Mean SHAP by {feature} level (top {max_categories} + other)',
+            xlabel='mean SHAP contribution',
+            ylabel=feature,
+        )
         show(fig)
+
     plot_shap_dependence_readable(top_feat)
     return
 
@@ -2217,7 +2543,7 @@ def _(mo):
     mo.md(r"""
     # 10. Rebuilding and checking the submission
 
-    The stored `data/Group_27_Submission.csv` is the earlier submission that received the recorded leaderboard score. The block below retrains the final three-model blend, writes `data/Group_27_Submission_v3.csv`, and compares its ranking with that historical submission.
+    The stored `data/Group_27_Submission.csv` is the submission that received the recorded leaderboard score. The block below retrains the model, writes `data/Group_27_Submission_v2_rebuilt.csv`, and checks how closely the current environment reproduces the historical scored ranking. It never overwrites the scored file.
     """)
     return
 
@@ -2226,6 +2552,7 @@ def _(mo):
 def _(
     SEED,
     TARGET,
+    USE_V3,
     align_categories,
     build_features,
     display,
@@ -2236,10 +2563,10 @@ def _(
     test_raw,
     train_raw,
 ):
-    candidate_path = "data/Group_27_Submission_v3.csv"
+    candidate_path = f"data/Group_27_Submission_v{'3' if USE_V3 else '2'}_rebuilt.csv"
     submission_maps = make_freq_maps(train_raw, test_raw)
-    X_train_full = build_features(train_raw, submission_maps)
-    X_test = build_features(test_raw, submission_maps)
+    X_train_full = build_features(train_raw, submission_maps, add_week=not USE_V3)
+    X_test = build_features(test_raw, submission_maps, add_week=not USE_V3)
     align_categories(X_train_full, X_test)
     y_full = train_raw[TARGET].values
 
@@ -2288,7 +2615,7 @@ def _(
             "rebuilt predictions are not byte-identical to the scored file; "
             "use the stored scored CSV as the official leaderboard record."
         )
-    return
+    return candidate_path, submission, submission_match
 
 
 @app.cell(hide_code=True)
@@ -2306,11 +2633,11 @@ def _(mo):
 
     Nova Academy's test registrations occur after the training period, and both the monthly target rate and the adversarial-validation result (AUC 0.935) show temporal distribution shift. Model selection therefore used a four-month chronological holdout.
 
-    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. Model comparison confirmed that tuned XGBoost outperformed the Logistic Regression and MLP baselines on the future holdout. All XGBoost trials used the same conservative regularization, the depth sweep selected the lower-capacity plateau at depth 6, and temporal ablation retained the continuous time index while rejecting redundant ISO week. The resulting LightGBM, XGBoost, and CatBoost rank-average blend reached chronological AUC 0.9164 on that split.
+    Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. Model comparison confirmed that tuned XGBoost outperformed the Logistic Regression and MLP baselines on the future holdout. The LightGBM, XGBoost, and CatBoost rank-average blend reached chronological AUC 0.9156 on this split.
 
-    The stored rank-average submission received test ROC-AUC **0.889314**, above the required 0.70.
+    The stored submission produced by this model specification received hidden-test ROC-AUC **0.889314**, above the required 0.70. A fresh rerun can differ slightly because boosted-tree implementations and hardware-dependent floating-point behavior are not guaranteed to reproduce an old prediction vector byte-for-byte, so the stored scored CSV remains the authoritative leaderboard artifact.
 
-    Across three rolling future windows, the same two final adjustments improved mean AUC by about 0.0020 relative to the previous blend. The new hidden-test score is not yet known, so 0.889314 remains a historical result rather than a claim about this updated model. Further work could include confirming when `Payment_Terms` is recorded and calibrating the selected blend score for cost-based operational thresholds.
+    Further work could include confirming when `Payment_Terms` is recorded and calibrating the selected blend score for cost-based operational thresholds.
     """)
     return
 

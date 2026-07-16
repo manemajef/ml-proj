@@ -11,6 +11,8 @@ TAU Intro to Machine Learning final project for Nova Academy. The task is to pre
 
 The current notebook work is in [notebook.py](<notebook.py>) (`.py` marimo notebook) and a [synced jupyter notebook](<notebook.ipynb>)
 
+> **If `USE_V3=True`:** before exporting `notebook.ipynb`, update the notebook prose to say that ISO week is removed (`41` native / about `434` one-hot columns), XGBoost uses `min_child_weight=10`, `subsample=0.8`, `reg_alpha=0.1`, and `reg_lambda=3.0`, and the chronological blend/without-`Payment_Terms` AUCs are `0.9164`/`0.9093`. The rebuilt filename becomes `data/Group_27_Submission_v3_rebuilt.csv`; keep `0.889314` explicitly labeled as the historical v2 score because v3 has no hidden-test score.
+
 ## Road Map
 
 - [ ] **Refine the model's pipeline** - Goal: `AUC > 0.9`, (cant be verified before submission), risks the safe but not impressive `0.8893` current AUC score.

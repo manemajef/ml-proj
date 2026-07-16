@@ -1,161 +1,83 @@
-from __future__ import annotations
-
-import argparse
-import os
-import re
-import shutil
-import subprocess
-import sys
-import tempfile
-import time
 from io import StringIO
-from pathlib import Path
-
+import re
+from bs4 import BeautifulSoup
 import pandas as pd
 
+# 1. Configuration: Change to your actual file name
+input_file = "docs/notebook.md"
 
-def run(cmd: list[str]) -> None:
-    print("$", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+with open(input_file, "r", encoding="utf-8") as f:
+    content = f.read()
 
-
-def wait_for_stable_file(
-    path: Path, quiet_seconds: float = 1.0, timeout: float = 10.0
-) -> None:
-    deadline = time.monotonic() + timeout
-    last_stat = None
-    stable_since = None
-
-    while time.monotonic() < deadline:
-        stat = path.stat()
-        current_stat = (stat.st_mtime_ns, stat.st_size)
-
-        if current_stat != last_stat:
-            last_stat = current_stat
-            stable_since = time.monotonic()
-        elif (
-            stable_since is not None
-            and time.monotonic() - stable_since >= quiet_seconds
-        ):
-            return
-
-        time.sleep(0.1)
-
-    raise TimeoutError(f"{path} did not stabilize after {timeout:.1f}s")
+# 2. Regex to find all <div> blocks containing dataframe tables
+# This handles multiline blocks and makes the <style> block optional
+div_pattern = re.compile(
+    r"<div>\s*(?:<style.*?>.*?</style>\s*)?<table[^>]*?class=\"[^\"]*dataframe[^\"]*\".*?>.*?</table>\s*</div>",
+    re.DOTALL,
+)
 
 
-def clean_output(
-    md_file: Path, stem: str, output_md_parent: Path, support_dir: Path
-) -> None:
-    wait_for_stable_file(md_file)
-    text = md_file.read_text(errors="ignore")
+def html_to_md_table(match):
+    html_block = match.group(0)
 
-    def table_to_markdown(match: re.Match[str]) -> str:
-        table_html = match.group(1)
-        try:
-            df = pd.read_html(StringIO(table_html))[0]
-            # Optimize float columns for agents reading (round to 4 decimal places)
-            for col in df.select_dtypes(include=["float"]):
-                df[col] = df[col].round(4)
-            return "\n\n" + df.to_markdown(index=False) + "\n\n"
-        except Exception:
-            # Fallback to original matched content if parsing fails
-            return match.group(0)
+    # Extract the table using BeautifulSoup
+    soup = BeautifulSoup(html_block, "html.parser")
+    table_html = soup.find("table")
 
-    # Match tables, optionally wrapped in div and style blocks
-    TABLE_RE = re.compile(
-        r"(?:<div>\s*(?:<style.*?</style>\s*)*)?(<table.*?</table>)(?:\s*</div>)?",
-        re.IGNORECASE | re.DOTALL,
-    )
-    text = TABLE_RE.sub(table_to_markdown, text)
-
-    STYLE_RE = re.compile(r"<style.*?</style>", re.IGNORECASE | re.DOTALL)
-    text = STYLE_RE.sub("", text)
-
-    # Rewrite asset paths inside the markdown file to be relative to the markdown file
-    rel_support_dir = os.path.relpath(support_dir, output_md_parent)
-    rel_support_path = rel_support_dir.replace(os.path.sep, "/")
-
-    old_prefix = f"{stem}_files"
-    if old_prefix != rel_support_path:
-        text = text.replace(f"{old_prefix}/", f"{rel_support_path}/")
-
-    md_file.write_text(text)
-
-
-def export_ipynb(ipynb_file: Path, output_dir: Path, assets_dir: Path) -> Path:
-    output_md = output_dir / f"{ipynb_file.stem}.md"
-    support_dir = assets_dir / f"{ipynb_file.stem}_files"
-
-    with tempfile.TemporaryDirectory(prefix="notebook-export-md-") as tmp:
-        tmp_dir = Path(tmp)
-
-        run([
-            "jupyter",
-            "nbconvert",
-            "--to",
-            "markdown",
-            str(ipynb_file),
-            "--output-dir",
-            str(tmp_dir),
-        ])
-
-        tmp_md = tmp_dir / f"{ipynb_file.stem}.md"
-        clean_output(tmp_md, ipynb_file.stem, output_md.parent, support_dir)
-
-        tmp_support_dir = tmp_dir / f"{ipynb_file.stem}_files"
-
-        if support_dir.exists():
-            shutil.rmtree(support_dir)
-        if tmp_support_dir.exists():
-            support_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(tmp_support_dir, support_dir)
-
-        shutil.copy2(tmp_md, output_md)
-
-    return output_md
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Convert a pre-run Jupyter notebook to Markdown in docs/ and clean tables."
-    )
-    parser.add_argument(
-        "file",
-        nargs="?",
-        default="notebook.ipynb",
-        help="Path to the .ipynb file (default: notebook.ipynb)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        "-o",
-        default="docs",
-        help="Directory to save the markdown file (default: 'docs')",
-    )
-    parser.add_argument(
-        "--assets-dir",
-        "-a",
-        default="docs",
-        help="Directory to save assets/images (default: 'docs')",
-    )
-    args = parser.parse_args()
-
-    ipynb_file = Path(args.file)
-    output_dir = Path(args.output_dir)
-    assets_dir = Path(args.assets_dir)
-
-    if not ipynb_file.exists():
-        print(f"error: source notebook {ipynb_file} does not exist.", file=sys.stderr)
-        sys.exit(1)
+    if not table_html:
+        return html_block  # Return unchanged if table extraction fails
 
     try:
-        print(f"Exporting {ipynb_file} -> Markdown inside {output_dir}...")
-        export_ipynb(ipynb_file, output_dir, assets_dir)
-        print("Export and table formatting successfully completed.")
-    except Exception as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        # Convert HTML table to Pandas DataFrame
+        df_list = pd.read_html(StringIO(str(table_html)))
+        if not df_list:
+            return html_block
+
+        df = df_list[0]
+
+        # Simplify MultiIndex columns if present (e.g., pivot tables or complex headers)
+        if isinstance(df.columns, pd.MultiIndex):
+            new_columns = []
+            for col_tuple in df.columns:
+                parts = [str(x) for x in col_tuple if not str(x).startswith("Unnamed:")]
+                new_columns.append(" ".join(parts))
+            df.columns = new_columns
+
+        # If the first column is completely unnamed (Pandas index), make it the index
+        has_unnamed_index = False
+        if str(df.columns[0]).startswith("Unnamed:"):
+            df = df.set_index(df.columns[0])
+            df.index.name = ""  # Clean up index label
+            has_unnamed_index = True
+
+        # Optimize float columns for readability (round to 4 decimal places)
+        for col in df.select_dtypes(include=["float"]):
+            df[col] = df[col].round(4)
+
+        # Convert to native markdown table syntax
+        # Only include the index if we converted an unnamed first column back to the index
+        return "\n\n" + df.to_markdown(index=has_unnamed_index) + "\n\n"
+    except Exception as e:
+        # Fallback in case of parsing errors
+        print(f"Skipping a table due to error: {e}")
+        return html_block
 
 
-if __name__ == "__main__":
-    main()
+# 3. Replace all HTML dataframe tables with markdown tables
+cleaned_content = div_pattern.sub(html_to_md_table, content)
+
+# 4. Strip angle brackets from image and standard markdown links (e.g. ![svg](<path>) -> ![svg](path))
+# GitHub flavored markdown does not render image links with angle brackets properly
+cleaned_content, sub_count = re.subn(r"(!?\[[^\]]*\])\(<([^>]+)>\)", r"\1(\2)", cleaned_content)
+print(f"DEBUG: Number of link substitutions made: {sub_count}")
+
+# 5. Save the cleaned markdown back
+with open(input_file, "w", encoding="utf-8") as f:
+    f.write(cleaned_content)
+
+print(f"Successfully cleaned HTML tables and image/markdown links in '{input_file}'!")
+
+# DEBUG: read it back
+with open(input_file, "r", encoding="utf-8") as f:
+    debug_text = f.read()
+print("DEBUG: contains angle brackets after write:", "<notebook_files" in debug_text)
