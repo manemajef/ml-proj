@@ -2,17 +2,17 @@
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](<#>) [![Package Manager](https://img.shields.io/badge/uv-Fast%20Setup-D97706?style=flat-square)](<#>) [![Interactive Report](https://img.shields.io/badge/GitHub%20Pages-Interactive%20Notebook-blue?style=flat-square)](https://manemajef.github.io/ml-proj/) [![Status](https://img.shields.io/badge/Status-Submitted-success?style=flat-square)](<#>)
 
-This repository contains the project submission for the Introduction to Machine Learning course within the Digital Science for High-Tech program (Department of Engineering) at Tel Aviv University (Spring 2026). The project applies the CRISP-DM methodology to predict the probability that a B2B course registration will be cancelled (`Dropped_Course`) prior to the course start date. The official guidelines and grading criteria are detailed in the [project instructions](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/References/instructions.md).
+This repository contains the project submission for the Introduction to Machine Learning course within the Digital Science for High-Tech program (Department of Engineering) at Tel Aviv University (Spring 2026). The project applies the CRISP-DM methodology to predict the probability that a B2B course registration will be cancelled (`Dropped_Course`) prior to the course start date. The official guidelines and grading criteria are detailed in the [project instructions](<References/instructions.md>).
 
 ## Quick Navigation
 
-* **Interactive Presentations**
-  * [Interactive Notebook (HTML)](https://manemajef.github.io/ml-proj/notebook.html) – Full exploratory analysis, validation diagnostics, and model tuning.
-  * [HTML Overview (No Code)](https://manemajef.github.io/ml-proj/overview.html) – High-level summary of findings and output figures.
-  * [Markdown Notebook Export](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/docs/notebook.md) – Static markdown version.
-* **Code & Scripts**
-  * [Jupyter Notebook (ipynb)](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/notebook.ipynb) – Submitted notebook file (and the [Marimo script version](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/notebook.py)).
-  * [Inference Pipeline (pipeline.py)](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/pipeline.py) – Production script replicating the final predictions.
+- **Interactive Presentations**
+  - [Interactive Notebook (HTML)](https://manemajef.github.io/ml-proj/notebook.html) – Full exploratory analysis, validation diagnostics, and model tuning.
+  - [HTML Overview (No Code)](https://manemajef.github.io/ml-proj/overview.html) – High-level summary of findings and output figures.
+  - [Markdown Notebook Export](<docs/notebook.md>) – Static markdown version.
+- **Code & Scripts**
+  - [Jupyter Notebook (ipynb)](<notebook.ipynb>) – Submitted notebook file (and the [Marimo script version](<notebook.py>)).
+  - [Inference Pipeline (pipeline.py)](<pipeline.py>) – Production script replicating the final predictions.
 
 ## Project Overview
 
@@ -28,20 +28,20 @@ The prediction task is structured as a future-window forecasting problem. The da
 
 ## Repository Structure
 
-- [submission](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/submission) - Files submitted for grading:
-  - [Group_27_Notebook.ipynb](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/submission/Group_27_Notebook.ipynb) - Jupyter notebook containing EDA, training, and evaluation.
-  - [Group_27_Submission.csv](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/submission/Group_27_Submission.csv) - Pre-submission prediction CSV.
-  - [submission-report.md](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/submission/submission-report.md) - Project report (written in Hebrew).
-  - [Train_Data.csv](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/submission/Train_Data.csv) and [Test_Data_No_Target.csv](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/submission/Test_Data_No_Target.csv) - Source datasets.
-- [docs](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/docs) - Documentation and interactive views:
-  - [index.html](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/docs/index.html) - Landing page for GitHub Pages.
+- [submission](./submission) - Files submitted for grading:
+  - [Group_27_Notebook.ipynb](<submission/Group_27_Notebook.ipynb>) - Jupyter notebook containing EDA, training, and evaluation.
+  - [Group_27_Submission.csv](<submission/Group_27_Submission.csv>) - Pre-submission prediction CSV.
+  - [submission-report.md](<submission/submission-report.md>) - Project report (written in Hebrew).
+  - [Train_Data.csv](<submission/Train_Data.csv>) and [Test_Data_No_Target.csv](<submission/Test_Data_No_Target.csv>) - Source datasets.
+- [docs](./docs) - Documentation and interactive views:
+  - [index.html](<docs/index.html>) - Landing page for GitHub Pages.
   - [notebook.html](https://manemajef.github.io/ml-proj/notebook.html) - Interactive notebook export.
   - [overview.html](https://manemajef.github.io/ml-proj/overview.html) - HTML overview containing prose and figures without code blocks.
-  - [notebook.md](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/docs/notebook.md) - Markdown copy of the notebook.
-- [versions](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/versions) - Archived iterations and previous pipeline/notebook versions (`v1`, `v2`, `v3`, `ron_version`).
-- [pipeline.py](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/pipeline.py) - Script containing the inference pipeline.
-- [pyproject.toml](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/pyproject.toml) and [uv.lock](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/uv.lock) - Python dependencies managed via `uv`.
-- [References](file:///Users/rotemsemah/Documents/TAU/ML/ml-proj/References) - Original assignments, instructions, and course materials.
+  - [notebook.md](<docs/notebook.md>) - Markdown copy of the notebook.
+- [versions](./versions) - Archived iterations and previous pipeline/notebook versions (`v1`, `v2`, `v3`, `ron_version`).
+- [pipeline.py](<pipeline.py>) - Script containing the inference pipeline.
+- [pyproject.toml](<pyproject.toml>) and [uv.lock](<uv.lock>) - Python dependencies managed via `uv`.
+- [References](./References) - Original assignments, instructions, and course materials.
 
 ## Setup and Execution
 
