@@ -5,6 +5,7 @@ import pandas as pd
 
 # 1. Configuration: Change to your actual file name
 input_file = "docs/notebook.md"
+# input_file = "docs/Group_27_Notebook.md"
 
 with open(input_file, "r", encoding="utf-8") as f:
     content = f.read()
@@ -68,7 +69,9 @@ cleaned_content = div_pattern.sub(html_to_md_table, content)
 
 # 4. Strip angle brackets from image and standard markdown links (e.g. ![svg](<path>) -> ![svg](path))
 # GitHub flavored markdown does not render image links with angle brackets properly
-cleaned_content, sub_count = re.subn(r"(!?\[[^\]]*\])\(<([^>]+)>\)", r"\1(\2)", cleaned_content)
+cleaned_content, sub_count = re.subn(
+    r"(!?\[[^\]]*\])\(<([^>]+)>\)", r"\1(\2)", cleaned_content
+)
 print(f"DEBUG: Number of link substitutions made: {sub_count}")
 
 # 5. Save the cleaned markdown back

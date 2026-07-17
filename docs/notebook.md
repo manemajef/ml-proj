@@ -1,7 +1,3 @@
-```python
-import marimo as mo
-```
-
 # Group 27 — Course-Drop Prediction (Nova Academy)
 
 **Submitters:** Rotem David Semah (ID: `211396593`) · Ron Drach (ID: `213915499`)
@@ -18,6 +14,8 @@ import warnings
 from pathlib import Path
 from textwrap import dedent
 from joblib import dump, hash as joblib_hash, load
+import warnings
+warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -58,18 +56,14 @@ def cache(fn):
 
     return wrapped
 
-warnings.filterwarnings('ignore')
 sns.set_theme(
     style='whitegrid',
     palette='colorblind',
     rc={
-        'figure.figsize': (8, 3.5),
         'figure.constrained_layout.use': False,
-        'savefig.format': 'svg',
-        'svg.fonttype': 'none',
     },
 )
-set_matplotlib_formats('svg')
+set_matplotlib_formats('png')
 pd.set_option('display.max_columns', None)
 TRAIN_PATH = 'data/Train_Data.csv'
 TEST_PATH = 'data/Test_Data_No_Target.csv'
@@ -85,17 +79,12 @@ def show(fig=None):
     display(fig)
     plt.close(fig)
 
-def figure_size(nrows=1, ncols=1):
-    return 4 + 4 * ncols, 3.5 * nrows
-
 def subplot_grid(nrows=1, ncols=1, **kwargs):
     kwargs.setdefault('layout', 'constrained')
-    return plt.subplots(nrows, ncols, figsize=figure_size(nrows, ncols), **kwargs)
+    kwargs.setdefault('figsize', (10, 4.375 * nrows))
+    return plt.subplots(nrows, ncols, **kwargs)
+
 ```
-
-    /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-      from .autonotebook import tqdm as notebook_tqdm
-
 
 # 1. Business understanding
 
@@ -246,11 +235,11 @@ show(balance_fig)
 
 
     
-![svg](notebook_files/notebook_9_1.svg)
+![png](<notebook_files/notebook_8_1.png>)
     
 
 
-about 59% completed and 41% dropped
+The target is moderately balanced: 58.6% completed and 41.4% dropped.
 
 # 3. Exploratory Data Analysis
 
@@ -297,7 +286,7 @@ show(monthly_fig)
 
 
     
-![svg](notebook_files/notebook_13_1.svg)
+![png](<notebook_files/notebook_12_1.png>)
     
 
 
@@ -605,7 +594,7 @@ def plot_dropout_by_category(df, col, ax, min_count=50, top_n=10):
         .sort_values("drop_rate")
     )
 
-    labels = [f"{i} (n={int(r['count'])})" for i, r in stats.iterrows()]
+    labels = [f"{i}\n(n={int(r['count'])})" for i, r in stats.iterrows()]
     overall = df[TARGET].mean()
     ax.barh(
         labels,
@@ -613,12 +602,17 @@ def plot_dropout_by_category(df, col, ax, min_count=50, top_n=10):
         color=["C1" if rate > overall else "C0" for rate in stats["drop_rate"]],
     )
 
-    ax.axvline(overall * 100, linestyle="--", label=f"mean ({overall * 100:.1f}%)")
-    ax.set(xlabel="Drop rate (%)", title=f"Drop rate by {col}")
-    ax.legend()
+    ax.axvline(overall * 100, linestyle="--")
+    ax.set(
+        xlabel="Drop rate (%)",
+        title=f"Drop rate by\n{col.replace('_', ' ')}",
+    )
 
 category_features = [col for col in TEXT_COLS if col != "Origin_Country"]
-category_fig, category_axes = subplot_grid((len(category_features) + 1) // 2, 2)
+category_rows = (len(category_features) + 1) // 2
+category_fig, category_axes = subplot_grid(
+    category_rows, 2, figsize=(10, 3.4 * category_rows)
+)
 for category_ax, category_feature in zip(category_axes.flat, category_features):
     plot_dropout_by_category(clean_train, category_feature, category_ax)
 for unused_category_ax in category_axes.flat[len(category_features) :]:
@@ -628,19 +622,19 @@ show(category_fig)
 
 
     
-![svg](notebook_files/notebook_29_0.svg)
+![png](<notebook_files/notebook_28_0.png>)
     
 
 
-One big surprise is `Payment_Terms`: prepaid, non-refundable registrations drop more often than pay-on-start registrations, the opposite of what we expected. This may reflect how terms are assigned to different deals, but the field's recording time is uncertain. We retain it provisionally and keep that timing limitation explicit.
+`Payment_Terms` shows the strongest category-level separation: almost all prepaid, non-refundable registrations dropped, compared with roughly 30% of pay-on-start registrations. Because the field's recording time is unknown, we retain it provisionally and treat it as a possible timing-leakage risk.
 
-`Welcome_Gift_Type` and `Lanyard_Color` seems to unrelated to dropping. `Assigned_Lab_Config` pattern could probably be explained by PC being the default.
+`Welcome_Gift_Type` and `Lanyard_Color` show little relationship with dropping. The `Assigned_Lab_Config` pattern may partly reflect the standard PC being the default.
 
 The other plots also show useful separation. Direct-website and dedicated-sales registrations drop less often than reseller traffic, organisational enrollment is lower-risk than general admission, and client segments differ. These fields are therefore retained as descriptive predictors rather than causal explanations.
 
 ### A closer look at high-cardinality categories
 
-`Origin_Country`, `Agent_ID`, and `Company_ID` cannot be judged from an unfiltered chart containing every level. We first require enough rows for a rate to be interpretable, then use Portugal as a compact case because it is both the largest country group and far from the overall drop rate.
+`Origin_Country`, `Agent_ID`, and `Company_ID` have too many levels for an unfiltered chart. We examine country first, keeping only sufficiently large groups; Portugal is a compact example because it is both the largest country group and far from the overall drop rate. We then inspect agent and company information separately.
 
 
 ```python
@@ -707,7 +701,7 @@ display(
 
 
     
-![svg](notebook_files/notebook_32_0.svg)
+![png](<notebook_files/notebook_31_0.png>)
     
 
 
@@ -786,7 +780,7 @@ display(company_presence)
 
 
     
-![svg](notebook_files/notebook_36_0.svg)
+![png](<notebook_files/notebook_35_0.png>)
     
 
 
@@ -909,7 +903,7 @@ The maximum values reveal several likely data errors: `Students_Count` reaches 9
 
 ```python
 corr = train_raw[num_cols + [TARGET]].corr()
-corr_fig, corr_ax = plt.subplots(figsize=figure_size(2, 2), layout='constrained')
+corr_fig, corr_ax = plt.subplots(figsize=(12, 7), layout='constrained')
 sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', center=0, ax=corr_ax)
 corr_ax.set_title('Numeric correlation heatmap (incl. target)')
 corr_ax.grid(False)
@@ -918,7 +912,7 @@ show(corr_fig)
 
 
     
-![svg](notebook_files/notebook_43_0.svg)
+![png](<notebook_files/notebook_42_0.png>)
     
 
 
@@ -954,7 +948,7 @@ show(numeric_bin_fig)
 
 
     
-![svg](notebook_files/notebook_46_0.svg)
+![png](<notebook_files/notebook_45_0.png>)
     
 
 
@@ -976,7 +970,7 @@ These conclusions support comparing a flexible nonlinear model with linear and n
 
 We now turn the EDA findings into reproducible preparation rules. The same fitted rules must be applied to later data, but the exact missing-value treatment can differ by model family.
 
-## 4.1 Outliers: identify, justify, cap
+## 4.1 Inspecting and handling outliers
 
 We look for values that are physically impossible or absurdly far from the bulk.
 
@@ -1093,11 +1087,11 @@ show(grid.figure)
 
 
     
-![svg](notebook_files/notebook_53_0.svg)
+![png](<notebook_files/notebook_52_0.png>)
     
 
 
-As seen in the box-plots,  top 3 (student count, practical hours and tuition) justify a  cap. We therefore apply:
+The box plots identify three clear data-entry errors, so we apply:
 
 - `Students_Count <= 10`: the values beyond the observed low-count support are repeated `9999` placeholders in both train and test. The cap keeps those rows as large groups without treating 9999 as a real count.
 - `Practical_Hours` in `[0, 12]`: negative values are impossible, and `5000`/`10000` are clear placeholders. A 12-hour upper bound still allows a long practical day and prevents corrupted placeholder values from distorting the feature space.
@@ -1112,45 +1106,22 @@ CAP_RULES = {
     'Practical_Hours': (0, 12),
     'Daily_Tuition_Cost': (None, 600),
 }
-cap_notes = {
-    'Students_Count': (
-        '9999 placeholder',
-        'repeated 9999 values are isolated placeholders beyond the observed support',
-    ),
-    'Practical_Hours': (
-        'negative values and 10000',
-        'course hours cannot be negative; 12 covers a long practical day',
-    ),
-    'Daily_Tuition_Cost': (
-        '5400 value',
-        '5400 is far beyond the valid fee range; 600 keeps the high-cost tail',
-    ),
-}
-
 cap_rows = []
 for cap_col, (lower, upper) in CAP_RULES.items():
-    problem, reason = cap_notes[cap_col]
     train_capped = train_raw[cap_col].clip(lower=lower, upper=upper)
     test_capped = test_raw[cap_col].clip(lower=lower, upper=upper)
     cap_rows.append({
         'column': cap_col,
-        'raw_train_min': train_raw[cap_col].min(),
-        'raw_train_max': train_raw[cap_col].max(),
-        'problem': problem,
-        'action': f'clip to [{lower}, {upper}]'
-        if lower is not None
-        else f'clip to <= {upper}',
         'train_rows_affected': int(
             (train_raw[cap_col].notna() & train_capped.ne(train_raw[cap_col])).sum()
         ),
         'test_rows_affected': int(
             (test_raw[cap_col].notna() & test_capped.ne(test_raw[cap_col])).sum()
         ),
-        'reason': reason,
     })
 display(pd.DataFrame(cap_rows))
 
-cap_fig, cap_axes = subplot_grid(2, 3, sharey='row')
+cap_fig, cap_axes = subplot_grid(2, 3, sharey='row', figsize=(8, 5.5))
 for cap_index, (cap_column, (lower, upper)) in enumerate(CAP_RULES.items()):
     before = train_raw[cap_column].dropna()
     after = before.clip(lower=lower, upper=upper)
@@ -1171,18 +1142,18 @@ show(cap_fig)
 
 
 
-|    | column             |   raw_train_min |   raw_train_max | problem                   | action          |   train_rows_affected |   test_rows_affected | reason                                            |
-|---:|:-------------------|----------------:|----------------:|:--------------------------|:----------------|----------------------:|---------------------:|:--------------------------------------------------|
-|  0 | Students_Count     |               0 |            9999 | 9999 placeholder          | clip to <= 10   |                    55 |                   12 | repeated 9999 values are isolated placeholders... |
-|  1 | Practical_Hours    |              -5 |           10000 | negative values and 10000 | clip to [0, 12] |                   121 |                   23 | course hours cannot be negative; 12 covers a l... |
-|  2 | Daily_Tuition_Cost |               0 |            5400 | 5400 value                | clip to <= 600  |                     1 |                    0 | 5400 is far beyond the valid fee range; 600 ke... |
+|    | column             |   train_rows_affected |   test_rows_affected |
+|---:|:-------------------|----------------------:|---------------------:|
+|  0 | Students_Count     |                    55 |                   12 |
+|  1 | Practical_Hours    |                   121 |                   23 |
+|  2 | Daily_Tuition_Cost |                     1 |                    0 |
 
 
 
 
 
     
-![svg](notebook_files/notebook_55_1.svg)
+![png](<notebook_files/notebook_54_1.png>)
     
 
 
@@ -1311,30 +1282,11 @@ onehot_dim = X_all.drop(columns=cat_cols).shape[1] + sum(
 print(f'features with native categorical handling : {native_dim}')
 print(f'estimated dims after naive one-hot        : {onehot_dim}')
 print(f'dummy columns avoided                     : {onehot_dim - native_dim}')
-print('\ncategory cardinalities:')
-# Dimensionality comparison: native categorical vs a naive one-hot expansion.
-display(X_all[cat_cols].nunique(dropna=False).sort_values(ascending=False))
 ```
 
     features with native categorical handling : 42
     estimated dims after naive one-hot        : 435
     dummy columns avoided                     : 393
-    
-    category cardinalities:
-
-
-
-    Agent_ID                204
-    Origin_Country          154
-    Requested_Lab_Config      9
-    Client_Category           8
-    Catering_Package          5
-    Enrollment_Type           5
-    Lanyard_Color             5
-    Submission_Source         5
-    Welcome_Gift_Type         4
-    Payment_Terms             4
-    dtype: int64
 
 
 The tree/native-categorical path contains 42 columns. A naive one-hot expansion of the same fields would create about 435 columns, mostly from agent and country, so this representation avoids 393 sparse dummy columns. The linear and neural baselines use one-hot encoding with rare levels grouped into `other`.
@@ -1349,7 +1301,7 @@ We train a classifier to tell **test rows from train rows** using the features (
 
 
 ```python
-@cache
+@cache 
 def adversarial_validation(tr, te, target, seed):
     tr = tr.drop(columns=[target])
     combined = pd.concat(
@@ -1531,6 +1483,7 @@ Each model family is paired with its appropriate preprocessing pipeline: bounded
 
 
 ```python
+@cache 
 def encode_for_continuous_models(
     X_tr: pd.DataFrame, X_va: pd.DataFrame, min_count=30
 ):
@@ -1568,9 +1521,9 @@ def encode_for_continuous_models(
 
 ## 7.2 Focused hyperparameter tuning
 
-For each required family, we vary one parameter that controls capacity or regularization and evaluate it with chronological validation ROC-AUC, the project metric. Training AUC is shown beside it so we can see when extra capacity improves fit without improving the future holdout. Logistic Regression and MLP use the best validation score; for XGBoost we predefine a parsimonious rule and select the smallest depth within 0.0005 AUC of the best result.
+For each required family, we vary one capacity or regularization parameter and evaluate it with chronological ROC-AUC. Logistic Regression and MLP select the best validation score; XGBoost uses a parsimonious rule, choosing the smallest depth within 0.0005 AUC of the best result. Training AUC is shown to reveal when extra capacity improves fit without helping the future holdout.
 
-For the MLP, the sweep varies hidden depth while keeping every layer at 64 units. For XGBoost, the structural sweeps use one baseline profile (`min_child_weight=5`, `subsample=0.9`, `reg_alpha=0`, and `reg_lambda=1`). The first sweep varies `max_depth` with a fixed boosting budget, and a second experiment tunes the interaction between learning rate and number of trees. After selecting those capacity settings, Section 7.3 tests one pre-specified stronger regularization profile while holding the selected structure fixed.
+For the MLP, the sweep varies hidden depth while keeping each layer at 64 units. For XGBoost, it varies `max_depth` while holding the remaining settings fixed.
 
 
 ```python
@@ -1590,12 +1543,13 @@ def make_xgb(seed=SEED, **params):
     return XGBClassifier(**params, random_state=seed)
 
 Xtr_enc, Xva_enc = encode_for_continuous_models(Xtr_t, Xva_t)
+print(f'continuous baseline features after bounded one-hot: {Xtr_enc.shape[1]}')
 # Scale the continuous baselines after fitting the encoder on the past window.
 scaler = StandardScaler()
 Xtr_scaled = scaler.fit_transform(Xtr_enc)
 Xva_scaled = scaler.transform(Xva_enc)
 
-@cache
+@cache 
 def hyper_tune(
     X_train_scaled,
     X_valid_scaled,
@@ -1685,6 +1639,9 @@ tuning_rows, validation_predictions = hyper_tune(
 tuning_raw = pd.DataFrame(tuning_rows)
 ```
 
+    continuous baseline features after bounded one-hot: 198
+
+
 
 ```python
 tuning = tuning_raw.copy()
@@ -1732,7 +1689,6 @@ selected_depth = int(selected_x.loc['Gradient-boosted trees (XGBoost)'])
 
 ```python
 def plot_auc_sweep(data, x, facet, title):
-    n_cols = min(3, data[facet].nunique())
     curves = data.melt(
         id_vars=[facet, x, 'axis', 'log_x', 'selected'],
         value_vars=['train_AUC', 'val_AUC'],
@@ -1748,12 +1704,14 @@ def plot_auc_sweep(data, x, facet, title):
         kind='line',
         markers=True,
         dashes=False,
-        height=4.0,
-        aspect=1.05 if n_cols == 3 else 1.35,
-        facet_kws={'sharex': False, 'sharey': True},
+        facet_kws={
+            'sharex': False,
+            'sharey': facet != 'family',
+            'legend_out': False,
+        },
         col=facet,
-        col_wrap=n_cols,
     )
+    grid.figure.set_size_inches(10, 4.375)
     grid.set_titles('').set_ylabels('ROC-AUC')
     for value, ax in grid.axes_dict.items():
         subset = data[data[facet].eq(value)]
@@ -1777,33 +1735,35 @@ def plot_auc_sweep(data, x, facet, title):
             zorder=5,
         )
     grid.figure.suptitle(title, y=0.98)
-    grid.figure.subplots_adjust(top=0.78, hspace=0.5, wspace=0.25)
+    grid.figure.subplots_adjust(
+        top=0.80,
+        wspace=0.25,
+    )
     show(grid.figure)
 
 plot_auc_sweep(
     tuning, 'x', 'family', 'Focused tuning: training vs validation ROC-AUC'
 )
+
 ```
 
 
     
-![svg](notebook_files/notebook_77_0.svg)
+![png](<notebook_files/notebook_76_0.png>)
     
 
 
-The gold star marks the setting selected by the tuning rule. For Logistic Regression and MLP this is the maximum validation AUC. For XGBoost it is the smallest depth within 0.0005 of the best validation score, avoiding extra capacity for a negligible gain. The selected depth flows into the remaining experiments and final refit. XGBoost is the strongest development candidate on the future holdout, so the remaining experiments refine that candidate while retaining Logistic Regression and MLP for the final comparison.
+The gold star marks the setting selected by the tuning rule. For Logistic Regression and MLP this is the maximum validation AUC. For XGBoost it is the smallest depth within 0.0005 of the best validation score, avoiding extra capacity for a negligible gain. XGBoost is the strongest development candidate on the future holdout, so its selected depth flows into the remaining experiments while Logistic Regression and MLP remain in the final comparison.
 
 ## 7.3 Improving the gradient model
 
-Because XGBoost achieved the highest AUC in the family comparison, we now refine the strongest tree-based candidate in three steps: tune its boosting budget and regularization, evaluate whether fixed LightGBM and CatBoost components improve the ranking, and finally test the continuous time index on the complete blend.
-
 ### (a) Boosting budget and regularization
 
-The number of trees and the learning rate interact directly. We first evaluate various tree counts across two learning-rate settings using the baseline profile from Section 7.2. We then hold the selected depth, learning rate, and tree count fixed and compare that baseline with one pre-specified stronger regularization profile. This separates the capacity decision from a compact robustness check rather than searching a large regularization grid.
+The number of trees and the learning rate interact directly. We first evaluate various tree counts across two learning-rate settings using the baseline profile from Section 7.2. We then hold the selected depth, learning rate, and tree count fixed and compare that baseline with one pre-specified stronger regularization profile.
 
 
 ```python
-@cache
+@cache 
 def run_budget_sweep(
     X_train,
     X_valid,
@@ -1913,7 +1873,7 @@ selected_xgb_fixed_params = regularization_profiles[selected_profile_name]
 
 
     
-![svg](notebook_files/notebook_80_0.svg)
+![png](<notebook_files/notebook_79_0.png>)
     
 
 
@@ -1951,13 +1911,13 @@ The baseline profile selects `learning_rate=0.03` and 700 trees with validation 
 
 LightGBM and CatBoost build boosted trees differently from XGBoost, so they may rank some registrations differently. We add them with fixed, capacity-aligned settings and test the ensemble itself: does combining their rankings improve the tuned XGBoost result?
 
-We use rank averaging because ROC-AUC depends on ordering. Each model's predictions are converted to percentile ranks before averaging, so a model's probability scale cannot dominate the blend. The resulting value is a ranking score, not a calibrated cancellation probability.
+Because ROC-AUC depends on ranking, we convert each model's predictions to percentile ranks before averaging. This prevents one probability scale from dominating the blend, but the resulting score is not a calibrated cancellation probability.
 
 
 ```python
 @cache
 def fit_booster_component(name, X_train, y_train, params):
-    """Fit and cache one explicitly configured blend component."""
+    """Fit one explicitly configured blend component."""
     if name == 'cat':
         cat_columns = X_train.select_dtypes('category').columns.tolist()
         cat_indices = [X_train.columns.get_loc(column) for column in cat_columns]
@@ -2146,29 +2106,22 @@ EDA showed both seasonality and longer-term drift. We compare the complete blend
 ```python
 without_time_blend = selected_blend.clone().fit(Xtr_without_time, y_tr)
 blend_without_time = without_time_blend.predict_rank_score(Xva_without_time)
-temporal_check = pd.DataFrame({
-    'temporal representation': [
-        'Month + weekday + ISO week',
-        'Month + weekday + ISO week + days_since_epoch',
-    ],
-    'chronological AUC': [
-        roc_auc_score(y_va, blend_without_time),
-        roc_auc_score(y_va, blend_t),
-    ],
-})
-temporal_check['delta_vs_without_index'] = (
-    temporal_check['chronological AUC'] - temporal_check.loc[0, 'chronological AUC']
-)
+without_index_auc = roc_auc_score(y_va, blend_without_time)
+with_index_auc = roc_auc_score(y_va, blend_t)
+temporal_check = pd.DataFrame([{
+    'without continuous index AUC': without_index_auc,
+    'with continuous index AUC': with_index_auc,
+    'AUC gain': with_index_auc - without_index_auc,
+}])
 display(temporal_check.round(6))
 ```
 
 
 
 
-|    | temporal representation                       |   chronological AUC |   delta_vs_without_index |
-|---:|:----------------------------------------------|--------------------:|-------------------------:|
-|  0 | Month + weekday + ISO week                    |              0.9125 |                   0      |
-|  1 | Month + weekday + ISO week + days_since_epoch |              0.9159 |                   0.0034 |
+|    |   without continuous index AUC |   with continuous index AUC |   AUC gain |
+|---:|-------------------------------:|----------------------------:|-----------:|
+|  0 |                         0.9125 |                      0.9159 |     0.0034 |
 
 
 
@@ -2192,7 +2145,9 @@ curve_displays = [
     (RocCurveDisplay, 'ROC curve'),
     (PrecisionRecallDisplay, 'Precision–Recall curve'),
 ]
-curve_fig, curve_axes = plt.subplots(1, 2, figsize=(15, 5.5), layout='compressed')
+curve_fig, curve_axes = subplot_grid(
+    1, 2, figsize=(15, 5.5), layout='compressed'
+)
 for curve_ax, (display_class, curve_title) in zip(curve_axes, curve_displays):
     for curve_index, (candidate_name, candidate_predictions) in enumerate(
         curve_candidates
@@ -2211,7 +2166,7 @@ show(curve_fig)
 
 
     
-![svg](notebook_files/notebook_89_0.svg)
+![png](<notebook_files/notebook_88_0.png>)
     
 
 
@@ -2228,7 +2183,7 @@ matrix_candidates = [
     ('MLP neural network', pred_mlp),
     ('Boosted-tree rank blend', blend_t),
 ]
-matrix_fig, matrix_axes = subplot_grid(1, 3)
+matrix_fig, matrix_axes = subplot_grid(1, 3, figsize=(16, 3.5))
 metric_rows = []
 for matrix_ax, (matrix_name, matrix_predictions) in zip(
     matrix_axes, matrix_candidates
@@ -2252,7 +2207,7 @@ for matrix_ax, (matrix_name, matrix_predictions) in zip(
         colorbar=False,
         ax=matrix_ax,
     )
-    matrix_ax.set_title(f'{matrix_name} — ROC-AUC={matrix_auc:.3f}')
+    matrix_ax.set_title(f'{matrix_name}\nROC-AUC={matrix_auc:.3f}')
     matrix_ax.grid(False)
     metric_rows.append({
         'model': matrix_name,
@@ -2271,7 +2226,7 @@ display(evaluation_metrics)
 
 
     
-![svg](notebook_files/notebook_92_0.svg)
+![png](<notebook_files/notebook_91_0.png>)
     
 
 
@@ -2328,7 +2283,7 @@ show(score_fig)
 
 
     
-![svg](notebook_files/notebook_95_1.svg)
+![png](<notebook_files/notebook_94_1.png>)
     
 
 
@@ -2342,7 +2297,7 @@ We compute TreeSHAP values on a fixed validation sample of up to 10,000 rows to 
 
 
 ```python
-@cache
+@cache 
 def compute_shap_analysis(
     shap_model,
     X_valid,
@@ -2399,7 +2354,7 @@ importance = (
 top = importance.head(20)
 
 importance_fig, importance_ax = plt.subplots(
-    figsize=figure_size(2, 1), layout='constrained'
+    figsize=(8, 7), layout='constrained'
 )
 top.sort_values('mean_abs_shap').plot.barh(
     x='feature', y='mean_abs_shap', legend=False, ax=importance_ax
@@ -2413,13 +2368,13 @@ display(top)
 
 
     
-![svg](notebook_files/notebook_100_0.svg)
+![png](<notebook_files/notebook_99_0.png>)
     
 
 
 
     
-![svg](notebook_files/notebook_100_1.svg)
+![png](<notebook_files/notebook_99_1.png>)
     
 
 
@@ -2504,7 +2459,7 @@ top_feat = (
     if importance['feature'].iloc[0] == 'Payment_Terms'
     else importance['feature'].iloc[0]
 )
-
+@cache 
 def plot_shap_dependence_readable(feature):
     max_categories = 15
     col_idx = list(X_shap.columns).index(feature)
@@ -2533,7 +2488,7 @@ def plot_shap_dependence_readable(feature):
         .agg(mean_shap=('shap', 'mean'), n=('shap', 'size'))
         .sort_values('mean_shap')
     )
-    fig, ax = plt.subplots(figsize=figure_size(2, 1), layout='constrained')
+    fig, ax = plt.subplots(figsize=(8, 7), layout='constrained')
     sns.barplot(data=summary.reset_index(), y='level', x='mean_shap', ax=ax)
     ax.axvline(0, color='black', linewidth=1)
     ax.set(
@@ -2545,12 +2500,6 @@ def plot_shap_dependence_readable(feature):
 
 plot_shap_dependence_readable(top_feat)
 ```
-
-
-    
-![svg](notebook_files/notebook_105_0.svg)
-    
-
 
 ## 9.3 Explaining one near-threshold registration
 
@@ -2582,7 +2531,7 @@ show()
 
 
     
-![svg](notebook_files/notebook_107_1.svg)
+![png](<notebook_files/notebook_106_1.png>)
     
 
 
@@ -2590,7 +2539,7 @@ For this registration, positive and negative contributions nearly balance, produ
 
 # 10. Building and checking the final submission
 
-We refit the selected pipeline on all labelled rows, score the official test registrations, and write the assignment-required `data/Group_27_Submission.csv`. The same label-free train+test frequency maps are used for both full-data feature matrices.
+We fit the selected blend on all labelled rows, score the official test set, and write the required two-column CSV.
 
 
 ```python
@@ -2601,57 +2550,34 @@ X_test = build_features(test_raw, submission_maps)
 align_categories(X_train_full, X_test)
 y_full = train_raw[TARGET].values
 
-def submit():
+RUN_SUBMISSION = False
+if RUN_SUBMISSION:
     submission_blend = selected_blend.clone().fit(X_train_full, y_full)
     submission_scores = submission_blend.predict_rank_score(X_test)
-    print(
-        f"fitted the three-component boosted rank blend on "
-        f"{len(X_train_full):,} rows"
-    )
-
     submission = pd.DataFrame({
         "Client_ID": test_raw["Client_ID"],
         "Drop_Probability": submission_scores,
     })
     score_values = submission['Drop_Probability'].to_numpy()
-    integrity_checks = {
-        'exact columns': list(submission.columns)
-        == ['Client_ID', 'Drop_Probability'],
-        '15,866 rows': len(submission) == 15866,
-        'exact test Client_ID order': submission['Client_ID']
-        .reset_index(drop=True)
-        .equals(test_raw['Client_ID'].reset_index(drop=True)),
-        'unique Client_ID': submission['Client_ID'].is_unique,
-        'no missing values': not submission.isna().any().any(),
-        'finite scores': np.isfinite(score_values).all(),
-        'scores within [0, 1]': ((score_values >= 0) & (score_values <= 1)).all(),
-    }
-    submission_integrity = pd.DataFrame({
-        'check': integrity_checks.keys(),
-        'passed': integrity_checks.values(),
-    })
-    display(submission_integrity)
-    if not all(integrity_checks.values()):
-        raise ValueError('Submission integrity check failed; file was not written.')
-
+    assert list(submission.columns) == ['Client_ID', 'Drop_Probability']
+    assert len(submission) == 15866
+    assert submission['Client_ID'].reset_index(drop=True).equals(
+        test_raw['Client_ID'].reset_index(drop=True)
+    )
+    assert submission['Client_ID'].is_unique
+    assert not submission.isna().any().any()
+    assert np.isfinite(score_values).all()
+    assert ((score_values >= 0) & (score_values <= 1)).all()
     submission.to_csv(submission_path, index=False)
-    print(f"wrote {submission_path}  ({len(submission):,} rows)")
-    display(submission.head())
-    print(submission['Drop_Probability'].describe())
-
-SUBMIT = False
-if SUBMIT:
-    submit()
+    print(f"validated and wrote {submission_path} ({len(submission):,} rows)")
 ```
-
-Every required integrity check passes before the file is written: schema, row count, test-ID order, ID uniqueness, missingness, finiteness, and score range.
 
 # 11. Conclusions & Executive Summary
 
 Nova Academy's test registrations occur after the training period, and both the monthly target rate and the adversarial-validation result (AUC 0.935) show temporal distribution shift. Model selection therefore used a four-month chronological holdout.
 
-Cleaning reduced hundreds of inconsistent text labels to compact category sets. Missingness, payment terms, country, agent, registration timing, and support activity all carried predictive information. The three required model families were tuned on the future holdout: Logistic Regression selected `C=0.001`, the MLP selected three 64-unit hidden layers, and the baseline XGBoost sweep selected depth 6 with `learning_rate=0.03` and 700 trees. A controlled comparison at that structure then selected the stronger regularization profile. LightGBM and CatBoost were used only as fixed auxiliary blend components. The complete rank-average blend reached chronological ROC-AUC 0.9159 and Average Precision 0.897.
+Cleaning reduced hundreds of inconsistent text labels to compact category sets, while missingness, payment terms, country, agent, registration timing, and support activity carried predictive information. Logistic Regression, MLP, and XGBoost were tuned on the future holdout; XGBoost was strongest, and a controlled comparison selected stronger regularization. Adding fixed LightGBM and CatBoost components produced the final rank-average blend, which reached chronological ROC-AUC 0.9159 and Average Precision 0.897.
 
-The final CSV contains continuous rank-average risk scores in the required two-column format. Its hidden-test performance is unknown unless this exact new file is scored separately; the notebook does not reuse a score from an older model specification.
+The final CSV contains continuous rank-average scores in the required two-column format. These scores are not calibrated probabilities, and hidden-test performance is unknown.
 
 Further work could include confirming when `Payment_Terms` is recorded and calibrating the selected blend score for cost-based operational thresholds.

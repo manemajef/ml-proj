@@ -1,14 +1,64 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=notebook.html">
-    <title>Redirecting to Notebook...</title>
-    <script>
-        window.location.replace("notebook.html");
-    </script>
-</head>
-<body>
-    <p>If you are not redirected automatically, please follow this <a href="notebook.html">link to the notebook</a>.</p>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <title>ML Project</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      .container {
+        max-width: 50em;
+        margin-inline: auto;
+        margin-top: 5em;
+      }
+      .center {
+        text-align: center;
+      }
+      .nav-btns {
+        display: flex;
+        justify-content: center;
+        gap: 2em;
+        margin-inline: auto;
+        margin-top: 2em;
+      }
+
+      .button {
+        border: none;
+        background: rgb(235, 239, 243);
+        box-shadow: 0px 0px 1px rgba(0, 0, 0, 0.3);
+        border-radius: 12px;
+        padding: 0.5em 1em;
+        transition: 0.3s;
+        font-size: 0.9em;
+      }
+
+      .button:hover {
+        /* transform: scale(1.01); */
+        box-shadow: 0 0 1px rgba(0, 0, 0, 0.5);
+      }
+
+      a.button {
+        color: unset;
+        text-decoration: none;
+      }
+      a.button:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container center">
+      <h1>Machine Learning Submission Project</h1>
+      <p>
+        This is the submission project for <em>Mechine Learing</em> class in
+        <a href="https://english.tau.ac.il">Tel Aviv University</a>
+      </p>
+
+      <div class="nav-btns">
+        <a class="button" href="notebook.html">Interactive Notebook</a>
+        <a class="button primary" href="overview.html">Overview</a>
+      </div>
+    </div>
+  </body>
 </html>

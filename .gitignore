@@ -4,11 +4,10 @@ __pycache__/
 lec\ -\ ML\ \ project\ and\ preprocessing.pdf
 .ipynb_checkpoints/
 .jupyter/
-
+*
 *.pyc
 .DS_Store
 AGENT.md
-TODOS.md
 Notes/
 archive/trash/
 catboost_info/
